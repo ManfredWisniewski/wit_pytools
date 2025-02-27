@@ -60,7 +60,19 @@ def movefile(subdir, file, destdir, nfile, dryrun):
     else:
         try:
             #os.rename((os.path.join(subdir, file)), (destdir + "/" + nfile))
-            shutil.move(os.path.join(subdir, file), destdir + "/" + nfile)
+            shutil.copy(os.path.join(subdir, file), destdir + "/" + nfile)
+        except:
+            #ignore directory already exists error TODO: make more elegant
+            True
+
+def copyfile(subdir, file, destdir, nfile, dryrun):
+    if dryrun:
+        print(' - copy: ' + os.path.join(subdir, file))
+        print('     to: ' + destdir + "\\" + nfile)
+    else:
+        try:
+            #os.rename((os.path.join(subdir, file)), (destdir + "/" + nfile))
+            shutil.copy(os.path.join(subdir, file), destdir + "/" + nfile)
         except:
             #ignore directory already exists error TODO: make more elegant
             True
