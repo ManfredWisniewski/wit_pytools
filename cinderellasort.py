@@ -28,12 +28,6 @@ def bowldir(file, config_object=''):
                         return '\\' + bowl
             return ''
 
-#   prepare strings to be used correctly in regex expressions (escape special characters)
-def prepregex(ostring):
-    mapping = str.maketrans({'.': '\\.', '[': '\\[', ']': '\\]'})
-    nstring = ostring.translate(mapping)
-    return nstring
-
 def cleanfilestring(file, clean, clean_nocase, subdir=''):
     filename, file_extension = os.path.splitext(os.path.join(subdir, file))
     if len(subdir) > 0:
