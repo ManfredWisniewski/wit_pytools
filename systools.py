@@ -34,19 +34,6 @@ def rmemptydir(rootdir, dryrun = (False)):
             else:
                 print(' - skipping: ' + path + ' (not empty)')
 
-def isvalidsort(rootdir, ftype_sort):
-    # check if multiple tables are matched
-    checkvalid = False
-    for subdir, dirs, files in walklevel(rootdir, 2):
-        for file in files:
-            for ftype in ftype_sort.split(','):
-                if file.casefold().endswith(ftype):
-                    checkvalid = True
-    if checkvalid:
-        return True
-    #else:
-    #    print('## Directory [' + rootdir + '] contains none of the sorted file types [' + ftype_sort + ']\n## EXIT CinderellaSort')
-
 def delfile(subdir, file, dryrun):
     if dryrun:
         print(' -  del: ' + file)

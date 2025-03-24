@@ -9,6 +9,19 @@ logtofile = (False)
 time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 config_object = ConfigParser()
 
+def isvalidsort(rootdir, ftype_sort):
+    # check if multiple tables are matched
+    checkvalid = False
+    for subdir, dirs, files in walklevel(rootdir, 2):
+        for file in files:
+            for ftype in ftype_sort.split(','):
+                if file.casefold().endswith(ftype):
+                    checkvalid = True
+    if checkvalid:
+        return True
+    #else:
+    #    print('## Directory [' + rootdir + '] contains none of the sorted file types [' + ftype_sort + ']\n## EXIT CinderellaSort')
+
 def matchstring(file, matchtable=''):
     if len(matchtable) > 0:
         found = False
@@ -27,6 +40,20 @@ def bowldir(file, config_object=''):
                     if crit in file and not found:
                         return '\\' + bowl
             return ''
+
+def cmovefile(subdir, file, destdir, nfile, dryrun):
+    if osmode == 'os':
+        movefile(subdir, file, destdir + bowldir(nfile, config_object), nfile, dryrun)
+    elif osmode == 'nc':
+        ncmovefile(subdir, file, destdir + bowldir(nfile, config_object), nfile, dryrun)
+
+
+#   prepare strings to be used correctly in regex expressions (escape special characters)
+def prepregex(ostring):
+    mapping = str.maketrans({'.': '\\.', '[': '\\[', ']': '\\]'})
+    mapping = str.maketrans({'.': '\\.', '[': '\\[', ']': '\\]'})
+    nstring = ostring.translate(mapping)
+    return nstring
 
 def cleanfilestring(file, clean, clean_nocase, subdir=''):
     filename, file_extension = os.path.splitext(os.path.join(subdir, file))
@@ -67,11 +94,14 @@ def cinderellasort(configfile, dryrun = (False), logtofile = (True)):
     clean_nocase = (table["clean_nocase"].casefold())
     trash = (table['trash'])
     trash_nocase = (table['trash_nocase'].casefold())
+    osmode = (table['osmode'].casefold())
+
 
     print('\n###########################################')
     print('## START CinderellaSort ' + time)
     print(' # from: ' + rootdir)
     print(' # to:   ' + destdir)
+    print(' # mode: ' + destdir)
     if dryrun:
         print('\n     ##  DRYRUN  ##\n')
     print('## Settings ' + configfile + ':')
