@@ -2,7 +2,6 @@ import os, re, sys, shutil
 import extract_msg
 import eml_parser
 
-
 date_format = "%Y-%m-%d"
 email_pattern = r'<(.*?)>'  # Matches anything inside < >
 

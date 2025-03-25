@@ -2,6 +2,7 @@ import os, re, sys
 from datetime import datetime
 from configparser import ConfigParser
 from pathlib import Path
+from wit_pytools.systools import walklevel, rmemptydir, movefile
 
 dryrun = (True)
 logtofile = (False)
@@ -9,10 +10,11 @@ logtofile = (False)
 time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 config_object = ConfigParser()
 
-def isvalidsort(rootdir, ftype_sort):
+# check for valid searches in subdirectories of the target directory
+def isvalidsort(sourcedir, ftype_sort):
     # check if multiple tables are matched
     checkvalid = False
-    for subdir, dirs, files in walklevel(rootdir, 2):
+    for subdir, dirs, files in walklevel(sourcedir, 2):
         for file in files:
             for ftype in ftype_sort.split(','):
                 if file.casefold().endswith(ftype):
@@ -20,7 +22,7 @@ def isvalidsort(rootdir, ftype_sort):
     if checkvalid:
         return True
     #else:
-    #    print('## Directory [' + rootdir + '] contains none of the sorted file types [' + ftype_sort + ']\n## EXIT CinderellaSort')
+    #    print('## Directory [' + sourcedir + '] contains none of the sorted file types [' + ftype_sort + ']\n## EXIT CinderellaSort')
 
 def matchstring(file, matchtable=''):
     if len(matchtable) > 0:
@@ -80,14 +82,15 @@ def cleanfilestring(file, clean, clean_nocase, subdir=''):
     print('### result: ' + nfile)
     return os.path.join(nfile.strip() + file_extension)
 
+
 def cinderellasort(configfile, dryrun = (False), logtofile = (True)):
     if logtofile:
         sys.stdout = open('nounasort.log', 'a')
     files = ""
     config_object.read(configfile, encoding='utf-8')
     table = config_object["TABLE"]
-    rootdir = (table["rootdir"])
-    destdir = (table["destdir"])
+    sourcedir = (table["sourcedir"])
+    targetdir = (table["targetdir"])
     ftype_sort = (table["ftype_sort"].casefold())
     ftype_delete = (table["ftype_delete"].casefold())
     clean = (table["clean"])
@@ -99,9 +102,9 @@ def cinderellasort(configfile, dryrun = (False), logtofile = (True)):
 
     print('\n###########################################')
     print('## START CinderellaSort ' + time)
-    print(' # from: ' + rootdir)
-    print(' # to:   ' + destdir)
-    print(' # mode: ' + destdir)
+    print(' # from: ' + sourcedir)
+    print(' # to:   ' + targetdir)
+    print(' # mode: ' + osmode)
     if dryrun:
         print('\n     ##  DRYRUN  ##\n')
     print('## Settings ' + configfile + ':')
@@ -116,7 +119,19 @@ def cinderellasort(configfile, dryrun = (False), logtofile = (True)):
     # CHECK _unpack dir
     # CHECK SORT Lists for ,, and < 2
 
-    dirlist = [f for f in Path(rootdir).resolve().glob('**/*') if f.is_dir()]
+
+    def handlefile(file):
+        if any(file.name.casefold().endswith(ftype.strip()) for ftype in ftype_sort.split(',')):
+            nfile = cleanfilestring(file.name, clean, clean_nocase)
+            movefile(sourcedir, file.name, targetdir + bowldir(nfile, config_object), nfile, dryrun)
+
+    # First check for files in the root directory
+    #!!!!!!!!!!!!!!!!!!!!
+    for file in [f for f in Path(sourcedir).iterdir() if f.is_file()]:
+        handlefile(file)
+
+    # Then process subdirectories
+    dirlist = [f for f in Path(sourcedir).resolve().glob('**/*') if f.is_dir()]
     print(dirlist)
     for maindir in dirlist:
         if isvalidsort(str(maindir), ftype_sort):
@@ -140,16 +155,16 @@ def cinderellasort(configfile, dryrun = (False), logtofile = (True)):
                     # TEST what if MULTIPLE files in -subdirs-
                     for file in files:
                         nfile = cleanfilestring(file, clean, clean_nocase, subdir)
-                        movefile(subdir, file, destdir + bowldir(nfile, config_object), nfile, dryrun)
+                        movefile(subdir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
                 elif len(files) > 1:
                     for file in files:
                         nfile = cleanfilestring(file, clean, clean_nocase)
-                        movefile(subdir, file, destdir + bowldir(nfile, config_object), nfile, dryrun)
+                        movefile(subdir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
         else:
             print(' #  No valid sort found!') 
 
 #    print(f"\n## Removing empty directories:")
-#    rmemptydir(rootdir,dryrun)
+#    rmemptydir(sourcedir,dryrun)
 
     print("\n## END CinderellaSort ##")
     if logtofile:

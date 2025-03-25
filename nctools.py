@@ -1,5 +1,6 @@
+import os
 import subprocess
-
+from eliot import start_action, to_file, log_message
 
 #def ncdelfile(subdir, file, dryrun):
 #    if dryrun:
@@ -17,6 +18,16 @@ def ncmovefile(subdir, file, destdir, nfile, dryrun):
         except:
             #ignore directory already exists error TODO: make more elegant
             True
+
+def ncscandir(targetdir):
+    scan_result = subprocess.run(
+        f'php /var/www/nextcloud/occ files:scan --path="{targetdir}" --quiet',
+        capture_output=True,
+        shell=True,
+        text=True
+    )
+    if scan_result.returncode != 0:
+        log_message(f"Warning: Folder rescan failed: {scan_result.stderr}")
 
 # def nccopyfile(subdir, file, destdir, nfile, dryrun):
 #     if dryrun:
@@ -49,3 +60,4 @@ def ncmovefile(subdir, file, destdir, nfile, dryrun):
 #                     True
 #     else:
 #         print('Source not found - skipped: ' + sourcedir)
+
