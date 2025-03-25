@@ -27,7 +27,7 @@ def run_pytest_tests():
     print("Running pytest tests...")
     # Run pytest on the current directory
     result = pytest.main(["-v", os.path.dirname(os.path.abspath(__file__))])
-        return result == 0
+    return result == 0
 
 def run_individual_tests():
     """Run individual test files directly"""
