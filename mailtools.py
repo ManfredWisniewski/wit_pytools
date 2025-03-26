@@ -8,11 +8,11 @@ email_pattern = r'<(.*?)>'  # Matches anything inside < >
 # Email EML
 # https://pypi.org/project/eml-parser/
 # pip install eml-parser
-def parse_eml(directory,file, debug=False):
+def parse_eml(file, debug=False):
     if debug:
-        print(' -  parsing: ' + directory + file)
+        print(' -  parsing: ' + file)
 
-    with open(os.path.join(directory,file), 'rb') as fhdl:
+    with open(file, 'rb') as fhdl:
         raw_email = fhdl.read()
     ep = eml_parser.EmlParser()
     parsed_eml = ep.decode_email_bytes(raw_email)
@@ -25,18 +25,16 @@ def parse_eml(directory,file, debug=False):
 # Parse Outlook MSG file
 # https://pypi.org/project/extract-msg/
 # pip install extract-msg
-def parse_msg(directory,file, debug=False):
+def parse_msg(file, debug=False):
     if debug:
-        print(' -  parsing: ' + directory + file)
+        print(' -  parsing: ' + file)
 
-    file_path = os.path.join(directory, file)
-    if not os.path.isfile(file_path):
-        print(f"File not found: {file_path}")
+    if not os.path.isfile(file):
+        print(f"File not found: {file}")
         return []
     else:
-        print(f"Parsing msg file: {file_path}")
-
-        msg = extract_msg.Message(os.path.join(directory,file)) #sys.argv[1]
+        print(f"Parsing msg file: {file}")
+        msg = extract_msg.Message(os.path.join(file)) #sys.argv[1]
         msg_sender = msg.sender
         msg_date = msg.date
         msg_subj = msg.subject
