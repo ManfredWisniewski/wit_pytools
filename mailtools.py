@@ -33,29 +33,33 @@ def parse_msg(file, debug=False):
         print(f"File not found: {file}")
         return []
     else:
-        print(f"Parsing msg file: {file}")
-        msg = extract_msg.Message(os.path.join(file)) #sys.argv[1]
-        msg_sender = msg.sender
-        msg_date = msg.date
-        msg_subj = msg.subject
+        #print(f"Parsing msg file: {file}")
+        try:
+            msg = extract_msg.Message(os.path.join(file)) #sys.argv[1]
+            msg_sender = msg.sender if msg.sender is not None else ""
+            msg_date = msg.date
+            msg_subj = msg.subject if msg.subject is not None else ""
 
-        match = re.search(email_pattern, msg_sender)
-        if match:
-            formatted_sender = match.group(1)  # Get the email address
-        else:
-            formatted_sender = msg_sender  # Fallback to the original sender if no match
+            match = re.search(email_pattern, msg_sender)
+            if match:
+                formatted_sender = match.group(1)  # Get the email address
+            else:
+                formatted_sender = msg_sender  # Fallback to the original sender if no match
 
-        mailinfo = []
-        mailinfo.append(format(msg_date.strftime(date_format)))
-        mailinfo.append(format(formatted_sender))
-        mailinfo.append(format(msg_subj))
-        return mailinfo
-        #YYYY-MM-DD_ABSENDER_PROJEKTNAME_BETREFF-GEFILTERT
-
-        #for k, v in msg.header.items():
-        #    print("{}: {}".format(k, v))
-
-        #print(msg.body)
+            mailinfo = []
+            # Ensure date is not None
+            if msg_date is not None:
+                mailinfo.append(format(msg_date.strftime(date_format)))
+            else:
+                mailinfo.append("")
+                
+            mailinfo.append(format(formatted_sender))
+            mailinfo.append(format(msg_subj))
+            return mailinfo
+        except Exception as e:
+            print(f"Error parsing MSG file: {e}")
+            # Return empty strings for all fields in case of error
+            return ["", "", ""]
 
 #structure mailinfo:
 # date, sender, subject

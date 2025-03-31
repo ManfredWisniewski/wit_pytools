@@ -35,12 +35,14 @@ def rmemptydir(rootdir, dryrun = (False)):
                 print(' - skipping: ' + path + ' (not empty)')
 
 def delfile(subdir, file, dryrun):
+    #TODO: (low) known problems handling 0 byte files on smb network shares
     if dryrun:
         print(' -  del: ' + file)
     else:
         os.remove((os.path.join(subdir, file)))
 
 def movefile(subdir, file, destdir, nfile, dryrun):
+    #TODO: add rights handeling before attempt (gets stuck sometimes when copy but no write access
     if dryrun:
         print(' - move: ' + os.path.join(subdir, file))
         print('     to: ' + destdir + "\\" + nfile)
