@@ -2,6 +2,7 @@ import os, re, sys
 from datetime import datetime
 from configparser import ConfigParser
 from pathlib import Path
+from wit_pytools.witpytools import dryprint
 
 # Fix import issue by using relative imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -84,55 +85,54 @@ def cleanfilestring(file, clean, clean_nocase, replacements, subdir=''):
         rstring = prepregex(rstring)
         nstring = prepregex(nstring)
         nfile = nfile.replace(rstring, nstring)
-    # replace multiple spaces with single space
+    # Remove invalid characters from filename
+    invalid_chars = r'[<>:"/\\|?*]'
+    nfile = re.sub(invalid_chars, '', nfile)
+    # Replace multiple spaces with single space
     nfile = re.sub(r'\s+', ' ', nfile.rstrip())
+    # Remove last character period
+    nfile = nfile.rstrip('.')
 
     return os.path.join(nfile.strip() + file_extension)
 
-def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, filemode, replacements, dryrun):
+def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun):
     for ftype in ftype_sort.split(','):
         ftype = ftype.strip().casefold()
         if ftype == '.msg':
-            # Special handling for .msg files
-            if dryrun:
-                print(f" - Special handling for MSG file: {file.name}")
-            else:
-                try:
-                    # Use encoding='utf-8' to properly handle German special characters
-                    maildata = parse_msg(os.path.join(sourcedir, file.name), True)
+            dryprint(dryrun, 'handle MSG', file.name)
+            try:
+                maildata = parse_msg(os.path.join(sourcedir, file.name), True)
+                
+                # Extract project name from the last directory in sourcedir
+                project_name = os.path.basename(os.path.normpath(sourcedir))
+                
+                if maildata and len(maildata) >= 3:
+                    # Strip leading date in YYYY-MM-DD format from subject if it exists
+                    subject = maildata[2] if maildata[2] is not None else ""
+                    # Regular expression to match YYYY-MM-DD at the beginning of the string
+                    # followed by optional whitespace
+                    date_pattern = r'^(\d{4}-\d{2}-\d{2})\s*'
+                    subject = re.sub(date_pattern, '', subject).strip()
+                    maildata[2] = subject
                     
-                    # Extract project name from the last directory in sourcedir
-                    project_name = os.path.basename(os.path.normpath(sourcedir))
+                    # Ensure all elements in maildata are strings to prevent NoneType concatenation errors
+                    for i in range(len(maildata)):
+                        if maildata[i] is None:
+                            maildata[i] = ""
                     
-                    if maildata and len(maildata) >= 3:
-                        # Strip leading date in YYYY-MM-DD format from subject if it exists
-                        subject = maildata[2] if maildata[2] is not None else ""
-                        # Regular expression to match YYYY-MM-DD at the beginning of the string
-                        # followed by optional whitespace
-                        date_pattern = r'^(\d{4}-\d{2}-\d{2})\s*'
-                        subject = re.sub(date_pattern, '', subject).strip()
-                        maildata[2] = subject
-                        
-                        # Ensure all elements in maildata are strings to prevent NoneType concatenation errors
-                        for i in range(len(maildata)):
-                            if maildata[i] is None:
-                                maildata[i] = ""
-                        
-                        nfile = maildata[0]+'_'+maildata[1]+'_'+project_name+'_'+maildata[2]
-                        nfile = cleanfilestring(nfile, clean, clean_nocase, replacements)
-                        print(nfile)  # Print the cleaned filename
-                        cmovefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, dryrun)
-                        #2025-03-24 straetz@hth info afsaf HTH-Auftragsbestätigung 112390402 Variante V2A + Besch.
-                        #YYYY-MM-DD_ABSENDER_PROJEKTNAME_BETREFF-GEFILTERT
-                    else:
-                        print("No mail information available or incomplete data.")
-                        nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
-                        cmovefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, dryrun)
-                except Exception as e:
-                    print(f"Error handling MSG file {file.name}: {e}")
-                    # Fallback to using the original filename
+                    nfile = maildata[0]+'_'+maildata[1]+'_'+project_name+'_'+maildata[2]+'.msg'
+                    nfile = cleanfilestring(nfile, clean, clean_nocase, replacements)
+                    dryprint(dryrun, 'bowl', bowldir(nfile, config_object))
+                    cmovefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, dryrun)
+                else:
+                    print("No mail information available or incomplete data.")
                     nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
                     cmovefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, dryrun)
+            except Exception as e:
+                print(f"Error handling MSG file {file.name}: {e}")
+                # Fallback to using the original filename
+                nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
+                cmovefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, dryrun)
         else:
             # Default behavior for other file types
             nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
@@ -145,7 +145,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, file
     else:
         print(f" - Skipping file {file.name}: not a specified type")
 
-def cinderellasort(configfile, dryrun = (False)):
+def cinderellasort(configfile, dryrun=False):
     files = ""
     config_object = ConfigParser()
     config_object.read(configfile)
@@ -170,11 +170,10 @@ def cinderellasort(configfile, dryrun = (False)):
     
     print('\n###########################################')
     print('## START CinderellaSort ' + time)
+    dryprint(dryrun, '## DRYRUN ##', configfile)
     print(' # from: ' + sourcedir)
     print(' # to:   ' + targetdir)
-    print(' # mode: ' + filemode)
-    if dryrun:
-        print('\n     ##  DRYRUN  ##\n')
+    dryprint(dryrun, 'mode',filemode)
     print('## Settings ' + configfile + ':')
     print(' # sort: ' + ftype_sort)
     print(' #  del: ' + ftype_delete)
@@ -190,7 +189,7 @@ def cinderellasort(configfile, dryrun = (False)):
     # Handle files directly in sourcedir
     for item in Path(sourcedir).iterdir():
         if item.is_file():
-            handlefile(item, sourcedir, targetdir, ftype_sort, clean, clean_nocase, filemode, replacements, dryrun)
+            handlefile(item, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun)
 
     # Process subdirectories in sourcedir
     dirlist = [f for f in Path(sourcedir).resolve().glob('**/*') if f.is_dir()]

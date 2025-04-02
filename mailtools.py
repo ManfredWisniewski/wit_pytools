@@ -1,6 +1,7 @@
 import os, re, sys, shutil
 import extract_msg
 import eml_parser
+from wit_pytools.witpytools import dryprint
 
 date_format = "%Y-%m-%d"
 email_pattern = r'<(.*?)>'  # Matches anything inside < >
@@ -8,10 +9,8 @@ email_pattern = r'<(.*?)>'  # Matches anything inside < >
 # Email EML
 # https://pypi.org/project/eml-parser/
 # pip install eml-parser
-def parse_eml(file, debug=False):
-    if debug:
-        print(' -  parsing: ' + file)
-
+def parse_eml(file, dryrun=False):
+    dryprint(dryrun, 'parsing eml', file)
     with open(file, 'rb') as fhdl:
         raw_email = fhdl.read()
     ep = eml_parser.EmlParser()
@@ -25,15 +24,12 @@ def parse_eml(file, debug=False):
 # Parse Outlook MSG file
 # https://pypi.org/project/extract-msg/
 # pip install extract-msg
-def parse_msg(file, debug=False):
-    if debug:
-        print(' -  parsing: ' + file)
-
+def parse_msg(file, dryrun=False):
+    dryprint(dryrun, 'parsing msg', file)
     if not os.path.isfile(file):
         print(f"File not found: {file}")
         return []
     else:
-        #print(f"Parsing msg file: {file}")
         try:
             msg = extract_msg.Message(os.path.join(file)) #sys.argv[1]
             msg_sender = msg.sender if msg.sender is not None else ""
@@ -55,6 +51,9 @@ def parse_msg(file, debug=False):
                 
             mailinfo.append(format(formatted_sender))
             mailinfo.append(format(msg_subj))
+            
+            msg.close()
+            
             return mailinfo
         except Exception as e:
             print(f"Error parsing MSG file: {e}")
