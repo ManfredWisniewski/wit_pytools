@@ -3,6 +3,7 @@ from datetime import datetime
 from configparser import ConfigParser
 from pathlib import Path
 from wit_pytools.witpytools import dryprint
+from wit_pytools.nctools import ncscandir, ncmovefile, ncdelfile, rmemptydir
 
 # Fix import issue by using relative imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -146,6 +147,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         print(f" - Skipping file {file.name}: not a specified type")
 
 def cinderellasort(configfile, dryrun=False):
+    #TODO check configfile for valid ini file
     files = ""
     config_object = ConfigParser()
     config_object.read(configfile)
@@ -161,7 +163,7 @@ def cinderellasort(configfile, dryrun=False):
     trash_nocase = (table['trash_nocase'].casefold())
     filemode = (table['filemode'].casefold())
     
-    # Load replacements from the REPLACEMENTS section
+    # Fetch replacements from the REPLACEMENTS section
     replacements = {}
     if "REPLACEMENTS" in config_object:
         replacements_section = config_object["REPLACEMENTS"]
@@ -180,7 +182,6 @@ def cinderellasort(configfile, dryrun=False):
 
     # ADD CHECK SETTINGS (directories etc.)
     # ADD SAFETY CHECK or fix: no empty criteria (comma at end of list or empty list)
-    # ADD verify ini file
     # ADD check if subdirectory
     # ADD unzip
     # CHECK _unpack dir

@@ -2,6 +2,8 @@ import os
 import subprocess
 from eliot import start_action, to_file, log_message
 
+from wit_pytools.witpytools import dryprint
+
 #def ncdelfile(subdir, file, dryrun):
 #    if dryrun:
 #        print(' -  del: ' + file)
@@ -9,15 +11,22 @@ from eliot import start_action, to_file, log_message
 #        os.remove((os.path.join(subdir, file)))
 
 def ncmovefile(subdir, file, destdir, nfile, dryrun):
-    if dryrun:
-        print(' - move: ' + os.path.join(subdir, file))
-        print('     to: ' + destdir + "\\" + nfile)
-    else:
-        try:
-            subprocess.run(["php", "occ", "files:move", subdir + '/' + file, destdir+ '/' + file], check=True)
-        except:
-            #ignore directory already exists error TODO: make more elegant
-            True
+    dryprint(dryrun, 'occ move: ' + os.path.join(subdir, file))
+    dryprint(dryrun, 'to: ' + destdir + "\\" + nfile)
+    if not dryrun:
+        with start_action(action_type=f"occ moving file {os.path.join(subdir, file)} to {destdir + '\\' + nfile}"):
+            try:
+                #TODO variable nextcloudpath
+                subprocess.run(
+                    f'php /var/www/nextcloud/occ files:move "{subdir}/{file}" "{destdir}/{file}"',
+                    capture_output=True,
+                    shell=True,
+                    text=True,
+                    check=True
+                )
+            except:
+                #ignore directory already exists error TODO: make more elegant
+                True
 
 def ncscandir(targetdir):
     scan_result = subprocess.run(
@@ -60,4 +69,3 @@ def ncscandir(targetdir):
 #                     True
 #     else:
 #         print('Source not found - skipped: ' + sourcedir)
-
