@@ -3,7 +3,7 @@ from datetime import datetime
 from configparser import ConfigParser
 from pathlib import Path
 from wit_pytools.witpytools import dryprint
-from wit_pytools.nctools import ncscandir, ncmovefile, ncdelfile, rmemptydir
+from wit_pytools.nctools import ncscandir, ncmovefile
 
 # Fix import issue by using relative imports
 current_dir = os.path.dirname(os.path.abspath(__file__))

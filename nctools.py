@@ -4,11 +4,11 @@ from eliot import start_action, to_file, log_message
 
 from wit_pytools.witpytools import dryprint
 
-#def ncdelfile(subdir, file, dryrun):
-#    if dryrun:
-#        print(' -  del: ' + file)
-#    else:
-#        os.remove((os.path.join(subdir, file)))
+def ncdelfile(subdir, file, dryrun):
+    if dryrun:
+        print(' -  del: ' + file)
+    else:
+        os.remove((os.path.join(subdir, file)))
 
 def ncmovefile(subdir, file, destdir, nfile, dryrun):
     dryprint(dryrun, 'occ move: ' + os.path.join(subdir, file))
