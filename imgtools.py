@@ -1,4 +1,5 @@
 import os
+from systools import checkfile
 from PIL import Image
 
 # Use absolute paths based on the script location
@@ -82,64 +83,6 @@ def jpg_compress(input_path, output_path=None, quality=85, maintain_exif=True):
     except Exception as e:
         raise ValueError(f"Error processing image: {str(e)}")
 
-
-def batch_compress_jpg(directory, output_directory=None, quality=85, recursive=False):
-    """
-    Compress all JPG images in a directory.
-    
-    Args:
-        directory (str): Directory containing JPG images
-        output_directory (str, optional): Directory to save compressed images. If None, overwrites original files.
-        quality (int, optional): Compression quality, from 1 (worst) to 95 (best). Default is 85.
-        recursive (bool, optional): Whether to process subdirectories. Default is False.
-    
-    Returns:
-        list: List of tuples containing (file_path, compression_ratio) for each processed file
-        float: Average compression ratio
-    """
-    if not os.path.isdir(directory):
-        raise ValueError(f"Directory not found: {directory}")
-    
-    # Create output directory if it doesn't exist
-    if output_directory and not os.path.exists(output_directory):
-        os.makedirs(output_directory)
-    
-    results = []
-    total_ratio = 0
-    count = 0
-    
-    # Process files in the directory
-    for root, dirs, files in os.walk(directory):
-        # Skip if not recursive and we're in a subdirectory
-        if not recursive and root != directory:
-            continue
-        
-        for file in files:
-            if file.lower().endswith(('.jpg', '.jpeg')):
-                input_path = os.path.join(root, file)
-                
-                # Determine output path
-                if output_directory:
-                    # Preserve directory structure if recursive
-                    rel_path = os.path.relpath(root, directory)
-                    out_dir = os.path.join(output_directory, rel_path)
-                    if not os.path.exists(out_dir):
-                        os.makedirs(out_dir)
-                    output_path = os.path.join(out_dir, file)
-                else:
-                    output_path = input_path
-                
-                try:
-                    _, ratio = compress_jpg(input_path, output_path, quality)
-                    results.append((input_path, ratio))
-                    total_ratio += ratio
-                    count += 1
-                except Exception as e:
-                    print(f"Error processing {input_path}: {str(e)}")
-    
-    avg_ratio = total_ratio / count if count > 0 else 0
-    return results, avg_ratio
-
 def png2jpg(input_path, output_path=None, quality=85, background_color=(255, 255, 255)):
     """
     Convert a PNG image to JPG format.
@@ -198,16 +141,38 @@ def png2jpg(input_path, output_path=None, quality=85, background_color=(255, 255
     except Exception as e:
         raise ValueError(f"Error converting image: {str(e)}")
 
+def getexifdata(sourcedir, image):
+    try:
+        checkfile(sourcedir, image)
+            
+        from PIL import Image, ExifTags
+        with Image.open(os.path.join(sourcedir, image)) as img:
+            exif_data = img._getexif()
+            
+        # Convert numeric IDs to tag names via the PIL ExifTags module
+            exif_readable = {}
+            for tag_id, value in exif_data.items():
+                tag_name = ExifTags.TAGS.get(tag_id, str(tag_id))
+                exif_readable[tag_name] = value
+            
+            print(f"EXIF data with readable tags: {exif_readable}")
+            return exif_readable
+    except FileNotFoundError as e:
+        raise e
+    except Exception as e:
+        raise ValueError(f"Error getting EXIF data: {str(e)}")
 
-target_dir = os.path.join(script_dir, "imgtools", "done")
+#target_dir = os.path.join(script_dir, "imgtools", "done")
 # Make sure the target directory exists
-if not os.path.exists(target_dir):
-    os.makedirs(target_dir, exist_ok=True)
+#if not os.path.exists(target_dir):
+#    os.makedirs(target_dir, exist_ok=True)
 
-sourceimage = os.path.join(script_dir, "imgtools", "testimagejpg.jpg")
+#sourceimage = os.path.join(script_dir, "imgtools", "testimagejpg.jpg")
 # Compress a single image - keep the original filename
-filename = os.path.basename(sourceimage)
+#filename = os.path.basename(sourceimage)
 #jpg_compress(sourceimage, os.path.join(target_dir, filename), quality=75)
 
-sourceimage = os.path.join(script_dir, "imgtools", "testimagepng.png")
-png2jpg(sourceimage, os.path.join(target_dir, filename), quality=75)
+#sourceimage = os.path.join(script_dir, "imgtools", "testimagepng.png")
+#png2jpg(sourceimage, os.path.join(target_dir, filename), quality=75)
+
+getexifdata(script_dir, r"P:\git\witnctools\wit_pytools\tests\imgtools\testimage.jpg")
