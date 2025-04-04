@@ -143,8 +143,8 @@ def png2jpg(input_path, output_path=None, quality=85, background_color=(255, 255
 
 def getexifdata(sourcedir, image):
     try:
-        checkfile(sourcedir, image)
-            
+        if not checkfile(sourcedir, image):
+            return None
         from PIL import Image, ExifTags
         with Image.open(os.path.join(sourcedir, image)) as img:
             exif_data = img._getexif()
@@ -175,4 +175,4 @@ def getexifdata(sourcedir, image):
 #sourceimage = os.path.join(script_dir, "imgtools", "testimagepng.png")
 #png2jpg(sourceimage, os.path.join(target_dir, filename), quality=75)
 
-#getexifdata(script_dir, r"P:\git\witnctools\wit_pytools\tests\imgtools\testimage.jpg")
+getexifdata(script_dir, r"P:\git\witnctools\wit_pytools\tests\imgtools\testimage.jpg")
