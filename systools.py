@@ -1,11 +1,15 @@
 import os, shutil
-from wit_pytools.witpytools import dryprint
+
+# Helper function for dry run printing
+def dryprint(dryrun, *args):
+    if dryrun:
+        print(*args)
 
 # https://gist.github.com/TheMatt2/faf5ca760c61a267412c46bb977718fa
 def walklevel(path, depth = 1):
     if depth < 0:
         for root, dirs, files in os.walk(path):
-            yield root.normalize, dirs.normalize[:], files.normalize
+            yield root, dirs[:], files
         return
     elif depth == 0:
         return
@@ -16,6 +20,13 @@ def walklevel(path, depth = 1):
         cur_depth = root.count(os.path.sep)
         if base_depth + depth <= cur_depth:
             del dirs[:]
+
+def checkfile(sourcedir, file):
+    if not os.path.exists(os.path.join(sourcedir, file)):
+        #TODO: add logging
+        raise FileNotFoundError(f"File not found: {os.path.join(sourcedir, file)}")
+    else:
+        return True
 
 # delete empty subdirectories
 def rmemptydir(rootdir, dryrun = (False)):

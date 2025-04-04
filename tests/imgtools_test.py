@@ -7,7 +7,7 @@ from PIL import Image
 
 # Add the parent directory to the path so we can import modules from wit_pytools
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from imgtools import compress_jpg, batch_compress_jpg
+from imgtools import jpg_compress, png2jpg, getexifdata
 
 def create_test_image(path, size=(100, 100), color=(255, 0, 0)):
     """Create a test image for testing"""
@@ -27,7 +27,7 @@ def test_compress_jpg():
         
         # Test compression with output path
         output_path = os.path.join(temp_dir, 'compressed.jpg')
-        result_path, ratio = compress_jpg(test_img_path, output_path, quality=50)
+        result_path, ratio = jpg_compress(test_img_path, output_path, quality=50)
         
         # Verify the result
         assert os.path.exists(result_path)
@@ -36,7 +36,7 @@ def test_compress_jpg():
         
         # Test compression without output path (overwrite)
         original_size = os.path.getsize(test_img_path)
-        result_path, ratio = compress_jpg(test_img_path, quality=30)
+        result_path, ratio = jpg_compress(test_img_path, quality=30)
         
         # Verify the result
         assert os.path.exists(result_path)
@@ -55,57 +55,46 @@ def test_compress_jpg():
             shutil.rmtree(temp_dir)
         return "Test compress_jpg: FAILED"
 
-def test_batch_compress_jpg():
-    """Test batch compressing JPG images"""
+def test_getexifdata():
     try:
-        # Create a temporary directory structure for testing
-        temp_dir = tempfile.mkdtemp()
-        sub_dir = os.path.join(temp_dir, 'subdir')
-        os.makedirs(sub_dir)
-        output_dir = os.path.join(temp_dir, 'output')
+        test_img_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "imgtools")
+        from imgtools import getexifdata
         
-        # Create test images
-        img1_path = os.path.join(temp_dir, 'test1.jpg')
-        img2_path = os.path.join(temp_dir, 'test2.jpg')
-        img3_path = os.path.join(sub_dir, 'test3.jpg')
+        # Test getting EXIF data
+        exif_data = getexifdata(test_img_dir, 'testimage.jpg')
         
-        create_test_image(img1_path)
-        create_test_image(img2_path, color=(0, 255, 0))
-        create_test_image(img3_path, color=(0, 0, 255))
+        # Verify the result
+        assert exif_data is not None
         
-        # Test batch compression without recursion
-        results, avg_ratio = batch_compress_jpg(temp_dir, output_dir, quality=50)
+        # Verify key EXIF fields match expected values from testimage.jpg
+        assert exif_data['Make'] == 'Google'
+        assert exif_data['Model'] == 'Pixel 7 Pro'
+        assert exif_data['Software'] == 'HDR+ 1.0.621982163zd'
+        assert exif_data['DateTime'] == '2025:04:04 10:36:36'
+        assert exif_data['DateTimeOriginal'] == '2024:05:12 16:05:39'
+        assert exif_data['ExifImageWidth'] == 2080
+        assert exif_data['ExifImageHeight'] == 1567
+        assert exif_data['LensModel'] == 'Pixel 7 Pro back camera 6.81mm f/1.85'
         
-        # Verify the results
-        assert len(results) == 2  # Should only process the 2 images in the main directory
-        assert os.path.exists(os.path.join(output_dir, 'test1.jpg'))
-        assert os.path.exists(os.path.join(output_dir, 'test2.jpg'))
-        assert not os.path.exists(os.path.join(output_dir, 'subdir', 'test3.jpg'))
+        # Verify GPS information
+        assert 'GPSInfo' in exif_data
+        gps_info = exif_data['GPSInfo']
+        assert gps_info[1] == 'N'  # North latitude
+        assert gps_info[3] == 'E'  # East longitude
+        assert isinstance(gps_info[2], tuple) and len(gps_info[2]) == 3  # Latitude values
+        assert isinstance(gps_info[4], tuple) and len(gps_info[4]) == 3  # Longitude values
+        assert gps_info[2][0] == 51.0  # Latitude degrees
+        assert gps_info[4][0] == 10.0  # Longitude degrees
         
-        # Test batch compression with recursion
-        results, avg_ratio = batch_compress_jpg(temp_dir, output_dir, quality=30, recursive=True)
-        
-        # Verify the results
-        assert len(results) == 3  # Should process all 3 images
-        assert os.path.exists(os.path.join(output_dir, 'test1.jpg'))
-        assert os.path.exists(os.path.join(output_dir, 'test2.jpg'))
-        assert os.path.exists(os.path.join(output_dir, 'subdir', 'test3.jpg'))
-        
-        # Clean up
-        shutil.rmtree(temp_dir)
-        
-        return "Test batch_compress_jpg: PASSED"
+        return "Test getexifdata: PASSED"
     except Exception as e:
         print(f"Error: {e}")
-        # Clean up even if test fails
-        if 'temp_dir' in locals():
-            shutil.rmtree(temp_dir)
-        return "Test batch_compress_jpg: FAILED"
+        return f"Test getexifdata: FAILED - {str(e)}"
 
 # Run the tests and print the result messages
 if __name__ == "__main__":
     result_single = test_compress_jpg()
     print(result_single)
     
-    result_batch = test_batch_compress_jpg()
-    print(result_batch)
+    result_getexifdata = test_getexifdata()
+    print(result_getexifdata)
