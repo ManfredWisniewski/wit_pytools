@@ -57,7 +57,7 @@ def test_compress_jpg():
 
 def test_getexifdata():
     try:
-        # Get path to the test image
+        # Get path to the test image using platform-independent path
         test_img_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "imgtools")
         
         # Import the getexifdata function

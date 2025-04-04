@@ -175,4 +175,4 @@ def getexifdata(sourcedir, image):
 #sourceimage = os.path.join(script_dir, "imgtools", "testimagepng.png")
 #png2jpg(sourceimage, os.path.join(target_dir, filename), quality=75)
 
-getexifdata(script_dir, r"P:\git\witnctools\wit_pytools\tests\imgtools\testimage.jpg")
+#getexifdata(script_dir, r"P:\git\witnctools\wit_pytools\tests\imgtools\testimage.jpg")

@@ -25,4 +25,9 @@ jobs:
         
     - name: Run tests
       run: |
+        # Create test directory structure if it doesn't exist
+        mkdir -p tests/imgtools
+        # Copy test image to expected location
+        cp -r tests/imgtools/testimage.jpg tests/imgtools/ || true
+        # Run tests
         python -m pytest tests/imgtools_test.py -v
