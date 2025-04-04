@@ -1,10 +1,15 @@
 import os, shutil
 
+# Helper function for dry run printing
+def dryprint(dryrun, *args):
+    if dryrun:
+        print(*args)
+
 # https://gist.github.com/TheMatt2/faf5ca760c61a267412c46bb977718fa
 def walklevel(path, depth = 1):
     if depth < 0:
         for root, dirs, files in os.walk(path):
-            yield root.normalize, dirs.normalize[:], files.normalize
+            yield root, dirs[:], files
         return
     elif depth == 0:
         return
