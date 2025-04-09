@@ -60,7 +60,6 @@ def cmovefile(sourcedir, file, targetdir, nfile, filemode, dryrun):
     elif filemode == 'nc':
         ncmovefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
 
-
 #   prepare strings to be used correctly in regex expressions (escape special characters)
 def prepregex(ostring):
     mapping = str.maketrans({'.': '\\.', '[': '\\[', ']': '\\]'})

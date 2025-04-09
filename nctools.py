@@ -12,13 +12,13 @@ def ncdelfile(subdir, file, dryrun):
 
 def ncmovefile(subdir, file, destdir, nfile, dryrun):
     dryprint(dryrun, 'occ move: ' + os.path.join(subdir, file))
-    dryprint(dryrun, 'to: ' + destdir + "\\" + nfile)
+    dryprint(dryrun, 'to: ' + os.path.join(destdir, nfile))
     if not dryrun:
-        with start_action(action_type=f"occ moving file {os.path.join(subdir, file)} to {destdir + '\\' + nfile}"):
+        with start_action(action_type=f"occ moving file {os.path.join(subdir, file)} to {os.path.join(destdir, nfile)}"):
             try:
                 #TODO variable nextcloudpath
                 subprocess.run(
-                    f'php /var/www/nextcloud/occ files:move "{subdir}/{file}" "{destdir}/{file}"',
+                    f'php /var/www/nextcloud/occ files:move "{os.path.join(subdir, file)}" "{os.path.join(destdir, nfile)}"',
                     capture_output=True,
                     shell=True,
                     text=True,
@@ -38,14 +38,24 @@ def ncscandir(targetdir):
     if scan_result.returncode != 0:
         log_message(f"Warning: Folder rescan failed: {scan_result.stderr}")
 
+def ncscandir(targetdir):
+    scan_result = subprocess.run(
+        f'php /var/www/nextcloud/occ files:scan --path="{targetdir}" --quiet',
+        capture_output=True,
+        shell=True,
+        text=True
+    )
+    if scan_result.returncode != 0:
+        log_message(f"Warning: Folder rescan failed: {scan_result.stderr}")
+
 # def nccopyfile(subdir, file, destdir, nfile, dryrun):
 #     if dryrun:
 #         print(' - copy: ' + os.path.join(subdir, file))
-#         print('     to: ' + destdir + "\\" + nfile)
+#         print('     to: ' + os.path.join(destdir, nfile))
 #     else:
 #         try:
 #             #os.rename((os.path.join(subdir, file)), (destdir + "/" + nfile))
-#             shutil.copy(os.path.join(subdir, file), destdir + "/" + nfile)
+#             shutil.copy(os.path.join(subdir, file), os.path.join(destdir, nfile))
 #         except:
 #             #ignore directory already exists error TODO: make more elegant
 #             True
@@ -56,16 +66,17 @@ def ncscandir(targetdir):
 #             files = os.listdir(sourcedir)
 #             for file in files:
 #                 print(' - move: ' + os.path.join(sourcedir, file))
-#                 print('     to: ' + destdir + "\\" + file)
+#                 print('     to: ' + os.path.join(destdir, file))
 #         else:
 #             files = os.listdir(sourcedir)
 #             for file in files:
 #                 try:
 #                     print(' - moving: ' + os.path.join(sourcedir, file))
-#                     print('       to: ' + destdir + "\\" + file)
+#                     print('       to: ' + os.path.join(destdir, file))
 #                     shutil.move(os.path.join(sourcedir, file), destdir)
 #                 except:
 #                     #ignore directory already exists error TODO: make more elegant
 #                     True
 #     else:
 #         print('Source not found - skipped: ' + sourcedir)
+
