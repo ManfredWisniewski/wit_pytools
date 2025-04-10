@@ -98,6 +98,7 @@ def cleanfilestring(file, clean, clean_nocase, replacements, subdir=''):
 # Prepare everything for the current sort process
 def prepsort(config_object, targetdir):
     # Create directories if they don't exist
+    log_message(_s('Prepsort: {}').format(targetdir))
     bowls = bowllist(config_object)
     for bowl in bowls:
         directory = os.path.join(targetdir, bowl)
