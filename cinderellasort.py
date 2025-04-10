@@ -140,7 +140,6 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                 project_name = os.path.basename(os.path.normpath(sourcedir))
                 
                 if maildata and len(maildata) >= 3:
-                    log_message(_('Extracting data from MSG: {}').format(len(maildata)))
                     # Strip leading date in YYYY-MM-DD format from subject if it exists
                     subject = maildata[2] if maildata[2] is not None else ""
                     # Regular expression to match YYYY-MM-DD at the beginning of the string
@@ -153,8 +152,10 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                     for i in range(len(maildata)):
                         if maildata[i] is None:
                             maildata[i] = ""
+                    log_message(_('Mail data after None check: {}').format(maildata))
                     
                     nfile = maildata[0]+'_'+maildata[1]+'_'+project_name+'_'+maildata[2]+'.msg'
+                    log_message(_('Generated filename: {}').format(nfile))
                     nfile = cleanfilestring(nfile, clean, clean_nocase, replacements)
                     dryprint(dryrun, 'bowl', bowldir(nfile, config_object))
                     if not dryrun:
