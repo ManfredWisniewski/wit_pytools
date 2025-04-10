@@ -69,7 +69,7 @@ def bowldir(file, config_object=''):
             for (bowl, critlist) in config_object.items("BOWLS"):
                 for crit in critlist.split(','):
                     if crit in file and not found:
-                        return '\\' + bowl
+                        return '/' + bowl
             return ''
     return ''
 
@@ -160,25 +160,28 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                     log_message(_('Dryrun: {}').format(str(dryrun)))
                     dryprint(dryrun, 'bowl', bowl)
                     if not dryrun:
-                        target_path = os.path.join(targetdir + bowl, nfile)
+                        target_path = os.path.join(targetdir, bowl, nfile)
                         log_message(_('Moving file: {} to {}').format(os.path.join(sourcedir, file), target_path))
-                        movefile(sourcedir, file, targetdir + bowl, nfile, dryrun)
+                        movefile(sourcedir, file, targetdir, bowl, nfile, dryrun)
                 else:
                     print("No mail information available or incomplete data.")
                     nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
                     if not dryrun:
-                        movefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
+                        bowl = bowldir(nfile, config_object)
+                        movefile(sourcedir, file, targetdir, bowl, nfile, dryrun)
             except Exception as e:
                 print(f"Error handling MSG file {file.name}: {e}")
                 # Fallback to using the original filename
                 nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
                 if not dryrun and filemode == 'win':
-                    movefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
+                    bowl = bowldir(nfile, config_object)
+                    movefile(sourcedir, file, targetdir, bowl, nfile, dryrun)
             else:
                 # Default behavior for other file types
                 nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
                 if not dryrun and filemode == 'win':
-                    movefile(sourcedir, file.name, targetdir + bowldir(nfile, config_object), nfile, dryrun)
+                    bowl = bowldir(nfile, config_object)
+                    movefile(sourcedir, file, targetdir, bowl, nfile, dryrun)
         
         # File has been handled, so we can break the loop
         break
