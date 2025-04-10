@@ -156,13 +156,9 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                     nfile = maildata[0]+'_'+maildata[1]+'_'+project_name+'_'+maildata[2]+'.msg'
                     nfile = cleanfilestring(nfile, clean, clean_nocase, replacements)
                     bowl = bowldir(nfile, config_object)
-                    log_message(_('Bowl directory: {}').format(bowl))
-                    log_message(_('Dryrun: {}').format(str(dryrun)))
-                    dryprint(dryrun, 'bowl', bowl)
-                    if not dryrun:
-                        target_path = os.path.join(targetdir, bowl, nfile)
-                        log_message(_('Moving file: {} to {}').format(os.path.join(sourcedir, file), target_path))
-                        movefile(sourcedir, file, targetdir, bowl, nfile, dryrun)
+                    target_path = os.path.join(targetdir, bowl, nfile)
+                    log_message(_('Moving file: {} to {}').format(os.path.join(sourcedir, file), target_path))
+                    movefile(sourcedir, file, targetdir, bowl, nfile, dryrun)
                 else:
                     print("No mail information available or incomplete data.")
                     nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
