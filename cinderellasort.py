@@ -140,6 +140,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                     if not dryrun and filemode == 'win':
                         movefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
                     elif filemode == 'nc':
+                        movefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
                         ncmovefile(getncfilepath(file.name), targetdir + bowldir(nfile, config_object), nfile)
                 else:
                     print("No mail information available or incomplete data.")
