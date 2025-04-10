@@ -27,65 +27,34 @@ def getncfilepath(filename):
 #    return os.path.dirname(abspath)
 
 def ncdelfile(ncfile):
-    dryprint(dryrun, 'occ delete: ' + ncfile)
-    if not dryrun:
-        with start_action(action_type=f"occ delete file {ncfile}"):
-            try:
-                #TODO variable nextcloudpath
-                subprocess.run(
-                    f'php /var/www/nextcloud/occ files:delete "{ncfile}"',
-                    capture_output=True,
-                    shell=True,
-                    text=True,
-                    check=True
-                )
-            except:
-                #ignore directory already exists error TODO: make more elegant
-                True
-    else:
-        pass
+    with start_action(action_type=f"occ delete file {ncfile}"):
+        try:
+            #TODO variable nextcloudpath
+            subprocess.run(
+                f'php /var/www/nextcloud/occ files:delete "{ncfile}"',
+                capture_output=True,
+                shell=True,
+                text=True,
+                check=True
+            )
+        except:
+            #ignore directory already exists error TODO: make more elegant
+            True
 
-def ncmovefile(subdir, file, destdir, nfile, dryrun):
-    dryprint(dryrun, 'occ move: ' + os.path.join(subdir, file))
-    dryprint(dryrun, 'to: ' + os.path.join(destdir, nfile))
-    if not dryrun:
-        with start_action(action_type=f"occ moving file {os.path.join(subdir, file)} to {os.path.join(destdir, nfile)}"):
-            try:
-                #TODO variable nextcloudpath
-                subprocess.run(
-                    f'php /var/www/nextcloud/occ files:move "{os.path.join(subdir, file)}" "{os.path.join(destdir, nfile)}"',
-                    capture_output=True,
-                    shell=True,
-                    text=True,
-                    check=True
-                )
-            except:
-                #ignore directory already exists error TODO: make more elegant
-                True
-            try:
-                #TODO variable nextcloudpath
-                subprocess.run(
-                    f'php /var/www/nextcloud/occ files:move "{os.path.join(subdir, file)}" "{os.path.join(destdir, nfile)}"',
-                    capture_output=True,
-                    shell=True,
-                    text=True,
-                    check=True
-                )
-            except:
-                #ignore directory already exists error TODO: make more elegant
-                True
-            try:
-                #TODO variable nextcloudpath
-                subprocess.run(
-                    f'php /var/www/nextcloud/occ files:move "{os.path.join(subdir, file)}" "{os.path.join(destdir, nfile)}"',
-                    capture_output=True,
-                    shell=True,
-                    text=True,
-                    check=True
-                )
-            except:
-                #ignore directory already exists error TODO: make more elegant
-                True
+def ncmovefile(ncfile, destdir, nfile):
+    with start_action(action_type=f"occ moving file {ncfile} to {os.path.join(destdir, nfile)}"):
+        try:
+            #TODO variable nextcloudpath
+            subprocess.run(
+                f'php /var/www/nextcloud/occ files:move "{ncfile}" "{os.path.join(destdir, nfile)}"',
+                capture_output=True,
+                shell=True,
+                text=True,
+                check=True
+            )
+        except:
+            #ignore directory already exists error TODO: make more elegant
+            True
 
 def ncscandir(targetdir):
     scan_result = subprocess.run(
