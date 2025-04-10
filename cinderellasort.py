@@ -157,6 +157,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                     nfile = maildata[0]+'_'+maildata[1]+'_'+project_name+'_'+maildata[2]+'.msg'
                     nfile = cleanfilestring(nfile, clean, clean_nocase, replacements)
                     bowl = bowldir(nfile, config_object)
+                    log_message(_('Target {}').format(targetdir))
                     log_message(_('Moving file: to {}').format(os.path.join(targetdir, bowl, nfile)))
                     movefile(sourcedir, file, os.path.join(targetdir, bowl), nfile, dryrun)
                 else:
