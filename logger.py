@@ -23,12 +23,23 @@ def format_message(message):
     
     return json.dumps(message, cls=CustomEliotEncoder)
 
-def setup_logging(config):
+# Global log file handle
+_log_file = None
+
+def log_setup(config):
     """Setup Eliot logging with the given configuration"""
+    global _log_file
     if not config:
         return
         
     logdir = config['WIT PYTOOLS'].get('nctoolslogdir')
     if logdir:
-        log_file = open(os.path.join(logdir, "mailsort.log"), "a")
-        to_file(log_file, format_message)
+        _log_file = open(os.path.join(logdir, "mailsort.log"), "a")
+        to_file(_log_file, format_message)
+
+def log_close():
+    """Close the log file if it's open"""
+    global _log_file
+    if _log_file:
+        _log_file.close()
+        _log_file = None
