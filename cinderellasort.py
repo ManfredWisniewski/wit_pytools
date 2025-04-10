@@ -131,6 +131,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
     for ftype in ftype_sort.split(','):
         ftype = ftype.strip().casefold()
         if ftype == '.msg':
+            log_message(_('Handling MSG: {}').format(os.path.join(sourcedir, file)))
             try:
                 maildata = parse_msg(os.path.join(sourcedir, file.name), True)
                 
