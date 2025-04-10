@@ -2,6 +2,7 @@ import os, re, sys
 from datetime import datetime
 from configparser import ConfigParser
 from pathlib import Path
+from wit_pytools.nctools import ncscandir
 from wit_pytools.witpytools import dryprint
 from eliot import log_message
 import gettext
@@ -156,14 +157,13 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                     nfile = maildata[0]+'_'+maildata[1]+'_'+project_name+'_'+maildata[2]+'.msg'
                     nfile = cleanfilestring(nfile, clean, clean_nocase, replacements)
                     bowl = bowldir(nfile, config_object)
-                    log_message(_('Moving file: {} to {}').format(os.path.join(sourcedir, file), os.path.join(targetdir, bowl, nfile)))
+                    log_message(_('Moving file: to {}').format(os.path.join(targetdir, bowl, nfile)))
                     movefile(sourcedir, file, os.path.join(targetdir, bowl), nfile, dryrun)
                 else:
                     print("No mail information available or incomplete data.")
                     nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
                     bowl = bowldir(nfile, config_object)
-                    target_path = os.path.join(targetdir, bowl, nfile)
-                    log_message(_('Moving file: {} to {}').format(os.path.join(sourcedir, file), target_path))
+                    log_message(_('Moving file: {} to {}').format(os.path.join(sourcedir, file), os.path.join(targetdir, bowl, nfile)))
                     movefile(sourcedir, file, targetdir, bowl, nfile, dryrun)
             except Exception as e:
                 print(f"Error handling MSG file {file.name}: {e}")
