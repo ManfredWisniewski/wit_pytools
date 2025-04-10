@@ -1,7 +1,6 @@
 from eliot import add_destinations, FileDestination
 from eliot.json import EliotJSONEncoder
 import os
-import json
 from datetime import datetime
 
 class CustomEliotEncoder(EliotJSONEncoder):
@@ -9,15 +8,6 @@ class CustomEliotEncoder(EliotJSONEncoder):
         if isinstance(obj, datetime):
             return obj.strftime('%Y-%m-%d %H:%M:%S')
         return super().default(obj)
-        
-    def encode(self, obj):
-        if isinstance(obj, dict):
-            # Convert timestamp to readable format
-            if 'timestamp' in obj:
-                obj['timestamp'] = datetime.fromtimestamp(obj['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
-            # Remove task_uuid
-            obj.pop('task_uuid', None)
-        return super().encode(obj)
 
 # Global log file handle
 _log_file = None
