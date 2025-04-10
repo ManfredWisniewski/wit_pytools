@@ -1,4 +1,4 @@
-from eliot import to_file, FileDestination
+from eliot import add_destinations, FileDestination
 from eliot.json import EliotJSONEncoder
 import os
 import json
@@ -6,28 +6,18 @@ from datetime import datetime
 
 class CustomEliotEncoder(EliotJSONEncoder):
     def default(self, obj):
-        result = super().default(obj)
         if isinstance(obj, datetime):
             return obj.strftime('%Y-%m-%d %H:%M:%S')
-        return result
-
-def format_message(message):
-    """Format the Eliot message to our preferences"""
-    try:
-        # Convert timestamp to readable format
-        if 'timestamp' in message:
-            timestamp = datetime.fromtimestamp(message['timestamp'])
-            message['timestamp'] = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        return super().default(obj)
         
-        # Remove task_uuid
-        message.pop('task_uuid', None)
-        
-        formatted = json.dumps(message, cls=CustomEliotEncoder)
-        print(f"DEBUG: Formatted log message: {formatted}")  # Debug print
-        return formatted
-    except Exception as e:
-        print(f"DEBUG: Error formatting message: {e}")
-        return json.dumps(message)  # Fallback to basic formatting
+    def encode(self, obj):
+        if isinstance(obj, dict):
+            # Convert timestamp to readable format
+            if 'timestamp' in obj:
+                obj['timestamp'] = datetime.fromtimestamp(obj['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+            # Remove task_uuid
+            obj.pop('task_uuid', None)
+        return super().encode(obj)
 
 # Global log file handle
 _log_file = None
@@ -52,7 +42,7 @@ def log_setup(logdir=os.getcwd()):
         print(f"DEBUG: Opening log file: {log_path}")  # Debug print
         _log_file = open(log_path, "a")
         _destination = FileDestination(file=_log_file, encoder=CustomEliotEncoder)
-        to_file(_log_file, encoder=CustomEliotEncoder)
+        add_destinations(_destination)
         print("DEBUG: Logging setup complete")  # Debug print
     except Exception as e:
         print(f"Error setting up log file: {e}")
