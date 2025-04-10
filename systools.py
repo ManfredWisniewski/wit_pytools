@@ -46,7 +46,7 @@ def rmemptydir(rootdir, dryrun = (False)):
             else:
                 print(' - skipping: ' + path + ' (not empty)')
 
-def delfile(subdir, file, dryrun):
+def delfile(subdir, file, dryrun=False):
     #TODO: (low) known problems handling 0 byte files on smb network shares
     if dryrun:
         print(' -  del: ' + file)
