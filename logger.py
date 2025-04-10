@@ -26,16 +26,26 @@ def format_message(message):
 # Global log file handle
 _log_file = None
 
-def log_setup(config):
+def log_setup(logdir=os.getcwd()):
     """Setup Eliot logging with the given configuration"""
     global _log_file
-    if not config:
-        return
+    
+    try:
+        # Don't open a new file if one is already open
+        if _log_file is not None:
+            return
+            
+        # Create directory if it doesn't exist
+        os.makedirs(logdir, exist_ok=True)
         
-    logdir = config['WIT PYTOOLS'].get('nctoolslogdir')
-    if logdir:
         _log_file = open(os.path.join(logdir, "mailsort.log"), "a")
         to_file(_log_file, format_message)
+    except Exception as e:
+        print(f"Error setting up log file: {e}")
+        # If we failed to set up logging, make sure we clean up
+        if _log_file:
+            _log_file.close()
+            _log_file = None
 
 def log_close():
     """Close the log file if it's open"""
