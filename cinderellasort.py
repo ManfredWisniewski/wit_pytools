@@ -111,12 +111,17 @@ def cleanfilestring(file, clean, clean_nocase, replacements, subdir=''):
 # Prepare everything for the current sort process
 def prepsort(config_object, targetdir):
     # Create directories if they don't exist
-    log_message(_('Prepsort: {}').format(targetdir))
+    # Normalize path separators to OS-specific ones
+    targetdir = str(targetdir).replace('\\', '/').replace('//', '/')
+    targetdir = Path(targetdir)
+    log_message(_('Prepsort: {}').format(str(targetdir)))
     bowls = bowllist(config_object)
     for bowl in bowls:
-        directory = os.path.join(targetdir, bowl)
-        if not os.path.exists(directory):
-            os.makedirs(directory)
+        # Normalize bowl path separators
+        bowl = str(bowl).replace('\\', '/').replace('//', '/')
+        directory = targetdir / bowl
+        if not directory.exists():
+            directory.mkdir(parents=True, exist_ok=True)
     # ADD CHECK SETTINGS (directories etc.)
     # ADD SAFETY CHECK or fix: no empty criteria (comma at end of list or empty list)
     # ADD check if subdirectory
@@ -190,8 +195,9 @@ def cinderellasort(configfile, dryrun=False):
     config_object.read(configfile, encoding='utf-8')
     table = config_object["TABLE"]
     
-    sourcedir = (table["sourcedir"])
-    targetdir = (table["targetdir"])
+    # Normalize path separators in source and target directories
+    sourcedir = str(table["sourcedir"]).replace('\\', '/').replace('//', '/')
+    targetdir = str(table["targetdir"]).replace('\\', '/').replace('//', '/')
     ftype_sort = (table["ftype_sort"].casefold())
     ftype_delete = (table["ftype_delete"].casefold())
     clean = (table["clean"])

@@ -13,9 +13,8 @@ def getncfilename(filename):
     return os.path.basename(filename)
 
 def getncfilepath(filename):
-    relative_path = filename.replace(getncpath(), '', 1).lstrip(os.path.sep)
-    relative_path = relative_path.replace('data/', '', 1)
-    return '/' + relative_path.rsplit('/', 1)[0] if '/' in relative_path else '/' + relative_path
+    ncpath = getncpath()
+    return os.path.join(ncpath, 'data', filename)
 
 #def getncabspath(filename):
 #    ncpath = getncpath()
