@@ -128,9 +128,10 @@ def prepsort(config_object, targetdir):
     # CHECK SORT Lists for ,, and < 2
 
 def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun):
+    file_ext = os.path.splitext(file.name)[1].casefold()
     for ftype in ftype_sort.split(','):
         ftype = ftype.strip().casefold()
-        if ftype == '.msg':
+        if ftype == file_ext and ftype == '.msg':
             log_message(_('Handling MSG: {}').format(os.path.join(sourcedir, file)))
             try:
                 maildata = parse_msg(os.path.join(sourcedir, file.name), True)
@@ -169,11 +170,11 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                 nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
                 if not dryrun and filemode == 'win':
                     movefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
-        else:
-            # Default behavior for other file types
-            nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
-            if not dryrun and filemode == 'win':
-                movefile(sourcedir, file.name, targetdir + bowldir(nfile, config_object), nfile, dryrun)
+            else:
+                # Default behavior for other file types
+                nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
+                if not dryrun and filemode == 'win':
+                    movefile(sourcedir, file.name, targetdir + bowldir(nfile, config_object), nfile, dryrun)
         
         # File has been handled, so we can break the loop
         break
