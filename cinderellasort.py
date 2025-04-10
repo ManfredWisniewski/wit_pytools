@@ -152,16 +152,13 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                     for i in range(len(maildata)):
                         if maildata[i] is None:
                             maildata[i] = ""
-                    log_message(_('Mail data after None check: {}').format(maildata))
                     
                     nfile = maildata[0]+'_'+maildata[1]+'_'+project_name+'_'+maildata[2]+'.msg'
-                    log_message(_('Generated filename: {}').format(nfile))
                     nfile = cleanfilestring(nfile, clean, clean_nocase, replacements)
-                    log_message(_('After cleanfilestring: {}').format(nfile))
                     bowl = bowldir(nfile, config_object)
                     log_message(_('Bowl directory: {}').format(bowl))
+                    log_message(_('Dryrun: {}').format(str(dryrun)))
                     dryprint(dryrun, 'bowl', bowl)
-                    log_message(_('Dryrun: {}').format(dryrun.tostring()))
                     if not dryrun:
                         target_path = os.path.join(targetdir + bowl, nfile)
                         log_message(_('Moving file: {} to {}').format(os.path.join(sourcedir, file), target_path))
