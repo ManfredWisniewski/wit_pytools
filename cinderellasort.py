@@ -114,7 +114,6 @@ def prepsort(config_object, targetdir):
     # Normalize path separators to OS-specific ones
     targetdir = str(targetdir).replace('\\', '/').replace('//', '/')
     targetdir = Path(targetdir)
-    log_message(_('Prepsort: {}').format(str(targetdir)))
     bowls = bowllist(config_object)
     for bowl in bowls:
         # Normalize bowl path separators
@@ -157,14 +156,13 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                     nfile = cleanfilestring(nfile, clean, clean_nocase, replacements)
                     dryprint(dryrun, 'bowl', bowldir(nfile, config_object))
                     if not dryrun:
+                        log_message(_('Moving file: {} to {}').format(os.path.join(sourcedir, file), os.path.join(targetdir + bowldir(nfile, config_object), nfile)))
                         movefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
                 else:
                     print("No mail information available or incomplete data.")
                     nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
-                    if not dryrun and filemode == 'win':
+                    if not dryrun:
                         movefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
-                    elif filemode == 'nc':
-                        ncmovefile(getncfilepath(file.name), targetdir + bowldir(nfile, config_object), nfile)
             except Exception as e:
                 print(f"Error handling MSG file {file.name}: {e}")
                 # Fallback to using the original filename
