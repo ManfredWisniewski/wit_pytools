@@ -54,12 +54,6 @@ def bowldir(file, config_object=''):
             return ''
     return ''
 
-def cmovefile(sourcedir, file, targetdir, nfile, filemode, dryrun):
-    if filemode == 'os':
-        movefile(sourcedir, file, targetdir, nfile, dryrun)
-    elif filemode == 'nc':
-        ncmovefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
-
 #   prepare strings to be used correctly in regex expressions (escape special characters)
 def prepregex(ostring):
     mapping = str.maketrans({'.': '\\.', '[': '\\[', ']': '\\]'})
@@ -123,20 +117,24 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                     nfile = maildata[0]+'_'+maildata[1]+'_'+project_name+'_'+maildata[2]+'.msg'
                     nfile = cleanfilestring(nfile, clean, clean_nocase, replacements)
                     dryprint(dryrun, 'bowl', bowldir(nfile, config_object))
-                    cmovefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, dryrun)
+                    if not dryrun and filemode == 'win':
+                        movefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
                 else:
                     print("No mail information available or incomplete data.")
                     nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
-                    cmovefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, dryrun)
+                    if not dryrun and filemode == 'win':
+                        movefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
             except Exception as e:
                 print(f"Error handling MSG file {file.name}: {e}")
                 # Fallback to using the original filename
                 nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
-                cmovefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, dryrun)
+                if not dryrun and filemode == 'win':
+                    movefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
         else:
             # Default behavior for other file types
             nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
-            cmovefile(sourcedir, file.name, targetdir + bowldir(nfile, config_object), nfile, filemode, dryrun)
+            if not dryrun and filemode == 'win':
+                movefile(sourcedir, file.name, targetdir + bowldir(nfile, config_object), nfile, dryrun)
         
         # File has been handled, so we can break the loop
         break
@@ -169,15 +167,16 @@ def cinderellasort(configfile, dryrun=False):
         for key in replacements_section:
             replacements[key] = replacements_section[key]
     
-    print('\n###########################################')
-    print('## START CinderellaSort ' + time)
-    dryprint(dryrun, '## DRYRUN ##', configfile)
-    print(' # from: ' + sourcedir)
-    print(' # to:   ' + targetdir)
-    dryprint(dryrun, 'mode',filemode)
-    print('## Settings ' + configfile + ':')
-    print(' # sort: ' + ftype_sort)
-    print(' #  del: ' + ftype_delete)
+    if not filemode == 'nc':
+        print('\n###########################################')
+        print('## START CinderellaSort ' + time)
+        print(' Dryrun: ' + str(dryrun))
+        print('   from: ' + sourcedir)
+        print('   to:   ' + targetdir)
+        dryprint(dryrun, 'mode',filemode)
+        print('## Settings ' + configfile + ':')
+        print('   sort: ' + ftype_sort)
+        print('    del: ' + ftype_delete)
 
     # ADD CHECK SETTINGS (directories etc.)
     # ADD SAFETY CHECK or fix: no empty criteria (comma at end of list or empty list)
