@@ -3,7 +3,7 @@ from datetime import datetime
 from configparser import ConfigParser
 from pathlib import Path
 from wit_pytools.witpytools import dryprint
-from eliot import start_action, to_file, log_message
+from eliot import log_message
 
 # Fix import issue by using relative imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
