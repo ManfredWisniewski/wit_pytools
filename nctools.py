@@ -26,14 +26,14 @@ def getncfilepath(filename):
 #    abspath = os.path.join(ncpath, 'data', filename)
 #    return os.path.dirname(abspath)
 
-def ncdelfile(subdir, file, dryrun):
-    dryprint(dryrun, 'occ delete: ' + os.path.join(getncfilepath(filename), file))
+def ncdelfile(ncfile):
+    dryprint(dryrun, 'occ delete: ' + ncfile)
     if not dryrun:
-        with start_action(action_type=f"occ delete file {os.path.join(getncfilepath(filename), file)}"):
+        with start_action(action_type=f"occ delete file {ncfile}"):
             try:
                 #TODO variable nextcloudpath
                 subprocess.run(
-                    f'php /var/www/nextcloud/occ files:delete "{os.path.join(getncfilepath(filename), file)}"',
+                    f'php /var/www/nextcloud/occ files:delete "{ncfile}"',
                     capture_output=True,
                     shell=True,
                     text=True,

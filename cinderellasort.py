@@ -3,7 +3,6 @@ from datetime import datetime
 from configparser import ConfigParser
 from pathlib import Path
 from wit_pytools.witpytools import dryprint
-from wit_pytools.nctools import ncscandir, ncmovefile
 
 # Fix import issue by using relative imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -16,9 +15,6 @@ from wit_pytools.mailtools import *
 from wit_pytools.systools import walklevel, rmemptydir, movefile
 
 dryrun = (True)
-
-time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-config_object = ConfigParser()
 
 # check for valid searches in subdirectories of the target directory
 def isvalidsort(sourcedir, ftype_sort):
@@ -43,6 +39,16 @@ def matchstring(file, matchtable=''):
                 found = True
         return True if found else False
 
+# list all bowls
+def bowllist(config_object=''):
+    bowls = []
+    if config_object and len(config_object) > 0 and config_object.has_section("BOWLS"):
+        # Get bowls from config while preserving case
+        for bowl, _ in config_object.items("BOWLS", raw=True):
+            bowls.append(bowl)
+    return bowls
+
+# check if file matches a criteria for a bowl and return the corresponding bowl
 def bowldir(file, config_object=''):
     if config_object and len(config_object) > 0:
         if config_object.has_section("BOWLS"):
@@ -88,6 +94,20 @@ def cleanfilestring(file, clean, clean_nocase, replacements, subdir=''):
     nfile = nfile.rstrip('.')
 
     return os.path.join(nfile.strip() + file_extension)
+
+# Prepare everything for the current sort process
+def prepsort(config_object, targetdir):
+    # Create directories if they don't exist
+    bowls = bowllist(config_object)
+    for bowl in bowls:
+        directory = os.path.join(targetdir, bowl)
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+    # ADD CHECK SETTINGS (directories etc.)
+    # ADD SAFETY CHECK or fix: no empty criteria (comma at end of list or empty list)
+    # ADD check if subdirectory
+    # CHECK _unpack dir
+    # CHECK SORT Lists for ,, and < 2
 
 def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun):
     for ftype in ftype_sort.split(','):
@@ -146,8 +166,12 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
 def cinderellasort(configfile, dryrun=False):
     #TODO check configfile for valid ini file
     files = ""
+    time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    # Initialize ConfigParser to preserve case
     config_object = ConfigParser()
-    config_object.read(configfile)
+    config_object.optionxform = str  # This preserves case for keys and values
+    config_object.read(configfile, encoding='utf-8')
     table = config_object["TABLE"]
     
     sourcedir = (table["sourcedir"])
@@ -178,12 +202,10 @@ def cinderellasort(configfile, dryrun=False):
         print('   sort: ' + ftype_sort)
         print('    del: ' + ftype_delete)
 
-    # ADD CHECK SETTINGS (directories etc.)
-    # ADD SAFETY CHECK or fix: no empty criteria (comma at end of list or empty list)
-    # ADD check if subdirectory
     # ADD unzip
-    # CHECK _unpack dir
-    # CHECK SORT Lists for ,, and < 2
+
+    # prepare for sort process
+    prepsort(config_object, targetdir)
 
     # Handle files directly in sourcedir
     for item in Path(sourcedir).iterdir():
