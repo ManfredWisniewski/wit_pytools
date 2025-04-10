@@ -4,12 +4,24 @@ from configparser import ConfigParser
 from pathlib import Path
 from wit_pytools.witpytools import dryprint
 from eliot import log_message
+import gettext
 
 # Fix import issue by using relative imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
+
+def setup_translations(language='de'):
+    translations = gettext.translation('cinderellasort', 
+                                    localedir=os.path.join(os.path.dirname(__file__), 'locale'),
+                                    languages=[language],
+                                    fallback=True)
+    translations.install()
+    return translations.gettext
+
+# Initialize translations
+_ = setup_translations()
 
 # Now import the modules
 from wit_pytools.mailtools import *
@@ -99,7 +111,7 @@ def cleanfilestring(file, clean, clean_nocase, replacements, subdir=''):
 # Prepare everything for the current sort process
 def prepsort(config_object, targetdir):
     # Create directories if they don't exist
-    log_message(_s('Prepsort: {}').format(targetdir))
+    log_message(_('Prepsort: {}').format(targetdir))
     bowls = bowllist(config_object)
     for bowl in bowls:
         directory = os.path.join(targetdir, bowl)
