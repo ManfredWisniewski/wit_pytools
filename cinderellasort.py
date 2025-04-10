@@ -132,14 +132,15 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
     for ftype in ftype_sort.split(','):
         ftype = ftype.strip().casefold()
         if ftype == file_ext and ftype == '.msg':
-            log_message(_('Handling MSG: {}').format(os.path.join(sourcedir, file)))
             try:
+                log_message(_('Handling MSG: {}').format(os.path.join(sourcedir, file)))
                 maildata = parse_msg(os.path.join(sourcedir, file.name), True)
                 
                 # Extract project name from the last directory in sourcedir
                 project_name = os.path.basename(os.path.normpath(sourcedir))
                 
                 if maildata and len(maildata) >= 3:
+                    log_message(_('Extracting data from MSG: {}').format(len(maildata)))
                     # Strip leading date in YYYY-MM-DD format from subject if it exists
                     subject = maildata[2] if maildata[2] is not None else ""
                     # Regular expression to match YYYY-MM-DD at the beginning of the string
