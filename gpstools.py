@@ -6,7 +6,7 @@ import sys
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(parent_dir)
 # Use direct import instead of package-style import
-from imgtools import getexifdata
+from wit_pytools.imgtools import getexifdata
 
 def _convert_to_decimal_degrees(degrees_data, ref):
     """
