@@ -1,7 +1,6 @@
 import os, re, sys, shutil
 import extract_msg
 import eml_parser
-from wit_pytools.witpytools import dryprint
 
 date_format = "%Y-%m-%d"
 email_pattern = r'<(.*?)>'  # Matches anything inside < >
@@ -10,7 +9,7 @@ email_pattern = r'<(.*?)>'  # Matches anything inside < >
 # https://pypi.org/project/eml-parser/
 # pip install eml-parser
 def parse_eml(file, dryrun=False):
-    dryprint(dryrun, 'parsing eml', file)
+    #dryprint(dryrun, 'parsing eml', file)
     with open(file, 'rb') as fhdl:
         raw_email = fhdl.read()
     ep = eml_parser.EmlParser()
@@ -25,7 +24,7 @@ def parse_eml(file, dryrun=False):
 # https://pypi.org/project/extract-msg/
 # pip install extract-msg
 def parse_msg(file, dryrun=False):
-    dryprint(dryrun, 'parsing msg', file)
+    #dryprint(dryrun, 'parsing msg', file)
     if not os.path.isfile(file):
         print(f"File not found: {file}")
         return []

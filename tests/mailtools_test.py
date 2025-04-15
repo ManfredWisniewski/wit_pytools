@@ -27,7 +27,7 @@ def test_parse_msg_valid():
 def test_parse_msg_invalid():
     """Test that parse_msg returns an empty list for non-existent files"""
     # Use a non-existent file
-    result = parse_msg(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'tests', 'mailtools'), 'nonexistent_file.msg', True)
+    result = parse_msg(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'tests', 'mailtools'), 'nonexistent_file.msg')
     
     # Check that the result is an empty list
     assert isinstance(result, list)

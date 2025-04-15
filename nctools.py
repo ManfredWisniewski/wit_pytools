@@ -2,7 +2,6 @@ import os
 import subprocess
 from eliot import start_action, to_file, log_message
 
-from wit_pytools.witpytools import dryprint
 
 def getncpath():
     config = readconfig()
