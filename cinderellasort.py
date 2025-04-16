@@ -110,7 +110,7 @@ def cleanfilestring(file, clean, clean_nocase, replacements, subdir=''):
     return os.path.join(nfile.strip() + file_extension)
 
 # Prepare everything for the current sort process
-def prepsort(config_object, targetdir):
+def prepsort(config_object, targetdir, prepfilter = False):
     # Create directories if they don't exist
     # Normalize path separators to OS-specific ones
     targetdir = str(targetdir).replace('\\', '/').replace('//', '/')
@@ -122,11 +122,22 @@ def prepsort(config_object, targetdir):
         directory = targetdir / bowl
         if not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)
+    if prepfilter:
+        print(f"(Scan for all existing directories in the target directory: {targetdir})")
+        dirnames = []
+        for subdir, dirs, files in walklevel(str(targetdir), -1):
+            for d in dirs:
+                dirnames.append(os.path.relpath(os.path.join(subdir, d), str(targetdir)))
+        dirnames.reverse()
+        with open(targetdir / "filter-examples.txt", "w", encoding="utf-8") as f:
+            for name in dirnames:
+                f.write(f"{name}\n")
     # ADD CHECK SETTINGS (directories etc.)
     # ADD SAFETY CHECK or fix: no empty criteria (comma at end of list or empty list)
     # ADD check if subdirectory
     # CHECK _unpack dir
     # CHECK SORT Lists for ,, and < 2
+
 
 def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun):
     file_ext = os.path.splitext(file.name)[1].casefold()
