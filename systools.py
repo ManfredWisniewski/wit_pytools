@@ -57,7 +57,7 @@ def delfile(subdir, file, dryrun=False):
     else:
         os.remove((os.path.join(subdir, file)))
 
-def movefile(subdir, file, destdir, nfile, dryrun=False):
+def movefile(subdir, file, destdir, nfile, dryrun=False, overwrite=False):
     #TODO: add rights handeling before attempt (gets stuck sometimes when copy but no write access
     if not dryrun:
         # Check for null bytes in arguments and remove them if found
@@ -74,13 +74,29 @@ def movefile(subdir, file, destdir, nfile, dryrun=False):
         source_path = os.path.join(subdir, file)
         target_path = os.path.join(destdir, nfile)
         log_message(f"movefile: source_path={source_path}, target_path={target_path}", level="INFO")
-        
+
         # Create target directory if it doesn't exist
         os.makedirs(destdir, exist_ok=True)
-        
+
         try:
-            os.rename(source_path, target_path)
-            log_message(f"Successfully moved file to {target_path}", level="INFO")
+            # Check if target file already exists
+            #TODO add test for this case
+            if not overwrite and os.path.exists(target_path):
+                # Add enumerator and move file
+                i = 2
+                base, ext = os.path.splitext(target_path)
+                while os.path.exists(f"{base}#{i}{ext}"):
+                    i += 1
+                new_target = f"{base}#{i}{ext}"
+                try:
+                    shutil.copy2(source_path, new_target)
+                    os.remove(source_path)
+                    log_message(f"Copied file to {new_target} and removed original", level="INFO")
+                except Exception as e2:
+                    log_message(f"ERROR: Could not copy to enumerated filename: {str(e2)}", level="ERROR")
+            else:
+                os.rename(source_path, target_path)
+                log_message(f"Successfully moved file to {target_path}", level="INFO")
         except FileNotFoundError:
             log_message(f"ERROR: Source file not found: {source_path}", level="ERROR")
         except PermissionError:
@@ -100,18 +116,6 @@ def movefile(subdir, file, destdir, nfile, dryrun=False):
                 log_message(f"ERROR: Source or destination path does not exist.", level="ERROR")
             elif e.errno == 17:  # File exists
                 log_message(f"ERROR: Target file already exists: {target_path}", level="WARNING")
-                # Add enumerator and move file
-                i = 2
-                base, ext = os.path.splitext(target_path)
-                while os.path.exists(f"{base}#{i}{ext}"):
-                    i += 1
-                new_target = f"{base}#{i}{ext}"
-                try:
-                    shutil.copy2(source_path, new_target)
-                    os.remove(source_path)
-                    log_message(f"Copied file to {new_target} and removed original", level="INFO")
-                except Exception as e2:
-                    log_message(f"ERROR: Could not copy to enumerated filename: {str(e2)}", level="ERROR")
             else:
                 log_message(f"ERROR: Failed to move file: {str(e)}", level="ERROR")
         except Exception as e:
