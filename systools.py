@@ -74,6 +74,7 @@ def movefile(subdir, file, destdir, nfile, dryrun=False):
         
         source_path = os.path.join(subdir, file)
         target_path = os.path.join(destdir, nfile)
+        log_message(f"movefile: source_path={source_path}, target_path={target_path}")
         
         # Create target directory if it doesn't exist
         os.makedirs(destdir, exist_ok=True)
