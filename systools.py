@@ -26,10 +26,10 @@ from eliot import log_message
 def checkfile(sourcedir, file):
     filepath = os.path.join(sourcedir, file)
     if not os.path.exists(filepath):
-        log_message(f"File not found: {filepath}")
+        log_message(f"checkfile: File not found: {filepath}", level="INFO")
         raise FileNotFoundError(f"File not found: {filepath}")
     else:
-        log_message(f"File exists: {filepath}")
+        log_message(f"checkfile: File exists: {filepath}", level="INFO")
         return True
 
 # delete empty subdirectories
@@ -40,17 +40,15 @@ def rmemptydir(rootdir, dryrun = (False)):
             if len(os.listdir(path)) == 0:
                 if dryrun:
                     print('  delete:   ' + path)
-                    log_message(f"Would delete empty directory: {path}")
+                    log_message(f"Would delete empty directory: {path}", level="INFO")
                 else:
                     try:
                         os.rmdir(path)
-                        log_message(f"Deleted empty directory: {path}")
+                        log_message(f"Deleted empty directory: {path}", level="INFO")
                     except OSError as e:
-                        log_message(f"Can't remove directory: {path}, error: {str(e)}")
-                        print('  can\'t remove directory: ' + path)
+                        log_message(f"Can't remove directory: {path}, error: {str(e)}", level="ERROR")
             else:
-                print(' - skipping: ' + path + ' (not empty)')
-                log_message(f"Skipping non-empty directory: {path}")
+                log_message(f"Skipping non-empty directory: {path}", level="INFO")
 
 def delfile(subdir, file, dryrun=False):
     #TODO: (low) known problems handling 0 byte files on smb network shares
@@ -67,7 +65,7 @@ def movefile(subdir, file, destdir, nfile, dryrun=False):
         cleaned_args = []
         for arg in args:
             if '\x00' in str(arg):
-                log_message(f"ERROR: Null byte detected and removed in argument: {arg!r}")
+                log_message(f"ERROR: Null byte detected and removed in argument: {arg!r}", level="INFO")
                 arg = str(arg).replace('\x00', '')
             arg = str(arg).rstrip()
             cleaned_args.append(arg)
@@ -75,33 +73,33 @@ def movefile(subdir, file, destdir, nfile, dryrun=False):
         
         source_path = os.path.join(subdir, file)
         target_path = os.path.join(destdir, nfile)
-        log_message(f"movefile: source_path={source_path}, target_path={target_path}")
+        log_message(f"movefile: source_path={source_path}, target_path={target_path}", level="INFO")
         
         # Create target directory if it doesn't exist
         os.makedirs(destdir, exist_ok=True)
         
         try:
             os.rename(source_path, target_path)
-            log_message(f"Successfully moved file to {target_path}")
+            log_message(f"Successfully moved file to {target_path}", level="INFO")
         except FileNotFoundError:
-            log_message(f"ERROR: Source file not found: {source_path}")
+            log_message(f"ERROR: Source file not found: {source_path}", level="ERROR")
         except PermissionError:
-            log_message(f"ERROR: Permission denied. Check file permissions for {source_path} or {destdir}")
+            log_message(f"ERROR: Permission denied. Check file permissions for {source_path} or {destdir}", level="ERROR")
             # Try fallback to copy and delete
             try:
-                log_message(f"Attempting copy and delete instead...")
+                log_message(f"Attempting copy and delete instead...", level="INFO")
                 shutil.copy2(source_path, target_path)
                 os.remove(source_path)
-                log_message(f"Successfully copied file to {target_path} and removed original")
+                log_message(f"Successfully copied file to {target_path} and removed original", level="INFO")
             except Exception as e:
-                log_message(f"ERROR: Fallback copy failed: {str(e)}")
+                log_message(f"ERROR: Fallback copy failed: {str(e)}", level="ERROR")
         except OSError as e:
             if e.errno == 13:  # Permission denied
-                log_message(f"ERROR: Permission denied. Check file permissions.")
+                log_message(f"ERROR: Permission denied. Check file permissions.", level="ERROR")
             elif e.errno == 2:  # No such file or directory
-                log_message(f"ERROR: Source or destination path does not exist.")
+                log_message(f"ERROR: Source or destination path does not exist.", level="ERROR")
             elif e.errno == 17:  # File exists
-                log_message(f"ERROR: Target file already exists: {target_path}")
+                log_message(f"ERROR: Target file already exists: {target_path}", level="WARNING")
                 # Add enumerator and move file
                 i = 2
                 base, ext = os.path.splitext(target_path)
@@ -111,17 +109,17 @@ def movefile(subdir, file, destdir, nfile, dryrun=False):
                 try:
                     shutil.copy2(source_path, new_target)
                     os.remove(source_path)
-                    log_message(f"Copied file to {new_target} and removed original")
+                    log_message(f"Copied file to {new_target} and removed original", level="INFO")
                 except Exception as e2:
-                    log_message(f"ERROR: Could not copy to enumerated filename: {str(e2)}")
+                    log_message(f"ERROR: Could not copy to enumerated filename: {str(e2)}", level="ERROR")
             else:
-                log_message(f"ERROR: Failed to move file: {str(e)}")
+                log_message(f"ERROR: Failed to move file: {str(e)}", level="ERROR")
         except Exception as e:
-            log_message(f"ERROR: Unexpected error: {str(e)}")
+            log_message(f"ERROR: Unexpected error: {str(e)}", level="ERROR")
 
 def copyfile(subdir, file, destdir, nfile, dryrun):
     if dryrun:
-        log_message(f"Would copy file: {os.path.join(subdir, file)} to {os.path.join(destdir, nfile)}")
+        log_message(f"Would copy file: {os.path.join(subdir, file)} to {os.path.join(destdir, nfile)}", level="INFO")
     else:
         try:
             #os.rename((os.path.join(subdir, file)), (destdir + "/" + nfile))
@@ -136,12 +134,12 @@ def moveallfiles(sourcedir, destdir, dryrun):
         if dryrun:
             files = os.listdir(sourcedir)
             for file in files:
-                log_message(f"Would move file: {os.path.join(sourcedir, file)} to {os.path.join(destdir, file)}")
+                log_message(f"Would move file: {os.path.join(sourcedir, file)} to {os.path.join(destdir, file)}", level="INFO")
         else:
             files = os.listdir(sourcedir)
             for file in files:
                 try:
-                    log_message(f"Moving file: {os.path.join(sourcedir, file)} to {os.path.join(destdir, file)}")
+                    log_message(f"Moving file: {os.path.join(sourcedir, file)} to {os.path.join(destdir, file)}", level="INFO")
                     shutil.move(os.path.join(sourcedir, file), destdir)
                 except:
                     #ignore directory already exists error TODO: make more elegant
