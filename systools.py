@@ -69,6 +69,7 @@ def movefile(subdir, file, destdir, nfile, dryrun=False):
             if '\x00' in str(arg):
                 log_message(f"ERROR: Null byte detected and removed in argument: {arg!r}")
                 arg = str(arg).replace('\x00', '')
+            arg = str(arg).rstrip()
             cleaned_args.append(arg)
         subdir, file, destdir, nfile = cleaned_args
         
@@ -101,17 +102,18 @@ def movefile(subdir, file, destdir, nfile, dryrun=False):
                 log_message(f"ERROR: Source or destination path does not exist.")
             elif e.errno == 17:  # File exists
                 log_message(f"ERROR: Target file already exists: {target_path}")
-                # Try with a numbered suffix
+                # Add enumerator and move file
+                i = 2
+                base, ext = os.path.splitext(target_path)
+                while os.path.exists(f"{base}#{i}{ext}"):
+                    i += 1
+                new_target = f"{base}#{i}{ext}"
                 try:
-                    i = 1
-                    base, ext = os.path.splitext(target_path)
-                    while os.path.exists(f"{base}_{i}{ext}"):
-                        i += 1
-                    new_target = f"{base}_{i}{ext}"
-                    os.rename(source_path, new_target)
-                    log_message(f"Moved file to {new_target} instead")
+                    shutil.copy2(source_path, new_target)
+                    os.remove(source_path)
+                    log_message(f"Copied file to {new_target} and removed original")
                 except Exception as e2:
-                    log_message(f"ERROR: Could not create alternative filename: {str(e2)}")
+                    log_message(f"ERROR: Could not copy to enumerated filename: {str(e2)}")
             else:
                 log_message(f"ERROR: Failed to move file: {str(e)}")
         except Exception as e:
