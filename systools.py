@@ -62,11 +62,15 @@ def delfile(subdir, file, dryrun=False):
 def movefile(subdir, file, destdir, nfile, dryrun=False):
     #TODO: add rights handeling before attempt (gets stuck sometimes when copy but no write access
     if not dryrun:
-        # Check for null bytes in arguments
-        for arg in [subdir, file, destdir, nfile]:
+        # Check for null bytes in arguments and remove them if found
+        args = [subdir, file, destdir, nfile]
+        cleaned_args = []
+        for arg in args:
             if '\x00' in str(arg):
-                log_message(f"ERROR: Null byte detected in argument: {arg!r}")
-                raise ValueError(f"Null byte detected in argument: {arg!r}")
+                log_message(f"ERROR: Null byte detected and removed in argument: {arg!r}")
+                arg = str(arg).replace('\x00', '')
+            cleaned_args.append(arg)
+        subdir, file, destdir, nfile = cleaned_args
         
         source_path = os.path.join(subdir, file)
         target_path = os.path.join(destdir, nfile)
