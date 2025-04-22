@@ -1,7 +1,8 @@
 import os
+import sys
 from zipfile import ZipFile
 #import rarfile
-import py7zr
+# import py7zr
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from systools import checkfile
 

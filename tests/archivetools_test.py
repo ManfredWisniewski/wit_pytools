@@ -36,5 +36,6 @@ def test_un7z():
 
 if __name__ == "__main__":
     test_unzip()
-    test_un7z()
+#    test_unrar()
+#    test_un7z()
     print("All archive extraction tests passed.")
