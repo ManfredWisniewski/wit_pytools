@@ -2,6 +2,25 @@ from eliot import add_destinations, FileDestination
 from eliot.json import EliotJSONEncoder
 import os
 from datetime import datetime
+import requests
+
+class LokiDestination:
+    def __init__(self, url, labels=None):
+        self.url = url
+        self.labels = labels or {"application": "witnctools"}
+        
+    def __call__(self, message):
+        try:
+            timestamp = int(datetime.now().timestamp() * 1e9)
+            payload = {
+                "streams": [{
+                    "stream": self.labels,
+                    "values": [[str(timestamp), str(message)]]
+                }]
+            }
+            requests.post(f"{self.url}/loki/api/v1/push", json=payload)
+        except Exception as e:
+            print(f"Failed to send log to Loki: {e}")
 
 class CustomEliotEncoder(EliotJSONEncoder):
     def default(self, obj):
@@ -9,9 +28,10 @@ class CustomEliotEncoder(EliotJSONEncoder):
             return obj.strftime('%Y-%m-%d %H:%M:%S')
         return super().default(obj)
 
-# Global log file handle
+# Global variables
 _log_file = None
 _destination = None
+_loki_destination = None
 
 def log_setup(logdir=os.getcwd(), level="INFO"):
     """Setup Eliot logging with log level filtering"""
@@ -46,7 +66,7 @@ def log_setup(logdir=os.getcwd(), level="INFO"):
         eliot.log_message = filtered_log_message
         print("DEBUG: Logging setup complete with level filter")  # Debug print
     except Exception as e:
-        print(f"Error setting up log file: {e}")
+        print(f"Error setting up logging: {e}")
         # If we failed to set up logging, make sure we clean up
         if _log_file:
             _log_file.close()
@@ -54,8 +74,9 @@ def log_setup(logdir=os.getcwd(), level="INFO"):
 
 def log_close():
     """Close the log file if it's open"""
-    global _log_file, _destination
+    global _log_file, _destination, _loki_destination
     if _log_file:
         _log_file.close()
         _log_file = None
     _destination = None
+    _loki_destination = None

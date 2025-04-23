@@ -170,10 +170,10 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                     bowl = bowldir(nfile, config_object)
                     movefile(sourcedir, file, targetdir + bowl, nfile)
                 else:
+                    #TODO check
                     log_message("No mail information available or incomplete data.")
                     nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
                     bowl = bowldir(nfile, config_object)
-                    target_path = os.path.join(targetdir + bowl, nfile)
                     movefile(sourcedir, file, targetdir + bowl, nfile, dryrun)
             except Exception as e:
                 print(f"Error handling MSG file {file.name}: {e}")
