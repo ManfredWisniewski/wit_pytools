@@ -57,7 +57,7 @@ def delfile(subdir, file, dryrun=False):
     else:
         os.remove((os.path.join(subdir, file)))
 
-def movefile(subdir, file, destdir, nfile, dryrun=False, overwrite=False):
+def movefile(subdir, file, destdir, nfile, overwrite=False, dryrun=False):
     #TODO: add rights handeling before attempt (gets stuck sometimes when copy but no write access
     if not dryrun:
         # Check for null bytes in arguments and remove them if found
