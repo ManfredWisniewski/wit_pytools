@@ -1,11 +1,13 @@
 import os
-from systools import checkfile
+from wit_pytools.systools import checkfile
 from PIL import Image
+import shutil
+from io import BytesIO
 
 # Use absolute paths based on the script location
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-def jpg_compress(input_path, output_path=None, quality=85, maintain_exif=True):
+def jpg_compress(input_path, output_path=None, quality=85, maintain_exif=True, min_size_reduction=0.1, calc=False):
     """
     Compress a JPG image to a different quality level.
     
@@ -14,10 +16,13 @@ def jpg_compress(input_path, output_path=None, quality=85, maintain_exif=True):
         output_path (str, optional): Path to save the compressed image. If None, overwrites the input file.
         quality (int, optional): Compression quality, from 1 (worst) to 95 (best). Default is 85.
         maintain_exif (bool, optional): Whether to maintain EXIF data. Default is True.
+        min_size_reduction (float, optional): Minimum fraction of size reduction required (e.g. 0.1 for 10%). Default is 0.1.
+        calc (bool, optional): If True, only calculate estimated compressed file size without saving. Default is False.
     
     Returns:
-        str: Path to the compressed image
-        float: Compression ratio (original size / new size)
+        if calc: int Estimated compressed file size in bytes
+        else: str Path to the compressed image
+              float Compression ratio (original size / new size)
     
     Raises:
         FileNotFoundError: If the input file doesn't exist
@@ -44,11 +49,37 @@ def jpg_compress(input_path, output_path=None, quality=85, maintain_exif=True):
         exif_data = None
         if maintain_exif and "exif" in img.info:
             exif_data = img.info["exif"]
-        
+
+        # Estimate compressed size in-memory
+        buf = BytesIO()
+        save_kwargs = {"quality": quality}
+        if exif_data is not None:
+            save_kwargs["exif"] = exif_data
+        img.save(buf, "JPEG", **save_kwargs)
+        estimated_size = buf.tell()
+        # If calc mode, return estimated size without saving
+        if calc:
+            img.close()
+            return estimated_size
+        # Skip compression if not effective (less than specified fraction reduction)
+        threshold = min_size_reduction  # require at least specified fraction reduction
+        if estimated_size > original_size * (1 - threshold):
+            img.close()
+            if output_path != input_path:
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                shutil.copy2(input_path, output_path)
+            if calc:
+                return estimated_size
+            else:
+                return output_path, 1.0
+
         # If we're overwriting the original file, save to a temporary file first
         if output_path == input_path:
             temp_output = os.path.join(os.path.dirname(output_path), f"temp_{os.path.basename(output_path)}")
-            img.save(temp_output, "JPEG", quality=quality, optimize=True, exif=exif_data)
+            save_kwargs = {"quality": quality}
+            if exif_data is not None:
+                save_kwargs["exif"] = exif_data
+            img.save(temp_output, "JPEG", **save_kwargs)
             
             # Close the image before replacing the file
             img.close()
@@ -65,7 +96,10 @@ def jpg_compress(input_path, output_path=None, quality=85, maintain_exif=True):
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
             # Save with new compression level
-            img.save(output_path, "JPEG", quality=quality, optimize=True, exif=exif_data)
+            save_kwargs = {"quality": quality}
+            if exif_data is not None:
+                save_kwargs["exif"] = exif_data
+            img.save(output_path, "JPEG", **save_kwargs)
             
             # Close the image
             img.close()
@@ -140,6 +174,165 @@ def png2jpg(input_path, output_path=None, quality=85, background_color=(255, 255
         raise PermissionError(f"Permission denied: {str(pe)}. Try running as administrator or check if the file is open in another program.")
     except Exception as e:
         raise ValueError(f"Error converting image: {str(e)}")
+
+def avif_compress(input_path, output_path=None, quality=85, maintain_exif=True, min_size_reduction=0.1, calc=False):
+    """
+    Compress an image to AVIF format.
+    
+    Args:
+        input_path (str): Path to the input image
+        output_path (str, optional): Path to save the compressed AVIF image. If None, uses same name with .avif extension.
+        quality (int, optional): Compression quality (0 worst–100 best). Default is 85.
+        maintain_exif (bool, optional): Whether to maintain EXIF data. Default is True.
+        min_size_reduction (float, optional): Minimum fraction of size reduction required (e.g. 0.1 for 10%). Default is 0.1.
+        calc (bool, optional): If True, only calculate estimated file size without saving. Default is False.
+    
+    Returns:
+        if calc: int Estimated compressed file size in bytes
+        else: str Path to the compressed image
+              float Compression ratio (original size / new size)
+    
+    Raises:
+        FileNotFoundError: If the input file doesn't exist
+        ValueError: If processing fails
+    """
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Input file not found: {input_path}")
+
+    if output_path is None:
+        output_path = os.path.splitext(input_path)[0] + '.avif'
+
+    try:
+        img = Image.open(input_path)
+        original_size = os.path.getsize(input_path)
+
+        exif_data = None
+        if maintain_exif and "exif" in img.info:
+            exif_data = img.info["exif"]
+
+        # Estimate compressed size in-memory (catch unsupported format)
+        buf = BytesIO()
+        try:
+            img.save(buf, "AVIF", quality=quality, exif=exif_data)
+            estimated_size = buf.tell()
+        except (KeyError, ValueError):
+            img.close()
+            if calc:
+                return original_size
+            # format not supported: fallback to original
+            if output_path != input_path:
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                shutil.copy2(input_path, output_path)
+            return output_path, 1.0
+
+        if calc:
+            img.close()
+            return estimated_size
+
+        if estimated_size > original_size * (1 - min_size_reduction):
+            img.close()
+            if output_path != input_path:
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                shutil.copy2(input_path, output_path)
+            return output_path, 1.0
+
+        # Perform actual compression
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        img.save(output_path, "AVIF", quality=quality, exif=exif_data)
+        img.close()
+
+        new_size = os.path.getsize(output_path)
+        compression_ratio = original_size / new_size if new_size > 0 else 0
+        return output_path, compression_ratio
+
+    except Exception as e:
+        raise ValueError(f"Error processing AVIF image: {str(e)}")
+
+def png_compress(input_path, output_path=None, compress_level=6, min_size_reduction=0.1, calc=False):
+    """
+    Compress an image to PNG format.
+    
+    Args:
+        input_path (str): Path to the input image
+        output_path (str, optional): Path to save the compressed PNG image. If None, overwrites the input file.
+        compress_level (int, optional): Compression level (0 no compression–9 max). Default is 6.
+        min_size_reduction (float, optional): Minimum fraction of size reduction required (e.g. 0.1 for 10%). Default is 0.1.
+        calc (bool, optional): If True, only calculate estimated file size without saving. Default is False.
+    
+    Returns:
+        if calc: int Estimated compressed file size in bytes
+        else: str Path to the compressed image
+              float Compression ratio (original size / new size)
+    
+    Raises:
+        FileNotFoundError: If the input file doesn't exist
+        ValueError: If processing fails
+    """
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Input file not found: {input_path}")
+
+    if output_path is None:
+        output_path = input_path
+
+    try:
+        img = Image.open(input_path)
+        original_size = os.path.getsize(input_path)
+
+        # Estimate compressed size in-memory
+        buf = BytesIO()
+        img.save(buf, "PNG", optimize=True, compress_level=compress_level)
+        estimated_size = buf.tell()
+
+        if calc:
+            img.close()
+            return estimated_size
+
+        if estimated_size > original_size * (1 - min_size_reduction):
+            img.close()
+            if output_path != input_path:
+                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                shutil.copy2(input_path, output_path)
+            return output_path, 1.0
+
+        # Perform actual compression
+        if output_path != input_path:
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        img.save(output_path, "PNG", optimize=True, compress_level=compress_level)
+        img.close()
+
+        new_size = os.path.getsize(output_path)
+        compression_ratio = original_size / new_size if new_size > 0 else 0
+        return output_path, compression_ratio
+
+    except Exception as e:
+        raise ValueError(f"Error processing PNG image: {str(e)}")
+
+def save_img(input_path, quality=85, compress_level=6, maintain_exif=True, min_size_reduction=0.1):
+    """Save image as JPEG or PNG, choosing the smaller resulting file."""
+    # Prepare output names
+    base, _ = os.path.splitext(input_path)
+    jpg_path = base + '.jpg'
+    png_path = base + '.png'
+    # Estimate sizes
+    est_jpg = jpg_compress(input_path, jpg_path,
+                           quality=quality,
+                           maintain_exif=maintain_exif,
+                           min_size_reduction=min_size_reduction,
+                           calc=True)
+    est_png = png_compress(input_path, png_path,
+                           compress_level=compress_level,
+                           min_size_reduction=min_size_reduction,
+                           calc=True)
+    # Perform chosen compression
+    if est_jpg <= est_png:
+        return jpg_compress(input_path, jpg_path,
+                            quality=quality,
+                            maintain_exif=maintain_exif,
+                            min_size_reduction=min_size_reduction)
+    else:
+        return png_compress(input_path, png_path,
+                            compress_level=compress_level,
+                            min_size_reduction=min_size_reduction)
 
 def getexifdata(sourcedir, image):
     try:
