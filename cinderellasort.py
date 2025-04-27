@@ -2,8 +2,10 @@ import os, re, sys
 from datetime import datetime
 from configparser import ConfigParser
 from pathlib import Path
+from wit_pytools.nctools import ncscandir
 from wit_pytools.witpytools import dryprint
-from wit_pytools.nctools import ncscandir, ncmovefile
+from eliot import log_message
+import gettext
 
 # Fix import issue by using relative imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -11,14 +13,22 @@ parent_dir = os.path.dirname(current_dir)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
+def setup_translations(language='de'):
+    translations = gettext.translation('cinderellasort', 
+                                    localedir=os.path.join(os.path.dirname(__file__), 'locale'),
+                                    languages=[language],
+                                    fallback=True)
+    translations.install()
+    return translations.gettext
+
+# Initialize translations
+_ = setup_translations()
+
 # Now import the modules
 from wit_pytools.mailtools import *
 from wit_pytools.systools import walklevel, rmemptydir, movefile
 
 dryrun = (True)
-
-time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-config_object = ConfigParser()
 
 # check for valid searches in subdirectories of the target directory
 def isvalidsort(sourcedir, ftype_sort):
@@ -43,6 +53,16 @@ def matchstring(file, matchtable=''):
                 found = True
         return True if found else False
 
+# list all bowls
+def bowllist(config_object=''):
+    bowls = []
+    if config_object and len(config_object) > 0 and config_object.has_section("BOWLS"):
+        # Get bowls from config while preserving case
+        for bowl, _ in config_object.items("BOWLS", raw=True):
+            bowls.append(bowl)
+    return bowls
+
+# check if file matches a criteria for a bowl and return the corresponding bowl
 def bowldir(file, config_object=''):
     if config_object and len(config_object) > 0:
         if config_object.has_section("BOWLS"):
@@ -50,16 +70,9 @@ def bowldir(file, config_object=''):
             for (bowl, critlist) in config_object.items("BOWLS"):
                 for crit in critlist.split(','):
                     if crit in file and not found:
-                        return '\\' + bowl
+                        return '/' + bowl
             return ''
     return ''
-
-def cmovefile(sourcedir, file, targetdir, nfile, filemode, dryrun):
-    if filemode == 'os':
-        movefile(sourcedir, file, targetdir, nfile, dryrun)
-    elif filemode == 'nc':
-        ncmovefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, dryrun)
-
 
 #   prepare strings to be used correctly in regex expressions (escape special characters)
 def prepregex(ostring):
@@ -96,16 +109,47 @@ def cleanfilestring(file, clean, clean_nocase, replacements, subdir=''):
 
     return os.path.join(nfile.strip() + file_extension)
 
+# Prepare everything for the current sort process
+def prepsort(config_object, targetdir, prepfilter = False):
+    # Create directories if they don't exist
+    # Normalize path separators to OS-specific ones
+    targetdir = str(targetdir).replace('\\', '/').replace('//', '/')
+    targetdir = Path(targetdir)
+    bowls = bowllist(config_object)
+    for bowl in bowls:
+        # Normalize bowl path separators
+        bowl = str(bowl).replace('\\', '/').replace('//', '/')
+        directory = targetdir / bowl
+        if not directory.exists():
+            directory.mkdir(parents=True, exist_ok=True)
+    if prepfilter:
+        print(f"(Scan for all existing directories in the target directory: {targetdir})")
+        dirnames = []
+        for subdir, dirs, files in walklevel(str(targetdir), -1):
+            for d in dirs:
+                dirnames.append(os.path.relpath(os.path.join(subdir, d), str(targetdir)))
+        dirnames.reverse()
+        with open(targetdir / "filter-examples.txt", "w", encoding="utf-8") as f:
+            for name in dirnames:
+                f.write(f"{name}\n")
+    # ADD CHECK SETTINGS (directories etc.)
+    # ADD SAFETY CHECK or fix: no empty criteria (comma at end of list or empty list)
+    # ADD check if subdirectory
+    # CHECK _unpack dir
+    # CHECK SORT Lists for ,, and < 2
+
+
 def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun):
+    file_ext = os.path.splitext(file.name)[1].casefold()
     for ftype in ftype_sort.split(','):
         ftype = ftype.strip().casefold()
-        if ftype == '.msg':
-            dryprint(dryrun, 'handle MSG', file.name)
+        if ftype == file_ext and ftype == '.msg':
             try:
+                log_message(_('Handling MSG: {}').format(os.path.join(sourcedir, file)))
                 maildata = parse_msg(os.path.join(sourcedir, file.name), True)
                 
-                # Extract project name from the last directory in sourcedir
-                project_name = os.path.basename(os.path.normpath(sourcedir))
+                # Extract project name from the last directory in targetdir
+                project_name = os.path.basename(os.path.normpath(targetdir))
                 
                 if maildata and len(maildata) >= 3:
                     # Strip leading date in YYYY-MM-DD format from subject if it exists
@@ -123,21 +167,27 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                     
                     nfile = maildata[0]+'_'+maildata[1]+'_'+project_name+'_'+maildata[2]+'.msg'
                     nfile = cleanfilestring(nfile, clean, clean_nocase, replacements)
-                    dryprint(dryrun, 'bowl', bowldir(nfile, config_object))
-                    cmovefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, dryrun)
+                    bowl = bowldir(nfile, config_object)
+                    movefile(sourcedir, file, targetdir + bowl, nfile)
                 else:
-                    print("No mail information available or incomplete data.")
+                    #TODO check
+                    log_message("No mail information available or incomplete data.")
                     nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
-                    cmovefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, dryrun)
+                    bowl = bowldir(nfile, config_object)
+                    movefile(sourcedir, file, targetdir + bowl, nfile, dryrun)
             except Exception as e:
                 print(f"Error handling MSG file {file.name}: {e}")
                 # Fallback to using the original filename
                 nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
-                cmovefile(sourcedir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, dryrun)
-        else:
-            # Default behavior for other file types
-            nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
-            cmovefile(sourcedir, file.name, targetdir + bowldir(nfile, config_object), nfile, filemode, dryrun)
+                if not dryrun and filemode == 'win':
+                    bowl = bowldir(nfile, config_object)
+                    movefile(sourcedir, file, targetdir + bowl, nfile, dryrun)
+            else:
+                # Default behavior for other file types
+                nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
+                if not dryrun and filemode == 'win':
+                    bowl = bowldir(nfile, config_object)
+                    movefile(sourcedir, file, targetdir + bowl, nfile, dryrun)
         
         # File has been handled, so we can break the loop
         break
@@ -149,12 +199,17 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
 def cinderellasort(configfile, dryrun=False):
     #TODO check configfile for valid ini file
     files = ""
+    time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    # Initialize ConfigParser to preserve case
     config_object = ConfigParser()
-    config_object.read(configfile)
+    config_object.optionxform = str  # This preserves case for keys and values
+    config_object.read(configfile, encoding='utf-8')
     table = config_object["TABLE"]
     
-    sourcedir = (table["sourcedir"])
-    targetdir = (table["targetdir"])
+    # Normalize path separators in source and target directories
+    sourcedir = str(table["sourcedir"]).replace('\\', '/').replace('//', '/')
+    targetdir = str(table["targetdir"]).replace('\\', '/').replace('//', '/')
     ftype_sort = (table["ftype_sort"].casefold())
     ftype_delete = (table["ftype_delete"].casefold())
     clean = (table["clean"])
@@ -170,22 +225,21 @@ def cinderellasort(configfile, dryrun=False):
         for key in replacements_section:
             replacements[key] = replacements_section[key]
     
-    print('\n###########################################')
-    print('## START CinderellaSort ' + time)
-    dryprint(dryrun, '## DRYRUN ##', configfile)
-    print(' # from: ' + sourcedir)
-    print(' # to:   ' + targetdir)
-    dryprint(dryrun, 'mode',filemode)
-    print('## Settings ' + configfile + ':')
-    print(' # sort: ' + ftype_sort)
-    print(' #  del: ' + ftype_delete)
+    if not filemode == 'nc':
+        print('\n###########################################')
+        print('## START CinderellaSort ' + time)
+        print(' Dryrun: ' + str(dryrun))
+        print('   from: ' + sourcedir)
+        print('   to:   ' + targetdir)
+        dryprint(dryrun, 'mode',filemode)
+        print('## Settings ' + configfile + ':')
+        print('   sort: ' + ftype_sort)
+        print('    del: ' + ftype_delete)
 
-    # ADD CHECK SETTINGS (directories etc.)
-    # ADD SAFETY CHECK or fix: no empty criteria (comma at end of list or empty list)
-    # ADD check if subdirectory
     # ADD unzip
-    # CHECK _unpack dir
-    # CHECK SORT Lists for ,, and < 2
+
+    # prepare for sort process
+    prepsort(config_object, targetdir)
 
     # Handle files directly in sourcedir
     for item in Path(sourcedir).iterdir():

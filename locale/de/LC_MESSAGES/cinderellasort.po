@@ -1,0 +1,24 @@
+# German translations for cinderellasort
+# Copyright (C) 2025 WIT Solutions
+# This file is distributed under the same license as the cinderellasort package.
+msgid ""
+msgstr ""
+"Project-Id-Version: cinderellasort 0.0.1\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-04-10 18:22+0200\n"
+"PO-Revision-Date: 2025-04-10 18:22+0200\n"
+"Last-Translator: Manfred Wisniewski\n"
+"Language-Team: German\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Prepsort: {}"
+msgstr "Vorbereitung der Sortierung: {}"
+
+msgid "Error handling MSG file {}: {}"
+msgstr "Fehler beim Verarbeiten der MSG-Datei {}: {}"
+
+msgid "No mail information available or incomplete data."
+msgstr "Keine Mail-Informationen verfügbar oder unvollständige Daten."

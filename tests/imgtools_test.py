@@ -6,8 +6,8 @@ import shutil
 from PIL import Image
 
 # Add the parent directory to the path so we can import modules from wit_pytools
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from imgtools import jpg_compress, png2jpg, getexifdata
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+from wit_pytools.imgtools import jpg_compress, png2jpg, getexifdata
 
 def create_test_image(path, size=(100, 100), color=(255, 0, 0)):
     """Create a test image for testing"""
@@ -58,7 +58,7 @@ def test_compress_jpg():
 def test_getexifdata():
     try:
         test_img_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "imgtools")
-        from imgtools import getexifdata
+        from wit_pytools.imgtools import getexifdata
         
         # Test getting EXIF data
         exif_data = getexifdata(test_img_dir, 'testimage.jpg')

@@ -1,5 +1,5 @@
 import os
-from wit_pytools.systools import checkfile
+from systools import checkfile
 from PIL import Image
 
 # Use absolute paths based on the script location
