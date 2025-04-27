@@ -7,7 +7,7 @@ from PIL import Image
 
 # Add the parent directory to the path so we can import modules from wit_pytools
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from wit_pytools.imgtools import jpg_compress, png2jpg, getexifdata
+from wit_pytools.imgtools import jpg_compress, png2jpg, getexifdata, png_compress, avif_compress, save_img
 
 def create_test_image(path, size=(100, 100), color=(255, 0, 0)):
     """Create a test image for testing"""
@@ -91,6 +91,49 @@ def test_getexifdata():
         print(f"Error: {e}")
         return f"Test getexifdata: FAILED - {str(e)}"
 
+# Additional tests for png_compress, avif_compress, and save_img
+def test_png_compress_function():
+    temp_dir = tempfile.mkdtemp()
+    try:
+        test_png = os.path.join(temp_dir, 'test.png')
+        from PIL import Image as _Image
+        _Image.new('RGB', (100, 100), (0, 255, 0)).save(test_png, 'PNG')
+        out_path, ratio = png_compress(test_png, os.path.join(temp_dir, 'out.png'), compress_level=1)
+        assert os.path.exists(out_path)
+        assert isinstance(ratio, float)
+        est = png_compress(test_png, compress_level=1, calc=True)
+        assert isinstance(est, int) and est > 0
+    finally:
+        shutil.rmtree(temp_dir)
+
+def test_avif_compress_calc():
+    temp_dir = tempfile.mkdtemp()
+    try:
+        test_jpg = os.path.join(temp_dir, 'test2.jpg')
+        create_test_image(test_jpg)
+        est_avif = avif_compress(test_jpg, calc=True)
+        assert isinstance(est_avif, int) and est_avif > 0
+    finally:
+        shutil.rmtree(temp_dir)
+
+def test_save_img_choose_format():
+    temp_dir = tempfile.mkdtemp()
+    try:
+        test_jpg = os.path.join(temp_dir, 'test3.jpg')
+        create_test_image(test_jpg)
+        out_path, ratio = save_img(test_jpg)
+        assert os.path.exists(out_path)
+        assert ratio > 0
+        test_png = os.path.join(temp_dir, 'test3.png')
+        from PIL import Image as _Image2
+        _Image2.new('RGB', (100, 100), (0, 0, 255)).save(test_png, 'PNG')
+        out2, ratio2 = save_img(test_png)
+        assert os.path.exists(out2)
+        assert ratio2 > 0
+        assert out2.endswith('.jpg') or out2.endswith('.png')
+    finally:
+        shutil.rmtree(temp_dir)
+
 # Run the tests and print the result messages
 if __name__ == "__main__":
     result_single = test_compress_jpg()
@@ -98,3 +141,12 @@ if __name__ == "__main__":
     
     result_getexifdata = test_getexifdata()
     print(result_getexifdata)
+    
+    result_png_compress = test_png_compress_function()
+    print(result_png_compress)
+    
+    result_avif_compress = test_avif_compress_calc()
+    print(result_avif_compress)
+    
+    result_save_img = test_save_img_choose_format()
+    print(result_save_img)
