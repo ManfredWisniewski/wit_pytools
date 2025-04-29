@@ -334,7 +334,7 @@ def save_img(input_path, quality=85, compress_level=6, maintain_exif=True, min_s
                             compress_level=compress_level,
                             min_size_reduction=min_size_reduction)
 
-def getexifdata(sourcedir, image):
+def img_getexif(sourcedir, image):
     try:
         if not checkfile(sourcedir, image):
             return None
@@ -348,12 +348,43 @@ def getexifdata(sourcedir, image):
                 tag_name = ExifTags.TAGS.get(tag_id, str(tag_id))
                 exif_readable[tag_name] = value
             
-            print(f"EXIF data with readable tags: {exif_readable}")
+            #print(f"EXIF data with readable tags: {exif_readable}")
             return exif_readable
     except FileNotFoundError as e:
         raise e
     except Exception as e:
         raise ValueError(f"Error getting EXIF data: {str(e)}")
+
+def img_getgps(sourcedir, image):
+    """
+    Extract GPS coordinates from an image's EXIF data.
+    
+    Args:
+        sourcedir (str): Directory containing the image
+        image (str): Image filename
+        
+    Returns:
+        tuple: (latitude, longitude) or None if GPS data not found
+    """
+    from wit_pytools.gpstools import _convert_to_decimal_degrees    
+    try:
+        exif_data = img_getexif(sourcedir, image)
+        if exif_data and 'GPSInfo' in exif_data:
+            gps_info = exif_data['GPSInfo']
+            lat_ref = gps_info.get(1, 'N')
+            lat_data = gps_info.get(2)
+            lon_ref = gps_info.get(3, 'E')
+            lon_data = gps_info.get(4)
+            if not (isinstance(lat_data, (list, tuple)) and len(lat_data) == 3 and isinstance(lon_data, (list, tuple)) and len(lon_data) == 3):
+                print(f"Invalid GPS data structure in file {image}: lat_data={lat_data}, lon_data={lon_data}")
+                return None
+            latitude = _convert_to_decimal_degrees(lat_data, lat_ref)
+            longitude = _convert_to_decimal_degrees(lon_data, lon_ref)
+            if latitude is not None and longitude is not None:
+                return (latitude, longitude)
+    except Exception as e:
+        print(f"Error extracting GPS data: {e}")
+    return None
 
 #target_dir = os.path.join(script_dir, "imgtools", "done")
 # Make sure the target directory exists
@@ -368,4 +399,4 @@ def getexifdata(sourcedir, image):
 #sourceimage = os.path.join(script_dir, "imgtools", "testimagepng.png")
 #png2jpg(sourceimage, os.path.join(target_dir, filename), quality=75)
 
-#getexifdata(script_dir, r"P:\git\witnctools\wit_pytools\tests\imgtools\testimage.jpg")
+#img_getexif(script_dir, r"P:\git\witnctools\wit_pytools\tests\imgtools\testimage.jpg")

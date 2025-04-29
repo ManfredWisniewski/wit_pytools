@@ -6,7 +6,7 @@ import sys
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(parent_dir)
 # Use direct import instead of package-style import
-from wit_pytools.imgtools import getexifdata
+from wit_pytools.imgtools import img_getgps, img_getexif    
 
 def _convert_to_decimal_degrees(degrees_data, ref):
     """
@@ -46,42 +46,16 @@ def _convert_to_decimal_degrees(degrees_data, ref):
         print(f"Error converting GPS data: {e}")
         return None
 
-def gps_from_img(sourcedir, image):
-    """
-    Extract GPS coordinates from an image's EXIF data.
-    
-    Args:
-        sourcedir (str): Directory containing the image
-        image (str): Image filename
-        
-    Returns:
-        tuple: (latitude, longitude) or None if GPS data not found
-    """
-    try:
-        exif_data = getexifdata(sourcedir, image)
-        
-        if exif_data and 'GPSInfo' in exif_data:
-            gps_info = exif_data['GPSInfo']
-            
-            # Get latitude reference and data
-            lat_ref = gps_info.get(1, 'N')
-            lat_data = gps_info.get(2)
-            
-            # Get longitude reference and data
-            lon_ref = gps_info.get(3, 'E')
-            lon_data = gps_info.get(4)
-            
-            # Convert to decimal degrees
-            latitude = _convert_to_decimal_degrees(lat_data, lat_ref)
-            longitude = _convert_to_decimal_degrees(lon_data, lon_ref)
-            
-            if latitude is not None and longitude is not None:
-                return (latitude, longitude)
-    
-    except Exception as e:
-        print(f"Error extracting GPS data: {e}")
-    
-    return None
+def is_valid_gps(s):
+    parts = s.split(',')
+    if len(parts) == 2:
+        try:
+            float(parts[0].strip())
+            float(parts[1].strip())
+            return True
+        except ValueError:
+            return False
+    return False
 
 def gps_distance(coord1, coord2):
     """
