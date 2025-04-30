@@ -59,6 +59,7 @@ def delfile(subdir, file, dryrun=False):
 
 def movefile(subdir, file, destdir, nfile, overwrite=False, dryrun=False):
     #TODO: add rights handeling before attempt (gets stuck sometimes when copy but no write access
+    print('OVERWRITE: ' + str(overwrite))
     if not dryrun:
         # Check for null bytes in arguments and remove them if found
         args = [subdir, file, destdir, nfile]
@@ -95,6 +96,8 @@ def movefile(subdir, file, destdir, nfile, overwrite=False, dryrun=False):
                 except Exception as e2:
                     log_message(f"ERROR: Could not copy to enumerated filename: {str(e2)}", level="ERROR")
             else:
+                if overwrite and os.path.exists(target_path):
+                    os.remove(target_path)
                 os.rename(source_path, target_path)
                 log_message(f"Successfully moved file to {target_path}", level="INFO")
         except FileNotFoundError:
