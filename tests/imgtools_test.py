@@ -7,7 +7,7 @@ from PIL import Image
 
 # Add the parent directory to the path so we can import modules from wit_pytools
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from wit_pytools.imgtools import jpg_compress, png2jpg, getexifdata, png_compress, avif_compress, save_img
+from wit_pytools.imgtools import jpg_compress, png2jpg, img_getexif, png_compress, avif_compress, save_img
 
 def create_test_image(path, size=(100, 100), color=(255, 0, 0)):
     """Create a test image for testing"""
@@ -36,7 +36,7 @@ def test_compress_jpg():
         
         # Test compression without output path (overwrite)
         original_size = os.path.getsize(test_img_path)
-        result_path, ratio = jpg_compress(test_img_path, quality=30)
+        result_path, ratio = jpg_compress(test_img_path, quality=30, min_size_reduction=0)
         
         # Verify the result
         assert os.path.exists(result_path)
@@ -49,19 +49,21 @@ def test_compress_jpg():
         
         return "Test compress_jpg: PASSED"
     except Exception as e:
+        import traceback
         print(f"Error: {e}")
+        traceback.print_exc()
         # Clean up even if test fails
         if 'temp_dir' in locals():
             shutil.rmtree(temp_dir)
         return "Test compress_jpg: FAILED"
 
-def test_getexifdata():
+def test_img_getexif():
     try:
         test_img_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "imgtools")
-        from wit_pytools.imgtools import getexifdata
+        from wit_pytools.imgtools import img_getexif
         
         # Test getting EXIF data
-        exif_data = getexifdata(test_img_dir, 'testimage.jpg')
+        exif_data = img_getexif(test_img_dir, 'testimage.jpg')
         
         # Verify the result
         assert exif_data is not None
@@ -86,10 +88,12 @@ def test_getexifdata():
         assert gps_info[2][0] == 51.0  # Latitude degrees
         assert gps_info[4][0] == 10.0  # Longitude degrees
         
-        return "Test getexifdata: PASSED"
+        return "Test img_getexif: PASSED"
     except Exception as e:
+        import traceback
         print(f"Error: {e}")
-        return f"Test getexifdata: FAILED - {str(e)}"
+        traceback.print_exc()
+        return f"Test img_getexif: FAILED - {str(e)}"
 
 # Additional tests for png_compress, avif_compress, and save_img
 def test_png_compress_function():
@@ -139,8 +143,8 @@ if __name__ == "__main__":
     result_single = test_compress_jpg()
     print(result_single)
     
-    result_getexifdata = test_getexifdata()
-    print(result_getexifdata)
+    result_img_getexif = test_img_getexif()
+    print(result_img_getexif)
     
     result_png_compress = test_png_compress_function()
     print(result_png_compress)
