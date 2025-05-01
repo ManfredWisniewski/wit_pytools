@@ -124,16 +124,62 @@ def movefile(subdir, file, destdir, nfile, overwrite=False, dryrun=False):
         except Exception as e:
             log_message(f"ERROR: Unexpected error: {str(e)}", level="ERROR")
 
-def copyfile(subdir, file, destdir, nfile, dryrun):
+def copyfile(subdir, file, destdir, nfile, overwrite=False, dryrun=False):
+    """
+    Copy a file from subdir/file to destdir/nfile with error handling and overwrite option.
+    Does not remove the original file.
+    """
     if dryrun:
         log_message(f"Would copy file: {os.path.join(subdir, file)} to {os.path.join(destdir, nfile)}", level="INFO")
-    else:
-        try:
-            #os.rename((os.path.join(subdir, file)), (destdir + "/" + nfile))
-            shutil.copy(os.path.join(subdir, file), destdir + "/" + nfile)
-        except:
-            #ignore directory already exists error TODO: make more elegant
-            True
+        return
+    # Clean null bytes and whitespace from arguments
+    args = [subdir, file, destdir, nfile]
+    cleaned_args = []
+    for arg in args:
+        if '\x00' in str(arg):
+            log_message(f"ERROR: Null byte detected and removed in argument: {arg!r}", level="INFO")
+            arg = str(arg).replace('\x00', '')
+        arg = str(arg).rstrip()
+        cleaned_args.append(arg)
+    subdir, file, destdir, nfile = cleaned_args
+    source_path = os.path.join(subdir, file)
+    target_path = os.path.join(destdir, nfile)
+    log_message(f"copyfile: source_path={source_path}, target_path={target_path}", level="INFO")
+    os.makedirs(destdir, exist_ok=True)
+    try:
+        if not overwrite and os.path.exists(target_path):
+            # Add enumerator to filename
+            i = 2
+            base, ext = os.path.splitext(target_path)
+            while os.path.exists(f"{base}#{i}{ext}"):
+                i += 1
+            new_target = f"{base}#{i}{ext}"
+            try:
+                shutil.copy2(source_path, new_target)
+                log_message(f"Copied file to {new_target}", level="INFO")
+            except Exception as e2:
+                log_message(f"ERROR: Could not copy to enumerated filename: {str(e2)}", level="ERROR")
+        else:
+            if overwrite and os.path.exists(target_path):
+                os.remove(target_path)
+            shutil.copy2(source_path, target_path)
+            log_message(f"Successfully copied file to {target_path}", level="INFO")
+    except FileNotFoundError:
+        log_message(f"ERROR: Source file not found: {source_path}", level="ERROR")
+    except PermissionError:
+        log_message(f"ERROR: Permission denied. Check file permissions for {source_path} or {destdir}", level="ERROR")
+    except OSError as e:
+        if e.errno == 13:
+            log_message(f"ERROR: Permission denied. Check file permissions.", level="ERROR")
+        elif e.errno == 2:
+            log_message(f"ERROR: Source or destination path does not exist.", level="ERROR")
+        elif e.errno == 17:
+            log_message(f"ERROR: Target file already exists: {target_path}", level="WARNING")
+        else:
+            log_message(f"ERROR: Failed to copy file: {str(e)}", level="ERROR")
+    except Exception as e:
+        log_message(f"ERROR: Unexpected error: {str(e)}", level="ERROR")
+
 
 # Pathlib: https://stackoverflow.com/questions/41826868/moving-all-files-from-one-directory-to-another-using-python
 def moveallfiles(sourcedir, destdir, dryrun):
