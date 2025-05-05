@@ -6,8 +6,8 @@ import math
 # Add the parent directory to the path so we can import modules from wit_pytools
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(parent_dir)
-from gpstools import gps_distance, gps_from_img
-from imgtools import getexifdata
+from gpstools import gps_distance
+from imgtools import img_getexif, img_getgps
 
 def test_gps_distance():
     """Test calculating distance between two GPS coordinates"""
@@ -42,7 +42,7 @@ def test_gps_distance():
         print(f"Error: {e}")
         return f"Test gps_distance: FAILED - {str(e)}"
 
-def test_gps_from_img():
+def test_img_getgps():
     """Test extracting GPS coordinates from an image"""
     try:
         # Test directory and image
@@ -50,7 +50,7 @@ def test_gps_from_img():
         test_img = "testimage.jpg"
         
         # Get GPS coordinates from the test image
-        coords = gps_from_img(test_img_dir, test_img)
+        coords = img_getgps(test_img_dir, test_img)
         
         # Verify the result
         assert coords is not None
@@ -66,13 +66,13 @@ def test_gps_from_img():
         assert abs(longitude - 10.0) < 1.0
         
         # Test with non-existent image
-        coords = gps_from_img(test_img_dir, "nonexistent.jpg")
+        coords = img_getgps(test_img_dir, "nonexistent.jpg")
         assert coords is None
         
-        return "Test gps_from_img: PASSED"
+        return "Test img_getgps: PASSED"
     except Exception as e:
         print(f"Error: {e}")
-        return f"Test gps_from_img: FAILED - {str(e)}"
+        return f"Test img_getgps: FAILED - {str(e)}"
 
 def test_distance_to_magdeburg():
     """Test calculating distance from test image to Magdeburg"""
@@ -85,7 +85,7 @@ def test_distance_to_magdeburg():
         magdeburg_coords = (52.11594623743321, 11.603707931453604)
         
         # Get GPS coordinates from the test image
-        image_coords = gps_from_img(test_img_dir, test_img)
+        image_coords = img_getgps(test_img_dir, test_img)
         
         # Verify we got coordinates
         assert image_coords is not None
@@ -112,7 +112,7 @@ if __name__ == "__main__":
     result_distance = test_gps_distance()
     print(result_distance)
     
-    result_from_img = test_gps_from_img()
+    result_from_img = test_img_getgps()
     print(result_from_img)
     
     result_magdeburg = test_distance_to_magdeburg()
