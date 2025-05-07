@@ -1,7 +1,5 @@
 import os
-from markitdown import MarkItDown
-from pdf2image import convert_from_path
-import pytesseract
+
 
 # For Tesseract-OCR (scanning via PDF-Image)
 # https://github.com/tesseract-ocr/tesseract/releases
@@ -13,8 +11,19 @@ import pytesseract
 # to: 
 # C:\Users\$USER\AppData\Local\Programs\Tesseract-OCR\tessdata
 
-def ocr_pdf_to_markdown(pdf_path):
-    """Convert PDF pages to images and extract text using OCR (pytesseract). Also saves images to the PDF directory."""
+def pdf_to_markdown(pdf_path):
+    from markitdown import MarkItDown
+    """Convert a PDF file to Markdown using MarkItDown."""
+    if not os.path.exists(pdf_path):
+        raise FileNotFoundError(f"File not found: {pdf_path}")
+    md = MarkItDown(enable_plugins=False, enable_ocr=True)
+    result = md.convert(pdf_path)
+    return result.text_content
+
+def pdf_to_markdown_ocr(pdf_path):
+    from pdf2image import convert_from_path
+    import pytesseract
+    """Convert PDF pages to images and extract text using OCR (pytesseract)."""
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"File not found: {pdf_path}")
     images = convert_from_path(pdf_path)
@@ -28,14 +37,6 @@ def ocr_pdf_to_markdown(pdf_path):
         text += pytesseract.image_to_string(img, lang='deu')
         text += f"\n\n[Image: {img_filename}]\n\n"
     return text
-
-def convert_pdf_to_markdown(pdf_path):
-    """Convert a PDF file to Markdown using MarkItDown."""
-    if not os.path.exists(pdf_path):
-        raise FileNotFoundError(f"File not found: {pdf_path}")
-    md = MarkItDown(enable_plugins=False, enable_ocr=True)
-    result = md.convert(pdf_path)
-    return result.text_content
 
 def process_all_pdfs_in_directory(directory_path, output_csv_path):
     """Process all PDFs in the specified directory and concatenate results to a single CSV file."""
@@ -59,7 +60,7 @@ def process_all_pdfs_in_directory(directory_path, output_csv_path):
         
         try:
             # Extract and process text from PDF
-            md_text = ocr_pdf_to_markdown(pdf_path)
+            md_text = pdf_to_markdown(pdf_path)
             processed_text = md_text
             
             # Add to results
