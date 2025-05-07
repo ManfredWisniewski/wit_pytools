@@ -1,5 +1,2 @@
-#   prepare strings to be used correctly in regex expressions (escape special characters)
-def prepregex(ostring):
-    mapping = str.maketrans({'.': '\\.', '[': '\\[', ']': '\\]'})
-    nstring = ostring.translate(mapping)
-    return nstring
+# Import prepregex from sanitizers.py
+from wit_pytools.sanitizers import prepregex
