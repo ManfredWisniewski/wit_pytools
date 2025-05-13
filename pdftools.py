@@ -1,6 +1,5 @@
 import os
 
-
 # For Tesseract-OCR (scanning via PDF-Image)
 # https://github.com/tesseract-ocr/tesseract/releases
 # https://github.com/oschwartz10612/poppler-windows/releases/
