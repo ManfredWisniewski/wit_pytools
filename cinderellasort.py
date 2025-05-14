@@ -324,7 +324,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
             handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
         ## Handle GPS Bowls##
         elif bowllist_gps(config_object):
-            handle_gps(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+            handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
 
         ## Default behavior for all other bowls
         else:
