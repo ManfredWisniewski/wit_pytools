@@ -285,12 +285,9 @@ def handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, c
     return
 
 def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
-    # Get file extension
-    file_ext = os.path.splitext(file.name)[1].lower()
     # Check if this is an image file that we should process
-    if file_ext in ['.jpg', '.jpeg'] and not file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
+    if not file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
         from wit_pytools.imgtools import img_getgps
-        from wit_pytools.gpstools import gps_distance
         try:
             nfile = file.name
             log_message(_('Handling GPS: {}').format(os.path.join(sourcedir, file)))
