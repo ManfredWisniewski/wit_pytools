@@ -381,7 +381,7 @@ def img_getgps(sourcedir, image):
             latitude = _convert_to_decimal_degrees(lat_data, lat_ref)
             longitude = _convert_to_decimal_degrees(lon_data, lon_ref)
             if latitude is not None and longitude is not None:
-                return (latitude, longitude)
+                return f"{latitude}, {longitude}"
     except Exception as e:
         print(f"Error extracting GPS data: {e}")
     return None
