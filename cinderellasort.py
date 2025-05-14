@@ -40,8 +40,9 @@ def isvalidsort(sourcedir, ftype_sort):
                     checkvalid = True
     if checkvalid:
         return True
-    #else:
-    #    print('## Directory [' + sourcedir + '] contains none of the sorted file types [' + ftype_sort + ']\n## EXIT CinderellaSort')
+    else:
+        return False
+        print('## Directory [' + sourcedir + '] contains none of the sorted file types [' + ftype_sort + ']\n## EXIT CinderellaSort')
 
 def matchstring(file, matchtable=''):
     if len(matchtable) > 0:
@@ -283,8 +284,11 @@ def handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, c
             movefile(sourcedir, file, targetdir + bowl, nfile, dryrun)
     return
 
-def handle_gps(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
-    if ftype == file_ext and ftype in ['.jpg', '.jpeg'] and not file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
+def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
+    # Get file extension
+    file_ext = os.path.splitext(file.name)[1].lower()
+    # Check if this is an image file that we should process
+    if file_ext in ['.jpg', '.jpeg'] and not file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
         from wit_pytools.imgtools import img_getgps
         from wit_pytools.gpstools import gps_distance
         try:
