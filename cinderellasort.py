@@ -285,8 +285,9 @@ def handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, c
     return
 
 def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
-    # Check if this is an image file that we should process
-    if not file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
+    # Check if this is a supported image file type (JPEG or JPG) that we should process
+    file_ext = os.path.splitext(file.name)[1].lower()
+    if file_ext in ['.jpg', '.jpeg'] and not file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
         from wit_pytools.imgtools import img_getgps
         try:
             nfile = file.name
