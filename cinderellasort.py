@@ -318,8 +318,26 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
     return
 
 def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
+    if not dryrun:
+        file_path = os.path.join(sourcedir, file.name)
+        file_mod_time = datetime.fromtimestamp(os.path.getmtime(file_path))
+        current_time = datetime.now()
+        time_diff = current_time - file_mod_time
+        
+        # Delete if older than 7 days
+        if time_diff.days > 7:
+            try:
+                os.remove(file_path)
+                print(f" - Deleted old file {file.name}: {time_diff.days} days old")
+                return
+            except Exception as e:
+                print(f"Error deleting old file {file.name}: {e}")
+                
     for ftype in ftype_sort.split(','):
         ftype = ftype.strip().casefold()
+        if ftype == 'pdf':
+            handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+        
         ## Handle E-Mail Bowls ##
         if bowllist_email(config_object):
             handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
@@ -340,7 +358,6 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
     # If the loop completes without breaking, the file didn't match any specified type
     else:
         print(f" - Skipping file {file.name}: not a specified type")
-
 
 def cinderellasort(configfile, dryrun=False):
     #TODO check configfile for valid ini file
@@ -433,4 +450,5 @@ def cinderellasort(configfile, dryrun=False):
             print(' #  No valid sort found!') 
 
 #    print(f"\n## Removing empty directories:")
+#    rmemptydir(sourcedir,dryrun)
 #    rmemptydir(sourcedir,dryrun)
