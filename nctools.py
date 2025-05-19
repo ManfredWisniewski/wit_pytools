@@ -11,9 +11,12 @@ def getncpath():
 def getncfilename(filename):
     return os.path.basename(filename)
 
-def getncfilepath(filename):
-    ncpath = getncpath()
-    return os.path.join(ncpath, 'data', filename)
+# Remove the nextcloud relative path from an absolute path without leading slash
+def getncpath(abspath):
+    import re
+    ncpath = re.sub(r'^.*?/data', '', abspath)
+    ncpath = ncpath.lstrip('/')
+    return ncpath
 
 #def getncabspath(filename):
 #    ncpath = getncpath()
@@ -39,12 +42,12 @@ def ncdelfile(ncfile):
             #ignore directory already exists error TODO: make more elegant
             True
 
-def ncmovefile(ncfile, destdir, nfile):
-    with start_action(action_type=f"occ moving file {ncfile} to {os.path.join(destdir, nfile)}"):
+def ncmovefile(ncfile, ncdest):
+    with start_action(action_type=f"ncmovefile: moving file {ncfile} to {ncdest}", level="INFO"):
         try:
             #TODO variable nextcloudpath
             subprocess.run(
-                f'php /var/www/nextcloud/occ files:move "{ncfile}" "{os.path.join(destdir, nfile)}"',
+                f'php /var/www/nextcloud/occ files:move "{ncfile}" "{ncdest}"',
                 capture_output=True,
                 shell=True,
                 text=True,
