@@ -306,9 +306,20 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
                     # Only rename in place and add _nogps
                     movefile(sourcedir, file.name, sourcedir, nfile, overwrite, dryrun)
                 return
-            # Log all available bowls
+            # Log all available bowls with their coordinates
             all_bowls = bowllist_gps(config_object)
-            log_message("Available GPS bowls: {}".format(all_bowls), level="DEBUG")
+            bowl_coords = {}
+            if config_object.has_section("BOWLS_GPS"):
+                for bowl, critlist in config_object.items("BOWLS_GPS", raw=True):
+                    if "!DEFAULT" in critlist:
+                        continue
+                    coords = []
+                    for crit in critlist.split(';'):
+                        if ',' in crit and len(crit.split(',')) == 2:
+                            coords.append(crit)
+                    bowl_name = bowl.split(';')[0] if ';' in bowl else bowl
+                    bowl_coords[bowl_name] = coords
+            log_message("Available GPS bowls with coordinates: {}".format(bowl_coords), level="DEBUG")
             
             bowl = bowldir_gps(nfile, config_object, image_coords)
             log_message("Selected bowl: {} for coordinates: {}".format(bowl, image_coords), level="DEBUG")
