@@ -186,12 +186,22 @@ def bowldir_gps(file, config_object='', image_coords=None):
                         try:
                             crit_lat, crit_lon = map(float, normalized_crit.split(','))
                             log_message(f"Comparing bowl coordinates {crit_lat},{crit_lon} with image coordinates {image_coords}", level="DEBUG")
-                            dist = gps_distance(image_coords, (crit_lat, crit_lon))
-                            log_message(f"Distance: {dist} km (max allowed: {distancekm} km)", level="DEBUG")
-                            if dist < distancekm:
-                                found = True
-                                log_message(f"Found matching bowl: {bowl_name} with distance {dist} km", level="DEBUG")
-                                return '/' + bowl_name
+                            
+                            # Ensure both coordinates are in the correct format
+                            if len(image_coords) != 2:
+                                log_message(f"Invalid image coordinates format: {image_coords}", level="ERROR")
+                                continue
+                                
+                            try:
+                                dist = gps_distance(image_coords, (crit_lat, crit_lon))
+                                log_message(f"Distance: {dist} km (max allowed: {distancekm} km)", level="DEBUG")
+                                if dist < distancekm:
+                                    found = True
+                                    log_message(f"Found matching bowl: {bowl_name} with distance {dist} km", level="DEBUG")
+                                    return '/' + bowl_name
+                            except Exception as e:
+                                log_message(f"Error calculating distance: {e}", level="ERROR")
+                                continue
                         except Exception as e:
                             continue
             
