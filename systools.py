@@ -101,17 +101,21 @@ def movefile(subdir, file, destdir, nfile, filemode='win', overwrite=False, dryr
                     if overwrite and os.path.exists(target_path):
                         os.remove(target_path)
                     os.rename(source_path, target_path)
-                if filemode == 'nc':
+                    log_message(f"movefile win: Successfully moved file to {target_path}", level="INFO")
+                elif filemode == 'nc':
+                    os.rename(source_path, target_path)
                     import witnctools
                     witnctools.ncscandir(target_path)
-                log_message(f"Successfully moved file to {target_path}", level="INFO")
+                    log_message(f"movefile nc: Successfully moved file to {target_path}", level="INFO")
+                else:
+                    log_message(f"movefile: Unknown filemode '{filemode}'", level="ERROR")
         except FileNotFoundError:
-            log_message(f"ERROR: Source file not found: {source_path}", level="ERROR")
+            log_message(f"movefile: ERROR: Source file not found: {source_path}", level="ERROR")
         except PermissionError:
-            log_message(f"ERROR: Permission denied. Check file permissions for {source_path} or {destdir}", level="ERROR")
+            log_message(f"movefile: ERROR: Permission denied. Check file permissions for {source_path} or {destdir}", level="ERROR")
             # Try fallback to copy and delete
             try:
-                log_message(f"Attempting copy and delete instead...", level="INFO")
+                log_message(f"movefile: Attempting copy and delete instead...", level="INFO")
                 shutil.copy2(source_path, target_path)
                 os.remove(source_path)
                 log_message(f"Successfully copied file to {target_path} and removed original", level="INFO")
