@@ -187,13 +187,19 @@ def bowldir_gps(file, config_object='', image_coords=None):
                             crit_lat, crit_lon = map(float, normalized_crit.split(','))
                             log_message(f"Comparing bowl coordinates {crit_lat},{crit_lon} with image coordinates {image_coords}", level="DEBUG")
                             
-                            # Ensure both coordinates are in the correct format
-                            if len(image_coords) != 2:
-                                log_message(f"Invalid image coordinates format: {image_coords}", level="ERROR")
-                                continue
+                            # Parse coordinates if they're in string format (lat,lon)
+                            parsed_image_coords = image_coords
+                            if isinstance(image_coords, str) and ',' in image_coords:
+                                try:
+                                    lat, lon = map(float, image_coords.split(','))
+                                    parsed_image_coords = (lat, lon)
+                                    log_message(f"Parsed image coordinates from string: {parsed_image_coords}", level="DEBUG")
+                                except Exception as e:
+                                    log_message(f"Failed to parse image coordinates: {e}", level="ERROR")
+                                    continue
                                 
                             try:
-                                dist = gps_distance(image_coords, (crit_lat, crit_lon))
+                                dist = gps_distance(parsed_image_coords, (crit_lat, crit_lon))
                                 log_message(f"Distance: {dist} km (max allowed: {distancekm} km)", level="DEBUG")
                                 if dist < distancekm:
                                     found = True
