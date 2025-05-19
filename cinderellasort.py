@@ -138,9 +138,11 @@ def bowldir_gps(file, config_object='', image_coords=None):
             # fetch fallback distance if exists
             if config_object.has_section('ITEMS') and config_object.has_option('ITEMS', 'gps_default_distancekm'):
                 distancekm = float(config_object.get('ITEMS', 'gps_default_distancekm').replace(',', '.'))
+                log_message("Using default distance of {} km for GPS bowls".format(distancekm), level="DEBUG")
             else:
                 distancekm = 2
-                
+                log_message("Setting gps_default_distancekm not found, using  2 km as default for GPS bowls", level="DEBUG")
+            
             default_bowl = ''
             found = False
             
@@ -149,6 +151,7 @@ def bowldir_gps(file, config_object='', image_coords=None):
                 if "!DEFAULT" in critlist:
                     default_bowl = bowl.split(';')[0] if ';' in bowl else bowl
                     continue
+            log_message("Default bowl: {}".format(default_bowl), level="DEBUG")
             
             # Then check for GPS matches
             for (bowl, critlist) in config_object.items("BOWLS_GPS", raw=True):
@@ -161,8 +164,9 @@ def bowldir_gps(file, config_object='', image_coords=None):
                         distance_val, _ = distance_str.split('=', 1)
                         try:
                             distancekm = float(distance_val.replace(',', '.'))
+                            log_message("Distance for bowl {} is {} km".format(bowl_name, distancekm), level="DEBUG")
                         except ValueError:
-                            print(f"Invalid distance value in bowl key: {bowl}")
+                            log_message(f"Invalid distance value in bowl key: {bowl}", level="ERROR")
                             continue
                     else:
                         try:
