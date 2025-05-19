@@ -158,8 +158,10 @@ def bowldir_gps(file, config_object='', image_coords=None):
                 # Extract distance from bowl key if present (format: 'Bowl Name;3=lat,lon')
                 if "!DEFAULT" in critlist:
                     continue
+                log_message(f"Checking bowl: {bowl} with criteria: {critlist}", level="DEBUG")
                 if ';' in bowl:
                     bowl_name, distance_str = bowl.rsplit(';', 1)
+                    log_message(f"Parsed bowl name: {bowl_name}, distance string: {distance_str}", level="DEBUG")
                     if '=' in distance_str:
                         distance_val, _ = distance_str.split('=', 1)
                         try:
@@ -172,13 +174,12 @@ def bowldir_gps(file, config_object='', image_coords=None):
                         try:
                             distancekm = float(distance_str.replace(',', '.'))
                         except ValueError:
-                            print(f"Invalid distance value in bowl key: {bowl}")
+                            log_message(f"Invalid distance value in bowl key: {bowl}", level="ERROR")
                             continue
                 else:
                     bowl_name = bowl
                     
                 for crit in critlist.split(';'):
-                    print(f"{crit}")
                     # Normalize coordinates by removing spaces
                     normalized_crit = crit.replace(' ', '')
                     if is_valid_gps(normalized_crit):
@@ -189,6 +190,7 @@ def bowldir_gps(file, config_object='', image_coords=None):
                             log_message(f"Distance: {dist} km (max allowed: {distancekm} km)", level="DEBUG")
                             if dist < distancekm:
                                 found = True
+                                log_message(f"Found matching bowl: {bowl_name} with distance {dist} km", level="DEBUG")
                                 return '/' + bowl_name
                         except Exception as e:
                             continue
