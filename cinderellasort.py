@@ -25,7 +25,7 @@ def setup_translations(language='de'):
 _ = setup_translations()
 
 # Now import the modules
-from wit_pytools.systools import walklevel, rmemptydir, movefile
+from wit_pytools.systools import walklevel, rmemptydir, movefile, copyfile
 
 dryrun = (True)
 
@@ -136,8 +136,8 @@ def bowldir_gps(file, config_object='', image_coords=None):
     if config_object and len(config_object) > 0 and image_coords:
         if config_object.has_section("BOWLS_GPS"):
             # fetch fallback distance if exists
-            if config_object.has_section('ITEMS') and config_object.has_option('ITEMS', 'default_distancekm'):
-                distancekm = float(config_object.get('ITEMS', 'default_distancekm').replace(',', '.'))
+            if config_object.has_section('ITEMS') and config_object.has_option('ITEMS', 'gps_default_distancekm'):
+                distancekm = float(config_object.get('ITEMS', 'gps_default_distancekm').replace(',', '.'))
             else:
                 distancekm = 2
                 
@@ -152,13 +152,24 @@ def bowldir_gps(file, config_object='', image_coords=None):
             
             # Then check for GPS matches
             for (bowl, critlist) in config_object.items("BOWLS_GPS", raw=True):
+                # Extract distance from bowl key if present (format: 'Bowl Name;3=lat,lon')
                 if "!DEFAULT" in critlist:
                     continue
-                    
-                # Extract distance from bowl key if present (format: 'Bowl Name;distance=GPS tuples')
                 if ';' in bowl:
                     bowl_name, distance_str = bowl.rsplit(';', 1)
-                    distancekm = float(distance_str.replace(',', '.'))
+                    if '=' in distance_str:
+                        distance_val, _ = distance_str.split('=', 1)
+                        try:
+                            distancekm = float(distance_val.replace(',', '.'))
+                        except ValueError:
+                            print(f"Invalid distance value in bowl key: {bowl}")
+                            continue
+                    else:
+                        try:
+                            distancekm = float(distance_str.replace(',', '.'))
+                        except ValueError:
+                            print(f"Invalid distance value in bowl key: {bowl}")
+                            continue
                 else:
                     bowl_name = bowl
                     
@@ -317,15 +328,13 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
                 movefile(sourcedir, file, targetdir + bowl, nfile, overwrite, dryrun)
     return
 
-def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
-    if not dryrun:
-        file_path = os.path.join(sourcedir, file.name)
-        file_mod_time = datetime.fromtimestamp(os.path.getmtime(file_path))
-        current_time = datetime.now()
-        time_diff = current_time - file_mod_time
-        
-        # Delete if older than 7 days
-        if time_diff.days > 7:
+def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress):
+    file_ext = os.path.splitext(file.name)[1].casefold()
+    for ftype in ftype_sort.split(','):
+        ftype = ftype.strip().casefold()
+        ## Handle E-Mails ##
+        if ftype == file_ext and ftype == '.msg':
+            from wit_pytools.mailtools import parse_msg
             try:
                 os.remove(file_path)
                 print(f" - Deleted old file {file.name}: {time_diff.days} days old")
@@ -347,10 +356,56 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
 
         ## Default behavior for all other bowls
         else:
-            nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
-            if not dryrun and filemode == 'win':
-                bowl = bowldir(nfile, config_object)
-                movefile(sourcedir, file, targetdir + bowl, nfile, overwrite, dryrun)
+            ## Handle GPS ##
+            bowls_gps = bowllist_gps(config_object)
+            if bowls_gps and ftype == file_ext and ftype in ['.jpg', '.jpeg'] and not file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
+                from wit_pytools.imgtools import img_getgps
+                from wit_pytools.gpstools import gps_distance
+                from wit_pytools.imgtools import save_img
+                try:
+                    nfile = file.name
+                    log_message(_('Handling GPS: {}').format(os.path.join(sourcedir, file)))
+                    image_coords = img_getgps(sourcedir, file.name)
+                    # image does not contain GPS coordinates
+                    if image_coords is None:
+                        log_message("Image file does not contain GPS coordinates, renaming", level="WARNING")
+                        base, ext = os.path.splitext(file.name)
+                        nfile = base + '_nogps' + ext
+                        if not dryrun and filemode == 'win':
+                            if gps_compress:
+                                input_path = os.path.join(sourcedir, file.name)
+                                save_img(input_path, quality=jpg_quality, maintain_exif=True)
+                            # Only rename in place, do not move
+                            movefile(sourcedir, file.name, sourcedir, nfile, overwrite, dryrun)
+                        return
+                    bowl = bowldir_gps(nfile, config_object, image_coords)
+                    # no matching bowl found
+                    if not bowl:
+                        print(f"No matching bowl found within for file {file.name} at {image_coords}")
+                        continue
+                    log_message(f"Image coordinates: {image_coords}", level="INFO")
+                    if not dryrun and filemode == 'win':
+                        if gps_compress:
+                            input_path = os.path.join(sourcedir, file.name)
+                            save_img(input_path, quality=jpg_quality, maintain_exif=True)
+                        if gps_move_files:
+                            movefile(sourcedir, file, targetdir + bowl, file.name, overwrite, dryrun)
+                        else:
+                            copyfile(sourcedir, file, targetdir + bowl, file.name, overwrite, dryrun)
+                        continue
+                except Exception as e:
+                    print(f"Error handling GPS file {file.name}: {e}")
+                    # Fallback to using the original filename
+                    nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
+                    if not dryrun and filemode == 'win':
+                        bowl = bowldir(nfile, config_object)
+                        movefile(sourcedir, file, targetdir + bowl, nfile, overwrite, dryrun)
+                else:
+                    # Default behavior for other file types
+                    nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
+                    if not dryrun and filemode == 'win':
+                        bowl = bowldir(nfile, config_object)
+                        movefile(sourcedir, file, targetdir + bowl, nfile, overwrite, dryrun)
             else:
                 # File has been handled, so we can break the loop
                 break
@@ -359,6 +414,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
     else:
         print(f" - Skipping file {file.name}: not a specified type")
 
+## MAIN cinderellasort execution ##
 def cinderellasort(configfile, dryrun=False):
     #TODO check configfile for valid ini file
     files = ""
@@ -380,11 +436,11 @@ def cinderellasort(configfile, dryrun=False):
     trash_nocase = (table['trash_nocase'].casefold()) if "trash_nocase" in table else "NOTdefined"
     filemode = (table['filemode'].casefold()) if "filemode" in table else "win"
 
-    # Check if SETTINGS section exists, if not use defaults
-    overwrite = False
-    if "SETTINGS" in config_object:
-        settings = config_object["SETTINGS"]
-        overwrite = settings.get('overwrite', 'false').strip().lower() == 'true'
+    settings = config_object["SETTINGS"]
+    overwrite = settings.get('overwrite', 'false').strip().lower() == 'true'
+    jpg_quality = int(settings.get('jpg_quality', '85').strip())
+    gps_move_files = settings.get('gps_move_files', 'false').strip().lower() == 'true'
+    gps_compress = settings.get('gps_compress', 'false').strip().lower() == 'true'
 
     # Fetch replacements from the REPLACEMENTS section
     replacements = {}
@@ -404,6 +460,9 @@ def cinderellasort(configfile, dryrun=False):
         print('     sort: ' + ftype_sort)
         print('   delete: ' + ftype_delete)
         print('overwrite: ' + str(overwrite))
+        print(' jpg qual: ' + str(jpg_quality))
+        print(' gps move: ' + str(gps_move_files))
+        print(' gps comp: ' + str(gps_compress)) 
 
     # ADD unzip
 
@@ -413,7 +472,7 @@ def cinderellasort(configfile, dryrun=False):
     # Handle files directly in sourcedir
     for item in Path(sourcedir).iterdir():
         if item.is_file():
-            handlefile(item, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+            handlefile(item, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress)
 
     # Process subdirectories in sourcedir
     dirlist = [f for f in Path(sourcedir).resolve().glob('**/*') if f.is_dir()]
