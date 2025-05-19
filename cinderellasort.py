@@ -287,12 +287,6 @@ def handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, c
         if not dryrun and filemode == 'win':
             bowl = bowldir_email(nfile, config_object)
             movefile(sourcedir, file, targetdir + bowl, nfile, dryrun)
-    else:
-        # Default behavior for other file types
-        nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
-        if not dryrun and filemode == 'win':
-            bowl = bowldir_email(nfile, config_object)
-            movefile(sourcedir, file, targetdir + bowl, nfile, dryrun)
     return
 
 def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
@@ -356,56 +350,11 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
 
         ## Default behavior for all other bowls
         else:
-            ## Handle GPS ##
-            bowls_gps = bowllist_gps(config_object)
-            if bowls_gps and ftype == file_ext and ftype in ['.jpg', '.jpeg'] and not file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
-                from wit_pytools.imgtools import img_getgps
-                from wit_pytools.gpstools import gps_distance
-                from wit_pytools.imgtools import save_img
-                try:
-                    nfile = file.name
-                    log_message(_('Handling GPS: {}').format(os.path.join(sourcedir, file)))
-                    image_coords = img_getgps(sourcedir, file.name)
-                    # image does not contain GPS coordinates
-                    if image_coords is None:
-                        log_message("Image file does not contain GPS coordinates, renaming", level="WARNING")
-                        base, ext = os.path.splitext(file.name)
-                        nfile = base + '_nogps' + ext
-                        if not dryrun and filemode == 'win':
-                            if gps_compress:
-                                input_path = os.path.join(sourcedir, file.name)
-                                save_img(input_path, quality=jpg_quality, maintain_exif=True)
-                            # Only rename in place, do not move
-                            movefile(sourcedir, file.name, sourcedir, nfile, overwrite, dryrun)
-                        return
-                    bowl = bowldir_gps(nfile, config_object, image_coords)
-                    # no matching bowl found
-                    if not bowl:
-                        print(f"No matching bowl found within for file {file.name} at {image_coords}")
-                        continue
-                    log_message(f"Image coordinates: {image_coords}", level="INFO")
-                    if not dryrun and filemode == 'win':
-                        if gps_compress:
-                            input_path = os.path.join(sourcedir, file.name)
-                            save_img(input_path, quality=jpg_quality, maintain_exif=True)
-                        if gps_move_files:
-                            movefile(sourcedir, file, targetdir + bowl, file.name, overwrite, dryrun)
-                        else:
-                            copyfile(sourcedir, file, targetdir + bowl, file.name, overwrite, dryrun)
-                        continue
-                except Exception as e:
-                    print(f"Error handling GPS file {file.name}: {e}")
-                    # Fallback to using the original filename
-                    nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
-                    if not dryrun and filemode == 'win':
-                        bowl = bowldir(nfile, config_object)
-                        movefile(sourcedir, file, targetdir + bowl, nfile, overwrite, dryrun)
-                else:
-                    # Default behavior for other file types
-                    nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
-                    if not dryrun and filemode == 'win':
-                        bowl = bowldir(nfile, config_object)
-                        movefile(sourcedir, file, targetdir + bowl, nfile, overwrite, dryrun)
+            # Default behavior for other file types
+            nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
+            if not dryrun and filemode == 'win':
+                bowl = bowldir(nfile, config_object)
+                movefile(sourcedir, file, targetdir + bowl, nfile, overwrite, dryrun)
             else:
                 # File has been handled, so we can break the loop
                 break
