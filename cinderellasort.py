@@ -303,39 +303,35 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
                 base, ext = os.path.splitext(file.name)
                 nfile = base + '_nogps' + ext
                 if not dryrun and filemode == 'win':
-                    # Only rename in place, do not move
+                    # Only rename in place and add _nogps
                     movefile(sourcedir, file.name, sourcedir, nfile, overwrite, dryrun)
                 return
             bowl = bowldir_gps(nfile, config_object, image_coords)
             if not bowl:
-                print(f"No matching bowl found within for file {file.name} at {image_coords}")
+                log_message("No matching bowl found within for file {} at {}".format(file.name, image_coords), level="WARNING")
                 return
-            log_message(f"Image coordinates: {image_coords}", level="INFO")
-            if not dryrun and filemode == 'win':
+            log_message("Image coordinates: {}".format(image_coords), level="INFO")
+            if not dryrun:
                 movefile(sourcedir, file, targetdir + bowl, file.name, overwrite, dryrun)
         except Exception as e:
-            print(f"Error handling GPS file {file.name}: {e}")
-            # Fallback to using the original filename
+            log_message("Error handling GPS file {}".format(file.name), level="ERROR")
             nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
-            if not dryrun and filemode == 'win':
+            if not dryrun:
                 bowl = bowldir(nfile, config_object)
                 movefile(sourcedir, file, targetdir + bowl, nfile, overwrite, dryrun)
     return
 
+def handle_oldfiles(file_path, time_diff):
+    #TODO FINISH AND TEST
+    try:
+        os.remove(file_path)
+        print(f" - Deleted old file {file.name}: {time_diff.days} days old")
+        return
+    except Exception as e:
+        print(f"Error deleting old file {file.name}: {e}")
+        return
+
 def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress):
-    file_ext = os.path.splitext(file.name)[1].casefold()
-    for ftype in ftype_sort.split(','):
-        ftype = ftype.strip().casefold()
-        ## Handle E-Mails ##
-        if ftype == file_ext and ftype == '.msg':
-            from wit_pytools.mailtools import parse_msg
-            try:
-                os.remove(file_path)
-                print(f" - Deleted old file {file.name}: {time_diff.days} days old")
-                return
-            except Exception as e:
-                print(f"Error deleting old file {file.name}: {e}")
-                
     for ftype in ftype_sort.split(','):
         ftype = ftype.strip().casefold()
         if ftype == 'pdf':
@@ -344,6 +340,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         ## Handle E-Mail Bowls ##
         if bowllist_email(config_object):
             handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+
         ## Handle GPS Bowls##
         elif bowllist_gps(config_object):
             handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
