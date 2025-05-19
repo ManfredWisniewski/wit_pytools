@@ -33,7 +33,7 @@ _log_file = None
 _destination = None
 _loki_destination = None
 
-def log_setup(logdir=os.getcwd(), level="INFO"):
+def log_setup(logdir=os.getcwd(), logfile="pytools.log", level="INFO"):
     """Setup Eliot logging with log level filtering"""
     global _log_file, _destination
     import eliot
@@ -55,7 +55,7 @@ def log_setup(logdir=os.getcwd(), level="INFO"):
             return
         # Create directory if it doesn't exist
         os.makedirs(logdir, exist_ok=True)
-        log_path = os.path.join(logdir, "mailsort.log")
+        log_path = os.path.join(logdir, logfile)
         print(f"DEBUG: Opening log file: {log_path}")  # Debug print
         _log_file = open(log_path, "a")
         _destination = FileDestination(file=_log_file, encoder=CustomEliotEncoder)
