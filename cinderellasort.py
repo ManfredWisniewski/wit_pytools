@@ -179,12 +179,14 @@ def bowldir_gps(file, config_object='', image_coords=None):
                     
                 for crit in critlist.split(';'):
                     print(f"{crit}")
-                    if is_valid_gps(crit):
+                    # Normalize coordinates by removing spaces
+                    normalized_crit = crit.replace(' ', '')
+                    if is_valid_gps(normalized_crit):
                         try:
-                            crit_lat, crit_lon = map(float, crit.split(','))
-                            print(f"{crit_lat}, {crit_lon}")
+                            crit_lat, crit_lon = map(float, normalized_crit.split(','))
+                            log_message(f"Comparing bowl coordinates {crit_lat},{crit_lon} with image coordinates {image_coords}", level="DEBUG")
                             dist = gps_distance(image_coords, (crit_lat, crit_lon))
-                            print(f"{dist}")
+                            log_message(f"Distance: {dist} km (max allowed: {distancekm} km)", level="DEBUG")
                             if dist < distancekm:
                                 found = True
                                 return '/' + bowl_name
