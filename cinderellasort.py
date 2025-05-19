@@ -303,14 +303,14 @@ def handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, c
             log_message("No mail information available or incomplete data.")
             nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
             bowl = bowldir_email(nfile, config_object)
-            movefile(sourcedir, file, targetdir + bowl, nfile, filemode='win', dryrun=dryrun)
+            movefile(sourcedir, file, targetdir + bowl, nfile, filemode, dryrun=dryrun)
     except Exception as e:
         print(f"Error handling MSG file {file.name}: {e}")
         # Fallback to using the original filename
         nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
         if not dryrun and filemode == 'win':
             bowl = bowldir_email(nfile, config_object)
-            movefile(sourcedir, file, targetdir + bowl, nfile, filemode='win', dryrun=dryrun)
+            movefile(sourcedir, file, targetdir + bowl, nfile, filemode, dryrun=dryrun)
     return
 
 def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
@@ -353,13 +353,13 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
                 return
             log_message("Image coordinates: {}".format(image_coords), level="DEBUG")
             if not dryrun:
-                movefile(sourcedir, file, targetdir + bowl, nfile, filemode='win', overwrite=overwrite, dryrun=dryrun)
+                movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
         except Exception as e:
             log_message("Error handling GPS file {}".format(file.name), level="ERROR")
             nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
             if not dryrun:
                 bowl = bowldir(nfile, config_object)
-                movefile(sourcedir, file, targetdir + bowl, nfile, filemode='win', overwrite=overwrite, dryrun=dryrun)
+                movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
     return
 
 def handle_oldfiles(file_path, time_diff):
@@ -392,7 +392,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
             nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
             if not dryrun and filemode == 'win':
                 bowl = bowldir(nfile, config_object)
-                movefile(sourcedir, file, targetdir + bowl, nfile, filemode='win', overwrite=overwrite, dryrun=dryrun)
+                movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
             else:
                 # File has been handled, so we can break the loop
                 break
@@ -487,11 +487,11 @@ def cinderellasort(configfile, filemode='win', dryrun=False):
                     # TEST what if MULTIPLE files in -subdirs-
                     for file in files:
                         nfile = cleanfilename(file, clean, clean_nocase, replacements, subdir)
-                        movefile(subdir, file, targetdir + bowldir(nfile, config_object), nfile, filemode='win', overwrite=overwrite, dryrun=dryrun)
+                        movefile(subdir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, overwrite=overwrite, dryrun=dryrun)
                 elif len(files) > 1:
                     for file in files:
                         nfile = cleanfilename(file, clean, clean_nocase, replacements)
-                        movefile(subdir, file, targetdir + bowldir(nfile, config_object), nfile, filemode='win', overwrite=overwrite, dryrun=dryrun)
+                        movefile(subdir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, overwrite=overwrite, dryrun=dryrun)
         else:
             print(' #  No valid sort found!') 
 
