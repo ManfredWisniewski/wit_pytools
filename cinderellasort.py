@@ -297,7 +297,7 @@ def handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, c
             nfile = maildata[0]+'_'+maildata[1]+'_'+project_name+'_'+maildata[2]+'.msg'
             nfile = cleanfilename(nfile, clean, clean_nocase, replacements)
             bowl = bowldir_email(nfile, config_object)
-            movefile(sourcedir, file, targetdir + bowl, nfile)
+            movefile(sourcedir, file, targetdir + bowl, nfile, filemode)
         else:
             #TODO check
             log_message("No mail information available or incomplete data.")
@@ -328,7 +328,7 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
                 nfile = base + '_nogps' + ext
                 if not dryrun and filemode == 'win':
                     # Only rename in place and add _nogps
-                    movefile(sourcedir, file.name, sourcedir, nfile, overwrite, dryrun)
+                    movefile(sourcedir, file.name, sourcedir, nfile, filemode, overwrite, dryrun)
                 return
             # Log all available bowls with their coordinates
             all_bowls = bowllist_gps(config_object)
@@ -402,7 +402,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         print(f" - Skipping file {file.name}: not a specified type")
 
 ## MAIN cinderellasort execution ##
-def cinderellasort(configfile, dryrun=False):
+def cinderellasort(configfile, filemode='win', dryrun=False):
     #TODO check configfile for valid ini file
     files = ""
     time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')

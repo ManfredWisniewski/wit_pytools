@@ -1,4 +1,5 @@
 import os, shutil
+from stat import filemode
 
 # Helper function for dry run printing
 def dryprint(dryrun, *args):
@@ -57,16 +58,16 @@ def delfile(subdir, file, dryrun=False):
     else:
         os.remove((os.path.join(subdir, file)))
 
-def movefile(subdir, file, destdir, nfile, overwrite=False, dryrun=False):
+def movefile(subdir, file, destdir, nfile, filemode='win', overwrite=False, dryrun=False):
     #TODO: add rights handeling before attempt (gets stuck sometimes when copy but no write access
-    print('OVERWRITE: ' + str(overwrite))
+    log_message('movefile OVERWRITE: ' + str(overwrite), level="DEBUG")
     if not dryrun:
         # Check for null bytes in arguments and remove them if found
         args = [subdir, file, destdir, nfile]
         cleaned_args = []
         for arg in args:
             if '\x00' in str(arg):
-                log_message(f"ERROR: Null byte detected and removed in argument: {arg!r}", level="INFO")
+                log_message(f"movefile: Null byte detected and removed in argument: {arg!r}", level="INFO")
                 arg = str(arg).replace('\x00', '')
             arg = str(arg).rstrip()
             cleaned_args.append(arg)
@@ -96,9 +97,13 @@ def movefile(subdir, file, destdir, nfile, overwrite=False, dryrun=False):
                 except Exception as e2:
                     log_message(f"ERROR: Could not copy to enumerated filename: {str(e2)}", level="ERROR")
             else:
-                if overwrite and os.path.exists(target_path):
-                    os.remove(target_path)
-                os.rename(source_path, target_path)
+                if filemode == 'win':
+                    if overwrite and os.path.exists(target_path):
+                        os.remove(target_path)
+                    os.rename(source_path, target_path)
+                if filemode == 'nc':
+                    import witnctools
+                    witnctools.ncscandir(target_path)
                 log_message(f"Successfully moved file to {target_path}", level="INFO")
         except FileNotFoundError:
             log_message(f"ERROR: Source file not found: {source_path}", level="ERROR")
