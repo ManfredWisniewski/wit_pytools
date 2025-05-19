@@ -11,12 +11,19 @@ def getncpath():
 def getncfilename(filename):
     return os.path.basename(filename)
 
-# Remove the nextcloud relative path from an absolute path without leading slash
+# Returns the nextcloud relative file path from an absolute path without leading slash
 def getncpath(abspath):
     import re
     ncpath = re.sub(r'^.*?/data', '', abspath)
     ncpath = ncpath.lstrip('/')
     return ncpath
+
+# Returns the nextcloud relative directory path from an absolute path without leading slash
+def getncdir(abspath):
+    import re
+    ncpath = re.sub(r'^.*?/data', '', abspath)
+    ncpath = ncpath.lstrip('/')
+    return os.path.dirname(ncpath)
 
 #def getncabspath(filename):
 #    ncpath = getncpath()
