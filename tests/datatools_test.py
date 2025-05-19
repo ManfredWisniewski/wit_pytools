@@ -1,7 +1,7 @@
 import os, pytest
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from datatools import prepregex
+from wit_pytools.sanitizers import prepregex
 
 def test_prepregex_basic():
     """Test basic functionality of prepregex"""
