@@ -146,7 +146,7 @@ def bowldir_gps(file, config_object='', image_coords=None):
             default_bowl = ''
             found = False
             
-            # First check for default bowl
+            # Check for default bowl
             for (bowl, critlist) in config_object.items("BOWLS_GPS", raw=True):
                 if "!DEFAULT" in critlist:
                     default_bowl = bowl.split(';')[0] if ';' in bowl else bowl
@@ -351,9 +351,9 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
             if not bowl:
                 log_message("No matching bowl found within for file {} at {}".format(file.name, image_coords), level="WARNING")
                 return
-            log_message("Image coordinates: {}".format(image_coords), level="INFO")
+            log_message("Image coordinates: {}".format(image_coords), level="DEBUG")
             if not dryrun:
-                movefile(sourcedir, file, targetdir + bowl, file.name, overwrite, dryrun)
+                movefile(sourcedir, file, targetdir + bowl, nfile, overwrite, dryrun)
         except Exception as e:
             log_message("Error handling GPS file {}".format(file.name), level="ERROR")
             nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
