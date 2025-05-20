@@ -402,7 +402,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         print(f" - Skipping file {file.name}: not a specified type")
 
 ## MAIN cinderellasort execution ##
-def cinderellasort(configfile, filemode='win', dryrun=False):
+def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     #TODO check configfile for valid ini file
     files = ""
     time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -456,10 +456,23 @@ def cinderellasort(configfile, filemode='win', dryrun=False):
     # prepare for sort process
     prepsort(config_object, targetdir)
 
-    # Handle files directly in sourcedir
-    for item in Path(sourcedir).iterdir():
-        if item.is_file():
-            handlefile(item, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress)
+    # Handle single file if specified, otherwise process all files in sourcedir
+    if single:
+        # If single file is specified, only handle that file
+        from witnctools import getncabsdir, getncfilename
+        from pathlib import Path
+        
+        file_dir = getncabsdir(single)
+        file_name = getncfilename(single)
+        file_path = Path(os.path.join(file_dir, file_name))
+        
+        if file_path.is_file():
+            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress)
+    else:
+        # Handle all files directly in sourcedir
+        for item in Path(sourcedir).iterdir():
+            if item.is_file():
+                handlefile(item, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress)
 
     # Process subdirectories in sourcedir
     dirlist = [f for f in Path(sourcedir).resolve().glob('**/*') if f.is_dir()]
