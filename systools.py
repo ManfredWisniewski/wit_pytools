@@ -106,7 +106,7 @@ def movefile(subdir, file, destdir, nfile, filemode='win', overwrite=False, dryr
                     log_message(f"movefile win: Successfully moved file to {target_path}", level="INFO")
                 elif filemode == 'nc':
                     from wit_pytools import nctools
-                    nctools.ncmovefile(getncpath(source_path),getncpath(target_path))
+                    nctools.ncmovefile(nctools.getncpath(source_path), nctools.getncpath(target_path))
                     log_message(f"movefile nc: Successfully moved file to {target_path}", level="INFO")
                 else:
                     log_message(f"movefile: Unknown filemode '{filemode}'", level="ERROR")

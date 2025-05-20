@@ -3,7 +3,7 @@ import subprocess
 from eliot import start_action, to_file, log_message
 
 
-def getncpath():
+def getncroot():
     config = readconfig()
     ncdir = config['WIT PYTOOLS'].get('ncdir')
     return ncdir
