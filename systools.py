@@ -105,7 +105,7 @@ def movefile(subdir, file, destdir, nfile, filemode='win', overwrite=False, dryr
                     os.rename(source_path, target_path)
                     log_message(f"movefile win: Successfully moved file to {target_path}", level="INFO")
                 elif filemode == 'nc':
-                    import nctools
+                    from wit_pytools import nctools
                     nctools.ncmovefile(getncpath(source_path),getncpath(target_path))
                     log_message(f"movefile nc: Successfully moved file to {target_path}", level="INFO")
                 else:
