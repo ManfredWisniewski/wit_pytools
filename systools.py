@@ -1,8 +1,6 @@
 import os, shutil
 from stat import filemode
 
-from witnctools import getncpath
-
 # Helper function for dry run printing
 def dryprint(dryrun, *args):
     if dryrun:
