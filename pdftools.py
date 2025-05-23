@@ -1,4 +1,5 @@
 import os
+import re
 
 # For Tesseract-OCR (scanning via PDF-Image)
 # https://github.com/tesseract-ocr/tesseract/releases
@@ -38,13 +39,16 @@ def pdf_to_markdown_ocr(pdf_path):
         text += f"\n\n[Image: {img_filename}]\n\n"
     return text
 
-def process_all_pdfs_in_directory(directory_path, output_csv_path, combine_results=False):
+
+
+def process_all_pdfs_in_directory(directory_path, output_csv_path, combine_results=False, sanitizer_func=None):
     """Process all PDFs in the specified directory and optionally concatenate results to a single CSV file.
     
     Args:
         directory_path: Path to directory containing PDF files
         output_csv_path: Path to output CSV file
-        combine_results: If True, combine all results into a single CSV file (default: True)
+        combine_results: If True, combine all results into a single CSV file (default: False)
+        sanitizer_func: Function to sanitize the extracted text (default: None)
     """
     if not os.path.exists(directory_path):
         print(f"Directory not found: {directory_path}")
@@ -67,7 +71,12 @@ def process_all_pdfs_in_directory(directory_path, output_csv_path, combine_resul
         try:
             # Extract and process text from PDF
             md_text = pdf_to_markdown(pdf_path)
-            processed_text = md_text
+            
+            # Sanitize the text
+            if sanitizer_func:
+                processed_text = sanitizer_func(md_text)
+            else:
+                processed_text = sanitize_pdf_text(md_text)
             
             # Add to results
             all_results.append(processed_text)
@@ -100,4 +109,5 @@ if __name__ == "__main__":
     output_csv = "M:\\encode\\pdf\\combined_results.csv"
     
     # Process all PDFs and create combined CSV
-    process_all_pdfs_in_directory(pdf_directory, output_csv, combine_results=False)
+    from sanitizers_special import sanitize_markdown_metro_invoice
+    process_all_pdfs_in_directory(pdf_directory, output_csv, combine_results=False, sanitizer_func=sanitize_markdown_metro_invoice)
