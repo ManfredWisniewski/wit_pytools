@@ -10,19 +10,20 @@ import os
 # to: 
 # C:\Users\$USER\AppData\Local\Programs\Tesseract-OCR\tessdata
 
+
+## Convert a PDF file to Markdown using MarkItDown.
 def pdf_to_markdown(pdf_path):
     from markitdown import MarkItDown
-    """Convert a PDF file to Markdown using MarkItDown."""
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"File not found: {pdf_path}")
     md = MarkItDown(enable_plugins=False, enable_ocr=True)
     result = md.convert(pdf_path)
     return result.text_content
 
+## Convert PDF pages to images and extract text using OCR (pytesseract).
 def pdf_to_markdown_ocr(pdf_path):
     from pdf2image import convert_from_path
     import pytesseract
-    """Convert PDF pages to images and extract text using OCR (pytesseract)."""
     if not os.path.exists(pdf_path):
         raise FileNotFoundError(f"File not found: {pdf_path}")
     images = convert_from_path(pdf_path)
@@ -37,8 +38,14 @@ def pdf_to_markdown_ocr(pdf_path):
         text += f"\n\n[Image: {img_filename}]\n\n"
     return text
 
-def process_all_pdfs_in_directory(directory_path, output_csv_path):
-    """Process all PDFs in the specified directory and concatenate results to a single CSV file."""
+def process_all_pdfs_in_directory(directory_path, output_csv_path, combine_results=False):
+    """Process all PDFs in the specified directory and optionally concatenate results to a single CSV file.
+    
+    Args:
+        directory_path: Path to directory containing PDF files
+        output_csv_path: Path to output CSV file
+        combine_results: If True, combine all results into a single CSV file (default: True)
+    """
     if not os.path.exists(directory_path):
         print(f"Directory not found: {directory_path}")
         return
@@ -74,21 +81,23 @@ def process_all_pdfs_in_directory(directory_path, output_csv_path):
         except Exception as e:
             print(f"  Error processing {pdf_file}: {str(e)}")
     
-    # Combine all results and write to output CSV
-    combined_text = '\n'.join(all_results)
+    # Combine all results and write to output CSV if requested
+    if combine_results:
+        combined_text = '\n'.join(all_results)
+        
+        with open(output_csv_path, "wb") as f:
+            f.write(combined_text.encode('utf-8'))
+        
+        print(f"\nAll results combined and written to {output_csv_path}")
     
-    with open(output_csv_path, "wb") as f:
-        f.write(combined_text.encode('utf-8'))
-    
-    print(f"\nAll results combined and written to {output_csv_path}")
     print(f"Total PDFs processed: {len(pdf_files)}")
 
 if __name__ == "__main__":
     # Directory containing PDF files
-    pdf_directory = os.path.join(os.path.dirname(__file__), "tests", "pdftools", "pdf")
+    pdf_directory = "M:\\encode\\pdf\\metro"
     
     # Output CSV file path
-    output_csv = os.path.join(os.path.dirname(__file__), "tests", "pdftools", "combined_results.csv")
+    output_csv = "M:\\encode\\pdf\\combined_results.csv"
     
     # Process all PDFs and create combined CSV
-    process_all_pdfs_in_directory(pdf_directory, output_csv)
+    process_all_pdfs_in_directory(pdf_directory, output_csv, combine_results=False)
