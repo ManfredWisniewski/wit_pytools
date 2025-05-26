@@ -1,0 +1,65 @@
+classDiagram
+    class cinderellasort {
+        +setup_translations(language)
+        +isvalidsort(sourcedir, ftype_sort)
+        +matchstring(file, matchtable)
+        +bowllist(config_object)
+        +bowllist_gps(config_object)
+        +bowllist_email(config_object)
+        +bowldir(file, config_object)
+        +bowldir_email(file, config_object)
+        +bowldir_gps(file, config_object, image_coords)
+        +cleanfilename(file, clean, clean_nocase, replacements, subdir)
+        +prepsort(config_object, targetdir, prepfilter)
+        +handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+        +handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+        +handle_oldfiles(file_path, time_diff)
+        +handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress)
+        +cinderellasort(configfile, single, filemode, dryrun)
+    }
+
+    class Dependencies {
+        os
+        re
+        sys
+        datetime
+        configparser
+        pathlib.Path
+        eliot
+        gettext
+    }
+
+    class WitPyTools {
+        witpytools
+        sanitizers
+        systools
+        gpstools
+        imgtools
+    }
+
+    Dependencies --> cinderellasort : imports
+    WitPyTools --> cinderellasort : imports
+
+    class ConfigurationHandling {
+        +Parse configuration files
+        +Setup translations
+        +Prepare sorting process
+    }
+
+    class FileSorting {
+        +Match files to criteria
+        +Clean filenames
+        +Handle different file types
+        +Move/copy files to destinations
+    }
+
+    class BowlManagement {
+        +List available bowls
+        +Match files to bowls
+        +Handle GPS-based sorting
+        +Handle email-based sorting
+    }
+
+    cinderellasort --> ConfigurationHandling : implements
+    cinderellasort --> FileSorting : implements
+    cinderellasort --> BowlManagement : implements

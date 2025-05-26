@@ -1,0 +1,41 @@
+classDiagram
+    class systools {
+        +dryprint(dryrun, *args)
+        +walklevel(path, depth)
+        +checkfile(sourcedir, file)
+        +rmemptydir(rootdir, dryrun)
+        +delfile(subdir, file, dryrun)
+        +movefile(subdir, file, destdir, nfile, filemode, overwrite, dryrun)
+        +copyfile(subdir, file, destdir, nfile, overwrite, dryrun)
+        +moveallfiles(sourcedir, destdir, dryrun)
+    }
+
+    class Dependencies {
+        os
+        shutil
+        stat.filemode
+        eliot
+    }
+
+    Dependencies --> systools : imports
+
+    class FileOperations {
+        +Check file existence
+        +Delete files
+        +Move files
+        +Copy files
+        +Move all files in directory
+    }
+
+    class DirectoryOperations {
+        +Walk directory with level control
+        +Remove empty directories
+    }
+
+    class UtilityFunctions {
+        +Dry run printing
+    }
+
+    systools --> FileOperations : implements
+    systools --> DirectoryOperations : implements
+    systools --> UtilityFunctions : implements

@@ -1,0 +1,24 @@
+classDiagram
+    class mailtools {
+        +parse_eml(file, dryrun)
+        +parse_msg(file, dryrun)
+    }
+
+    class Dependencies {
+        os
+        re
+        sys
+        shutil
+        extract_msg
+        eml_parser
+    }
+
+    Dependencies --> mailtools : imports
+
+    class EmailParsing {
+        +Parse EML format emails
+        +Parse MSG format emails
+        +Extract date, sender, subject
+    }
+
+    mailtools --> EmailParsing : implements

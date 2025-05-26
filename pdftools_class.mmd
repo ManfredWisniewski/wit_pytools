@@ -1,0 +1,25 @@
+classDiagram
+    class pdftools {
+        +pdf_to_markdown(pdf_path)
+        +pdf_to_markdown_ocr(pdf_path)
+        +process_all_pdfs_in_directory(directory_path, output_csv_path, combine_results, sanitizer_func)
+    }
+
+    class Dependencies {
+        os
+        re
+        markitdown.MarkItDown
+        pdf2image
+        pytesseract
+    }
+
+    Dependencies --> pdftools : imports
+
+    class PDFConversion {
+        +Convert PDF to Markdown
+        +OCR PDF pages to text
+        +Process multiple PDFs
+        +Save results to CSV
+    }
+
+    pdftools --> PDFConversion : implements

@@ -1,0 +1,28 @@
+classDiagram
+    class gpstools {
+        +_convert_to_decimal_degrees(degrees_data, ref)
+        +is_valid_gps(s)
+        +gps_distance(coord1, coord2)
+    }
+
+    class Dependencies {
+        math
+        os
+        sys
+    }
+
+    class imgtools {
+        +img_getgps()
+        +img_getexif()
+    }
+
+    Dependencies --> gpstools : imports
+    imgtools --> gpstools : imported by
+    
+    class GPSCoordinateProcessing {
+        +Convert DMS to decimal degrees
+        +Validate GPS coordinate strings
+        +Calculate distances using Haversine formula
+    }
+
+    gpstools --> GPSCoordinateProcessing : implements

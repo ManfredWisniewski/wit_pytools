@@ -1,0 +1,40 @@
+classDiagram
+    class imgtools {
+        +jpg_compress(input_path, output_path, quality, maintain_exif, min_size_reduction, calc)
+        +png2jpg(input_path, output_path, quality, background_color)
+        +avif_compress(input_path, output_path, quality, maintain_exif, min_size_reduction, calc)
+        +png_compress(input_path, output_path, compress_level, min_size_reduction, calc)
+        +save_img(input_path, quality, compress_level, maintain_exif, min_size_reduction)
+        +img_getexif(sourcedir, image)
+        +img_getgps(sourcedir, image)
+    }
+
+    class Dependencies {
+        os
+        PIL.Image
+        shutil
+        io.BytesIO
+    }
+
+    class systools {
+        +checkfile()
+    }
+
+    Dependencies --> imgtools : imports
+    systools --> imgtools : imported by
+
+    class ImageCompression {
+        +Compress JPG images
+        +Convert PNG to JPG
+        +Compress to AVIF format
+        +Compress PNG images
+        +Save optimized images
+    }
+
+    class MetadataExtraction {
+        +Extract EXIF data
+        +Extract GPS coordinates
+    }
+
+    imgtools --> ImageCompression : implements
+    imgtools --> MetadataExtraction : implements
