@@ -53,7 +53,7 @@ def matchstring(file, matchtable=''):
                 found = True
         return True if found else False
 
-# list all bowls
+# fetch all standard bowls
 def bowllist(config_object=''):
     bowls = []
     if config_object and len(config_object) > 0 and config_object.has_section("BOWLS"):
@@ -62,12 +62,13 @@ def bowllist(config_object=''):
             bowls.append(bowl)
     return bowls
 
-# list all gps bowls
-def bowllist_gps(config_object=''):
+
+# fetch all coverter bowls
+def bowllist_convert(config_object=''):
     bowls = []
-    if config_object and len(config_object) > 0 and config_object.has_section("BOWLS_GPS"):
+    if config_object and len(config_object) > 0 and config_object.has_section("BOWLS_CONVERT"):
         # Get bowls from config while preserving case
-        for bowl, _ in config_object.items("BOWLS_GPS", raw=True):
+        for bowl, _ in config_object.items("BOWLS_CONVERT", raw=True):
             bowls.append(bowl)
     return bowls
 
@@ -80,6 +81,15 @@ def bowllist_email(config_object=''):
             bowls.append(bowl)
     return bowls
 
+# fetch all gps bowls
+def bowllist_gps(config_object=''):
+    bowls = []
+    if config_object and len(config_object) > 0 and config_object.has_section("BOWLS_GPS"):
+        # Get bowls from config while preserving case
+        for bowl, _ in config_object.items("BOWLS_GPS", raw=True):
+            bowls.append(bowl)
+    return bowls
+
 # check if file matches a criteria for a bowl and return the corresponding bowl
 def bowldir(file, config_object=''):
     if config_object and len(config_object) > 0:
@@ -89,6 +99,31 @@ def bowldir(file, config_object=''):
             
             # First pass: look for matches and find default bowl if it exists
             for (bowl, critlist) in config_object.items("BOWLS"):
+                if "!DEFAULT" in critlist:
+                    default_bowl = bowl
+                    continue
+                    
+                for crit in critlist.split(','):
+                    crit = crit.strip()
+                    if crit and crit in file and not found:
+                        return '/' + bowl
+            
+            # If no match was found but we have a default bowl, use it
+            if default_bowl and not found:
+                return '/' + default_bowl
+                
+            return ''
+    return ''
+
+# check if file matches a criteria for a bowl and return the corresponding bowl
+def bowldir_convert(file, config_object=''):
+    if config_object and len(config_object) > 0:
+        if config_object.has_section("BOWLS_CONVERT"):
+            found = False
+            default_bowl = ''
+            
+            # First pass: look for matches and find default bowl if it exists
+            for (bowl, critlist) in config_object.items("BOWLS_CONVERT"):
                 if "!DEFAULT" in critlist:
                     default_bowl = bowl
                     continue
@@ -308,11 +343,6 @@ def handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, c
         print(f"Error handling MSG file {file.name}: {e}")
         # Fallback to using the original filename
         nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
-        if not dryrun and filemode == 'win':
-            bowl = bowldir_email(nfile, config_object)
-            movefile(sourcedir, file, targetdir + bowl, nfile, filemode, dryrun=dryrun)
-    return
-
 def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
     # Check if this is a supported image file type (JPEG or JPG) that we should process
     file_ext = os.path.splitext(file.name)[1].lower()
@@ -362,6 +392,63 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
                 movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
     return
 
+def handle_convert(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
+    """
+    Convert images to other formats based on configuration.
+    
+    Args:
+        file: File object to process
+        sourcedir: Source directory containing the file
+        targetdir: Target directory for the converted file
+        clean: Flag for filename cleaning
+        clean_nocase: Flag for case-insensitive filename cleaning
+        config_object: Configuration object with conversion settings
+        filemode: File operation mode ('win' or 'nc')
+        replacements: Dictionary of character replacements for filenames
+        dryrun: If True, don't actually perform operations
+        overwrite: If True, overwrite existing files
+    """
+    file_ext = os.path.splitext(file.name)[1].lower()
+    
+    try:
+        log_message(_('Handling conversion: {}').format(os.path.join(sourcedir, file)))
+        
+        # Determine the conversion type based on file extension and bowl criteria
+        bowl = bowldir_convert(file.name, config_object)
+        
+        # Get the conversion type from the bowl name (if available)
+        conversion_type = ""
+        if bowl:
+            conversion_type = bowl.strip('/').lower()
+        
+        # Process the file based on conversion type
+        source_path = os.path.join(sourcedir, file.name)
+        base_name = os.path.splitext(file.name)[0]
+        
+        # Default to original filename if no conversion happens
+        nfile = file.name
+
+        # Clean the filename
+        nfile = cleanfilename(nfile, clean, clean_nocase, replacements)
+        
+        # Move the file to the target directory
+        if not dryrun:
+            # If no specific bowl was found, use the default bowl system
+            if not bowl:
+                bowl = bowldir(nfile, config_object)
+            
+            movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+    
+    except Exception as e:
+        log_message(f"Error handling conversion for {file.name}: {e}", level="ERROR")
+        # Fallback to using the original filename
+        nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
+        if not dryrun:
+            bowl = bowldir(nfile, config_object)
+            movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+    
+    return
+
 def handle_oldfiles(file_path, time_diff):
     #TODO FINISH AND TEST
     try:
@@ -378,6 +465,10 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         if ftype == 'pdf':
             handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
         
+        ## Handle Convert Bowls ##
+        elif bowllist_convert(config_object):
+            handle_convert(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+
         ## Handle E-Mail Bowls ##
         if bowllist_email(config_object):
             handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
@@ -385,6 +476,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         ## Handle GPS Bowls##
         elif bowllist_gps(config_object):
             handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+
 
         ## Default behavior for all other bowls
         else:

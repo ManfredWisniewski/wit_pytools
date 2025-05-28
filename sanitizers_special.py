@@ -39,7 +39,6 @@ def sanitize_pdf_text(text):
     return text.strip()
 
 
-
 def sanitize_markdown_metro_invoice(text):
     """Sanitize and format markup generated from Metro pdf invoices
     
