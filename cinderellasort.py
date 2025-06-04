@@ -328,7 +328,7 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
                 log_message("Image file does not contain GPS coordinates, renaming", level="WARNING")
                 base, ext = os.path.splitext(file.name)
                 nfile = base + '_nogps' + ext
-                if not dryrun and filemode == 'win':
+                if not dryrun:
                     # Only rename in place and add _nogps
                     movefile(sourcedir, file.name, sourcedir, nfile, filemode, overwrite, dryrun)
                 return
@@ -405,12 +405,11 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         else:
             # Default behavior for other file types
             nfile = cleanfilestring(file.name)
-            if not dryrun and filemode == 'win':
+            if not dryrun:
                 bowl = bowldir(nfile, config_object)
                 movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
-            else:
-                # File has been handled, so we can break the loop
-                break
+            # File has been handled, so we can break the loop
+            break
 
     # If the loop completes without breaking, the file didn't match any specified type
     else:
