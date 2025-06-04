@@ -404,7 +404,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         ## Default behavior for all other bowls
         else:
             # Default behavior for other file types
-            nfile = cleanfilestring(file.name)
+            nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
             if not dryrun and filemode == 'win':
                 bowl = bowldir(nfile, config_object)
                 movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
@@ -475,6 +475,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     if single:
         # If single file is specified, only handle that file
         from witnctools import getncabsdir, getncfilename
+        from pathlib import Path
         file_dir = getncabsdir(single)
         file_name = getncfilename(single)
         file_path = Path(os.path.join(file_dir, file_name))
@@ -482,12 +483,16 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
         if file_path.is_file():
             handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress)
     else:
-        # Handle all files directly in sourcedir
-        for item in Path(sourcedir).iterdir():
-            if item.is_file():
-                handlefile(item, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress)
-
-    # Process subdirectories in sourcedir
+        # Handle all files in sourcedir and all subdirectories
+        processed_files = 0
+        for root, dirs, files in os.walk(sourcedir):
+            for filename in files:
+                file_path = Path(os.path.join(root, filename))
+                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress)
+                processed_files += 1
+        log_message(f"Processed {processed_files} files in {sourcedir} and subdirectories")
+        
+    # Get list of all subdirectories for additional processing if needed
     dirlist = [f for f in Path(sourcedir).resolve().glob('**/*') if f.is_dir()]
     print(dirlist)
     for maindir in dirlist:
