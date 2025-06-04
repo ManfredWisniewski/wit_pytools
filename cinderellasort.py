@@ -404,7 +404,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         ## Default behavior for all other bowls
         else:
             # Default behavior for other file types
-            nfile = cleanfilestring(file.name, clean, clean_nocase, replacements)
+            nfile = cleanfilestring(file.name)
             if not dryrun and filemode == 'win':
                 bowl = bowldir(nfile, config_object)
                 movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
