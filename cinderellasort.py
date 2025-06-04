@@ -374,10 +374,23 @@ def handle_oldfiles(file_path, time_diff):
         print(f"Error deleting old file {file.name}: {e}")
         return
 
+def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
+    # Check if this is a PDF file
+    if file.name.lower().endswith('.pdf'):
+        try:
+            log_message(_('Handling PDF: {}').format(os.path.join(sourcedir, file)))
+            nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
+            bowl = bowldir(nfile, config_object)
+            if not dryrun:
+                movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+        except Exception as e:
+            log_message(f"Error handling PDF file {file.name}: {e}", level="ERROR")
+    return
+
 def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress):
     for ftype in ftype_sort.split(','):
         ftype = ftype.strip().casefold()
-        if ftype == 'pdf':
+        if ftype == 'pdf' and file.name.lower().endswith('.pdf'):
             handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
         
         ## Handle E-Mail Bowls ##
@@ -462,8 +475,6 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     if single:
         # If single file is specified, only handle that file
         from witnctools import getncabsdir, getncfilename
-        from pathlib import Path
-        
         file_dir = getncabsdir(single)
         file_name = getncfilename(single)
         file_path = Path(os.path.join(file_dir, file_name))
