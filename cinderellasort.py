@@ -390,6 +390,7 @@ def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
 def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress):
     for ftype in ftype_sort.split(','):
         ftype = ftype.strip().casefold()
+        print(config_object)
         ## Handle PDF Bowls ##
         if ftype == 'pdf' and file.name.lower().endswith('.pdf'):
             print("Handle PDF Bowls")
