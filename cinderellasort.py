@@ -411,8 +411,9 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
             print("Handle Default Bowls")
             nfile = cleanfilestring(file.name)
             if not dryrun:
-                bowl = bowldir(nfile, config_object)
-                movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+                print(" - Skipping file {" + nfile + "} (not a specified type)")
+                #bowl = bowldir(nfile, config_object)
+                #movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
             # File has been handled, so we can break the loop
             break
 
