@@ -1,4 +1,6 @@
-import os, re, sys
+import os
+import sys
+import re
 from datetime import datetime
 from configparser import ConfigParser
 from pathlib import Path
