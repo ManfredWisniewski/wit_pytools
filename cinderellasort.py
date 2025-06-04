@@ -472,6 +472,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
 
     # Handle single file if specified, otherwise process all files in sourcedir
     if single:
+        print("Running cinderellasort in single mode")
         # If single file is specified, only handle that file
         from witnctools import getncabsdir, getncfilename
         file_dir = getncabsdir(single)
@@ -482,6 +483,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
             handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress)
     else:
         # Handle all files in sourcedir and all subdirectories
+        print("Running cinderellasort in all-files mode")
         processed_files = 0
         for root, dirs, files in os.walk(sourcedir):
             for filename in files:
