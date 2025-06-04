@@ -70,7 +70,10 @@ def bowllist_gps(config_object=''):
     if config_object and len(config_object) > 0 and config_object.has_section("BOWLS_GPS"):
         # Get bowls from config while preserving case
         for bowl, _ in config_object.items("BOWLS_GPS", raw=True):
-            bowls.append(bowl)
+            # Extract just the bowl path part before any parameters
+            bowl_path = bowl.split(';')[0] if ';' in bowl else bowl
+            bowls.append(bowl_path)
+    print(f"GPS Bowls found: {bowls}")
     return bowls
 
 # list all email bowls
@@ -135,6 +138,7 @@ def bowldir_email(file, config_object=''):
 # check if file matches a criteria for a gps bowl and return the corresponding bowl
 def bowldir_gps(file, config_object='', image_coords=None):
     from wit_pytools.gpstools import is_valid_gps, gps_distance
+    log_message(f"bowldir_gps called with file={file}, image_coords={image_coords}", level="DEBUG")
     if config_object and len(config_object) > 0 and image_coords:
         if config_object.has_section("BOWLS_GPS"):
             # fetch fallback distance if exists
@@ -184,7 +188,10 @@ def bowldir_gps(file, config_object='', image_coords=None):
                 for crit in critlist.split(';'):
                     # Normalize coordinates by removing spaces
                     normalized_crit = crit.replace(' ', '')
-                    if is_valid_gps(normalized_crit):
+                    log_message(f"Checking GPS criterion: {normalized_crit}", level="DEBUG")
+                    valid = is_valid_gps(normalized_crit)
+                    log_message(f"is_valid_gps returned: {valid}", level="DEBUG")
+                    if valid:
                         try:
                             crit_lat, crit_lon = map(float, normalized_crit.split(','))
                             log_message(f"Comparing bowl coordinates {crit_lat},{crit_lon} with image coordinates {image_coords}", level="DEBUG")

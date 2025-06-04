@@ -53,14 +53,20 @@ def _convert_to_decimal_degrees(degrees_data, ref):
         return None
 
 def is_valid_gps(s):
+    from eliot import log_message
+    log_message(f"is_valid_gps checking: '{s}'")
     parts = s.split(',')
+    log_message(f"Split parts: {parts}")
     if len(parts) == 2:
         try:
-            float(parts[0].strip())
-            float(parts[1].strip())
+            lat = float(parts[0].strip())
+            lon = float(parts[1].strip())
+            log_message(f"Parsed coordinates: lat={lat}, lon={lon}")
             return True
-        except ValueError:
+        except ValueError as e:
+            log_message(f"ValueError parsing coordinates: {e}")
             return False
+    log_message(f"Wrong number of parts: {len(parts)}")
     return False
 
 def gps_distance(coord1, coord2):
