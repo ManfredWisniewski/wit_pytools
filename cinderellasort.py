@@ -390,20 +390,25 @@ def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
 def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress):
     for ftype in ftype_sort.split(','):
         ftype = ftype.strip().casefold()
+        ## Handle PDF Bowls ##
         if ftype == 'pdf' and file.name.lower().endswith('.pdf'):
+            print("Handle PDF Bowls")
             handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
         
         ## Handle E-Mail Bowls ##
         if bowllist_email(config_object):
+            print("Handle E-Mail Bowls")
             handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
 
         ## Handle GPS Bowls##
-        elif bowllist_gps(config_object):
+        elif bowllist_gps(config_object) and file.name.lower().endswith('.jpg'):
+            print("Handle GPS Bowls")
             handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
 
         ## Default behavior for all other bowls
         else:
             # Default behavior for other file types
+            print("Handle Default Bowls")
             nfile = cleanfilestring(file.name)
             if not dryrun:
                 bowl = bowldir(nfile, config_object)
@@ -484,12 +489,10 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     else:
         # Handle all files in sourcedir and all subdirectories
         print("Running cinderellasort in all-files mode")
-        print("ftype_sort:" + ftype_sort)
         processed_files = 0
         for root, dirs, files in os.walk(sourcedir):
             for filename in files:
                 file_path = Path(os.path.join(root, filename))
-                print("file_path:" + file_path)
                 handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress)
                 processed_files += 1
         log_message(f"Processed {processed_files} files in {sourcedir} and subdirectories")
