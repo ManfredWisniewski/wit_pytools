@@ -475,7 +475,6 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     if single:
         # If single file is specified, only handle that file
         from witnctools import getncabsdir, getncfilename
-        from pathlib import Path
         file_dir = getncabsdir(single)
         file_name = getncfilename(single)
         file_path = Path(os.path.join(file_dir, file_name))
