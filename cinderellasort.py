@@ -484,12 +484,12 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     else:
         # Handle all files in sourcedir and all subdirectories
         print("Running cinderellasort in all-files mode")
-        print("file_path:" + file_path)
         print("ftype_sort:" + ftype_sort)
         processed_files = 0
         for root, dirs, files in os.walk(sourcedir):
             for filename in files:
                 file_path = Path(os.path.join(root, filename))
+                print("file_path:" + file_path)
                 handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress)
                 processed_files += 1
         log_message(f"Processed {processed_files} files in {sourcedir} and subdirectories")
