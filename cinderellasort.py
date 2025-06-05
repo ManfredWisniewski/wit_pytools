@@ -395,43 +395,41 @@ def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
     return
 
 def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress):
+    # First check if the file matches any of the specified file types
+    file_matches_type = False
     for ftype in ftype_sort.split(','):
         ftype = ftype.strip().casefold()
-        print("Config sections:")
-        for section in config_object.sections():
-            print(f"[{section}]")
-            for key, value in config_object[section].items():
-                print(f"{key} = {value}")
-        ## Handle PDF Bowls ##
-        if ftype == 'pdf' and file.name.lower().endswith('.pdf'):
-            print("Handle PDF Bowls")
-            handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
-        
-        ## Handle E-Mail Bowls ##
-        if bowllist_email(config_object):
-            print("Handle E-Mail Bowls")
-            handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
-
-        ## Handle GPS Bowls##
-        elif bowllist_gps(config_object):
-            print("Handle GPS Bowls")
-            handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
-
-        ## Default behavior for all other bowls
-        else:
-            # Default behavior for other file types
-            print("Handle Default Bowls")
-            nfile = cleanfilestring(file.name)
-            if not dryrun:
-                print(" - Skipping file {" + nfile + "} (not a specified type)")
-                #bowl = bowldir(nfile, config_object)
-                #movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
-            # File has been handled, so we can break the loop
+        if file.name.lower().endswith(ftype):
+            file_matches_type = True
             break
 
-    # If the loop completes without breaking, the file didn't match any specified type
-    else:
-        print(f" - Skipping file {file.name}: not a specified type")
+    if not file_matches_type:
+        print(f" - Skipping file {file.name}: not a specified type ({ftype_sort})")
+        return
+
+    ## Handle PDF Bowls ##
+    if file.name.lower().endswith('.pdf'):
+        print("Handle PDF Bowls")
+        handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+        return
+    
+    ## Handle E-Mail Bowls ##
+    if bowllist_email(config_object):
+        print("Handle E-Mail Bowls")
+        handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+        return
+
+    ## Handle GPS Bowls##
+    if bowllist_gps(config_object):
+        print("Handle GPS Bowls")
+        handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+        return
+
+    ## Default behavior for all other bowls
+    print("Handle Default Bowls")
+    nfile = cleanfilestring(file.name)
+    bowl = bowldir(nfile, config_object)
+    movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
 
 ## MAIN cinderellasort execution ##
 def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
