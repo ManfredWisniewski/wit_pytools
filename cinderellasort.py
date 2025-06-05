@@ -512,7 +512,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
         
     # Get list of all subdirectories for additional processing if needed
     dirlist = [f for f in Path(sourcedir).resolve().glob('**/*') if f.is_dir()]
-    print(dirlist)
+    print([str(d) for d in dirlist])
     for maindir in dirlist:
         if isvalidsort(str(maindir), ftype_sort):
             print(' #  valid sort found:' + ftype_delete)
