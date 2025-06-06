@@ -62,6 +62,10 @@ def is_valid_gps(s):
             lat = float(parts[0].strip())
             lon = float(parts[1].strip())
             log_message(f"Parsed coordinates: lat={lat}, lon={lon}")
+            # Check if both coordinates are zero (or very close to zero)
+            if abs(lat) < 0.000001 and abs(lon) < 0.000001:
+                log_message(f"Coordinates are (0,0), treating as invalid GPS data")
+                return False
             return True
         except ValueError as e:
             log_message(f"ValueError parsing coordinates: {e}")

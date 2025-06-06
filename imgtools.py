@@ -364,7 +364,7 @@ def img_getgps(sourcedir, image):
         image (str): Image filename
         
     Returns:
-        tuple: (latitude, longitude) or None if GPS data not found
+        tuple: (latitude, longitude) or None if GPS data not found or coordinates are (0,0)
     """
     from wit_pytools.gpstools import _convert_to_decimal_degrees    
     try:
@@ -381,6 +381,10 @@ def img_getgps(sourcedir, image):
             latitude = _convert_to_decimal_degrees(lat_data, lat_ref)
             longitude = _convert_to_decimal_degrees(lon_data, lon_ref)
             if latitude is not None and longitude is not None:
+                # Check if coordinates are (0,0) and treat as no GPS data
+                if abs(latitude) < 0.000001 and abs(longitude) < 0.000001:
+                    print(f"Image {image} has GPS coordinates of (0,0), treating as no GPS data")
+                    return None
                 return f"{latitude},{longitude}"
     except Exception as e:
         print(f"Error extracting GPS data: {e}")
