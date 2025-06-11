@@ -25,16 +25,18 @@ def _convert_to_decimal_degrees(degrees_data, ref):
         
         # Check if we have IFDRational objects
         if hasattr(degrees_data[0], 'numerator'):
-            if (degrees_data[0].denominator == 0 or degrees_data[1].denominator == 0 or degrees_data[2].denominator == 0):
-                print("Error converting GPS data: denominator is zero in IFDRational object")
+            # Check for zero denominators or zero coordinates
+            if (degrees_data[0].denominator == 0 or degrees_data[1].denominator == 0 or degrees_data[2].denominator == 0 or
+                (degrees_data[0].numerator == 0 and degrees_data[1].numerator == 0 and degrees_data[2].numerator == 0)):
                 return None
             degrees = float(degrees_data[0].numerator) / float(degrees_data[0].denominator)
             minutes = float(degrees_data[1].numerator) / float(degrees_data[1].denominator)
             seconds = float(degrees_data[2].numerator) / float(degrees_data[2].denominator)
         else:
             # Handle as regular tuples/lists
-            if (degrees_data[0][1] == 0 or degrees_data[1][1] == 0 or degrees_data[2][1] == 0):
-                print("Error converting GPS data: denominator is zero in tuple/list")
+            # Check for zero denominators or zero coordinates
+            if (degrees_data[0][1] == 0 or degrees_data[1][1] == 0 or degrees_data[2][1] == 0 or
+                (degrees_data[0][0] == 0 and degrees_data[1][0] == 0 and degrees_data[2][0] == 0)):
                 return None
             degrees = float(degrees_data[0][0]) / float(degrees_data[0][1])
             minutes = float(degrees_data[1][0]) / float(degrees_data[1][1])
