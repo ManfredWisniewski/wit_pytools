@@ -5,7 +5,7 @@ from datetime import datetime
 from configparser import ConfigParser
 from pathlib import Path
 from wit_pytools.witpytools import dryprint
-from wit_pytools.sanitizers import prepregex, cleanfilestring
+from wit_pytools.sanitizers import prepregex, cleanfilestring, convert_numerals_arabic_western
 from eliot import log_message
 import gettext
 
@@ -227,12 +227,16 @@ def bowldir_gps(file, config_object='', image_coords=None):
             return ''
     return ''
 
-def cleanfilename(file, clean, clean_nocase, replacements, subdir=''):
+def cleanfilename(file, clean, clean_nocase, replacements, subdir='', convert_numbers=True):
     filename, file_extension = os.path.splitext(os.path.join(subdir, file))
     if len(subdir) > 0:
         nfile = os.path.basename(subdir)
     else:
         nfile = filename
+    # Convert Arabic numerals if enabled
+    if convert_numbers:
+        nfile = convert_numerals_arabic_western(nfile)
+        
     # case-sensitive remove strings from removelist
     for rstring in clean.split(','):
         rstring = prepregex(rstring)
