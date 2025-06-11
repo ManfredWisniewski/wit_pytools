@@ -12,7 +12,7 @@ def test_parse_msg_valid():
    msgfile = 'testfile.msg'
     
    try:
-       result = parse_msg(sortdir,msgfile, True)
+       result = parse_msg(os.path.join(sortdir, msgfile), True)
        print("Result: ")
        print(result)
        assert result[0] == '2021-05-25'  # index 0 is the date
