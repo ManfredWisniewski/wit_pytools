@@ -47,7 +47,6 @@ def test_compress_jpg():
         # Clean up
         shutil.rmtree(temp_dir)
         
-        return "Test compress_jpg: PASSED"
     except Exception as e:
         import traceback
         print(f"Error: {e}")
@@ -55,7 +54,7 @@ def test_compress_jpg():
         # Clean up even if test fails
         if 'temp_dir' in locals():
             shutil.rmtree(temp_dir)
-        return "Test compress_jpg: FAILED"
+        raise
 
 def test_img_getexif():
     try:
@@ -88,12 +87,11 @@ def test_img_getexif():
         assert gps_info[2][0] == 51.0  # Latitude degrees
         assert gps_info[4][0] == 10.0  # Longitude degrees
         
-        return "Test img_getexif: PASSED"
     except Exception as e:
         import traceback
         print(f"Error: {e}")
         traceback.print_exc()
-        return f"Test img_getexif: FAILED - {str(e)}"
+        raise
 
 # Additional tests for png_compress, avif_compress, and save_img
 def test_png_compress_function():
