@@ -342,7 +342,7 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
                 if not dryrun:
                     # Only rename in place and add _nogps
                     movefile(sourcedir, file.name, sourcedir, nfile, filemode, overwrite, dryrun)
-                return
+                return  # Exit function after renaming with _nogps suffix
             # Log all available bowls with their coordinates
             all_bowls = bowllist_gps(config_object)
             bowl_coords = {}
@@ -363,16 +363,14 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
 
             if not bowl:
                 log_message("No matching bowl found within for file {} at {}".format(file.name, image_coords), level="WARNING")
-                return
+                return  # Exit function if no matching bowl found
             log_message("Image coordinates: {}".format(image_coords), level="DEBUG")
             if not dryrun:
                 movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
         except Exception as e:
             log_message("Error handling GPS file {}".format(file.name), level="ERROR")
-            nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
-            if not dryrun:
-                bowl = bowldir(nfile, config_object)
-                movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+            # Don't move files when there's an error processing GPS data
+            return
     return
 
 def handle_oldfiles(file_path, time_diff):
