@@ -361,11 +361,12 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
                 bowl = bowldir_gps(nfile, config_object, image_coords)
                 log_message("Selected bowl: {} for coordinates: {}".format(bowl, image_coords), level="DEBUG")
                 print("Selected bowl: {} for coordinates: {}".format(bowl, image_coords))
-                if not bowl:
+                if not bowl or bowl.strip() == '':
                     log_message("No matching bowl found within for file {} at {}".format(file.name, image_coords), level="WARNING")
+                    print("No matching bowl found within for file {} at {}".format(file.name, image_coords))
                     return  # Exit function if no matching bowl found
                 # move file if not in dryrun mode
-                elif not dryrun:
+                if not dryrun:
                     print("Moving file {}".format(file.name, targetdir))
                     movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
         except Exception as e:
