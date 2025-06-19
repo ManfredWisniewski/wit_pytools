@@ -329,23 +329,24 @@ def handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, c
 def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
     # Check if this is a supported image file type (JPEG or JPG) that we should process
     file_ext = os.path.splitext(file.name)[1].lower()
-    if file_ext in ['.jpg', '.jpeg'] and not file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
+    if file_ext in ['.jpg', '.jpeg'] and '_nogps' not in file.name.lower():
         from wit_pytools.imgtools import img_getgps
         try:
-            nfile = file.name
-            log_message(_('Handling GPS: {}').format(os.path.join(sourcedir, file)))
+            # Clean the filename if clean parameters are provided
+            nfile = cleanfilename(file.name, clean, clean_nocase, replacements) if clean else file.name
+            log_message(_('Handling GPS: {}').format(os.path.join(sourcedir, file.name)))
             image_coords = img_getgps(sourcedir, file.name)
+            # Handle images without GPS data
             if image_coords is None:
                 log_message("Image file does not contain GPS coordinates, renaming", level="WARNING")
-                base, ext = os.path.splitext(file.name)
+                base, ext = os.path.splitext(nfile)
                 nfile = base + '_nogps' + ext
                 if not dryrun:
                     # Only rename in place and add _nogps
                     movefile(sourcedir, file.name, sourcedir, nfile, filemode, overwrite, dryrun)
                 return False  # Return False to indicate no GPS handling was done
-            # Log all available bowls with their coordinates
-            all_bowls = bowllist_gps(config_object)
             bowl_coords = {}
+            # Check for valid GPS bowl configuration
             if config_object.has_section("BOWLS_GPS"):
                 for bowl, critlist in config_object.items("BOWLS_GPS", raw=True):
                     if "!DEFAULT" in critlist:
@@ -356,17 +357,15 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
                             coords.append(crit)
                     bowl_name = bowl.split(';')[0] if ';' in bowl else bowl
                     bowl_coords[bowl_name] = coords
-            log_message("Available GPS bowls with coordinates: {}".format(bowl_coords), level="DEBUG")
-            
-            bowl = bowldir_gps(nfile, config_object, image_coords)
-            log_message("Selected bowl: {} for coordinates: {}".format(bowl, image_coords), level="DEBUG")
-
-            if not bowl:
-                log_message("No matching bowl found within for file {} at {}".format(file.name, image_coords), level="WARNING")
-                return  # Exit function if no matching bowl found
-            log_message("Image coordinates: {}".format(image_coords), level="DEBUG")
-            if not dryrun:
-                movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+                log_message("Available GPS bowls with coordinates: {}".format(bowl_coords), level="DEBUG")
+                bowl = bowldir_gps(nfile, config_object, image_coords)
+                log_message("Selected bowl: {} for coordinates: {}".format(bowl, image_coords), level="DEBUG")
+                if not bowl:
+                    log_message("No matching bowl found within for file {} at {}".format(file.name, image_coords), level="WARNING")
+                    return  # Exit function if no matching bowl found
+                # move file if not in dryrun mode
+                if not dryrun:
+                    movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
         except Exception as e:
             log_message("Error handling GPS file {}".format(file.name), level="ERROR")
             # Don't move files when there's an error processing GPS data
