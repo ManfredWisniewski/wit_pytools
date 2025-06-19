@@ -342,7 +342,7 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
                 if not dryrun:
                     # Only rename in place and add _nogps
                     movefile(sourcedir, file.name, sourcedir, nfile, filemode, overwrite, dryrun)
-                return  # Exit function after renaming with _nogps suffix
+                return False  # Return False to indicate no GPS handling was done
             # Log all available bowls with their coordinates
             all_bowls = bowllist_gps(config_object)
             bowl_coords = {}
@@ -396,7 +396,7 @@ def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
             log_message(f"Error handling PDF file {file.name}: {e}", level="ERROR")
     return
 
-def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress):
+def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress):
     # First check if the file matches any of the specified file types
     file_matches_type = False
     for ftype in ftype_sort.split(','):
@@ -424,8 +424,14 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
     ## Handle GPS Bowls##
     if bowllist_gps(config_object):
         print("Handle GPS Bowls")
-        handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
-        return
+        # Try GPS handling first
+        if handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
+            # If GPS handling was successful (file was moved), we're done
+            return
+        # If GPS handling returned False (no GPS data) and gps_moved_unmatched is False, skip further processing
+        if not gps_moved_unmatched and file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
+            log_message(f"Skipping file {file.name} as it has no GPS data and gps_moved_unmatched is False", level="INFO")
+            return
 
     ## Default behavior for all other bowls
     print("Handle Default Bowls")
@@ -458,7 +464,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     settings = config_object["SETTINGS"]
     overwrite = settings.get('overwrite', 'false').strip().lower() == 'true'
     jpg_quality = int(settings.get('jpg_quality', '85').strip())
-    gps_move_files = settings.get('gps_move_files', 'false').strip().lower() == 'true'
+    gps_moved_unmatched = settings.get('gps_moved_unmatched', 'false').strip().lower() == 'true'
     gps_compress = settings.get('gps_compress', 'false').strip().lower() == 'true'
 
     # Fetch replacements from the REPLACEMENTS section
@@ -480,7 +486,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
         print('   delete: ' + ftype_delete)
         print('overwrite: ' + str(overwrite))
         print(' jpg qual: ' + str(jpg_quality))
-        print(' gps move: ' + str(gps_move_files))
+        print(' gps move unmatched: ' + str(gps_moved_unmatched))
         print(' gps comp: ' + str(gps_compress)) 
 
     # ADD unzip
@@ -498,7 +504,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
         file_path = Path(os.path.join(file_dir, file_name))
         
         if file_path.is_file():
-            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress)
+            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress)
     else:
         # Handle all files in sourcedir and all subdirectories
         print("Running cinderellasort in all-files mode")
@@ -508,7 +514,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
             for filename in files:
                 print("Filename: " + filename)
                 file_path = Path(os.path.join(root, filename))
-                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_move_files, gps_compress)
+                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress)
                 processed_files += 1
         log_message(f"Processed {processed_files} files in {sourcedir} and subdirectories")
         
