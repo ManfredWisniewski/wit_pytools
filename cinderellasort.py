@@ -33,18 +33,15 @@ dryrun = (True)
 
 # check for valid searches in subdirectories of the target directory
 def isvalidsort(sourcedir, ftype_sort):
-    # check if multiple tables are matched
-    checkvalid = False
+    # check if any files match the sort types
     for subdir, dirs, files in walklevel(sourcedir, 2):
         for file in files:
             for ftype in ftype_sort.split(','):
-                if file.casefold().endswith(ftype):
-                    checkvalid = True
-    if checkvalid:
-        return True
-    else:
-        return False
-        print('## Directory [' + sourcedir + '] contains none of the sorted file types [' + ftype_sort + ']\n## EXIT CinderellaSort')
+                if file.casefold().endswith(ftype.strip()):
+                    print(f' #  valid sort found for file type: {ftype}')
+                    return True
+    print(f' #  No valid sort found for file types: {ftype_sort}')
+    return False
 
 def matchstring(file, matchtable=''):
     if len(matchtable) > 0:
