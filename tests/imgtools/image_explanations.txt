@@ -1,0 +1,4 @@
+testimage.jpg - with EXIF and IPTC data
+testimage.nfo - EXIF data in text format
+testimage_0gps.jpg - gps info set to 0.00.. 0.00...
+testimage_noexif.jpg - without EXIF data

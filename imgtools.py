@@ -344,11 +344,11 @@ def img_getexif(sourcedir, image):
             
         # Convert numeric IDs to tag names via the PIL ExifTags module
             exif_readable = {}
-            for tag_id, value in exif_data.items():
-                tag_name = ExifTags.TAGS.get(tag_id, str(tag_id))
-                exif_readable[tag_name] = value
+            if exif_data is not None:
+                for tag_id, value in exif_data.items():
+                    tag_name = ExifTags.TAGS.get(tag_id, str(tag_id))
+                    exif_readable[tag_name] = value
             
-            #print(f"EXIF data with readable tags: {exif_readable}")
             return exif_readable
     except FileNotFoundError as e:
         raise e
@@ -385,7 +385,7 @@ def img_getgps(sourcedir, image):
                 if abs(latitude) < 0.000001 and abs(longitude) < 0.000001:
                     print(f"Image {image} has GPS coordinates of (0,0), treating as no GPS data")
                     return None
-                return f"{latitude},{longitude}"
+                return (latitude, longitude)
     except Exception as e:
         print(f"Error extracting GPS data: {e}")
     return None

@@ -4,7 +4,6 @@ Test runner script that discovers and runs all tests in the tests directory.
 """
 import os
 import sys
-import unittest
 import pytest
 
 # Add the parent directory to the path so we can import modules from wit_pytools
@@ -13,14 +12,11 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 def run_unittest_tests():
     """Run tests using unittest discovery"""
     print("Running unittest tests...")
-    # Start discovery from the current directory
-    test_loader = unittest.TestLoader()
-    test_suite = test_loader.discover(os.path.dirname(os.path.abspath(__file__)))
-    
-    # Run the tests
-    test_runner = unittest.TextTestRunner(verbosity=2)
-    result = test_runner.run(test_suite)
-    return result.wasSuccessful()
+    # Since we're moving to pytest, this function is kept for backward compatibility
+    # but will just use pytest with unittest-style tests
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    result = pytest.main(['-v', test_dir, '--pyargs'])
+    return result == 0
 
 def run_pytest_tests():
     """Run tests using pytest"""
@@ -30,7 +26,7 @@ def run_pytest_tests():
     return result == 0
 
 def run_individual_tests():
-    """Run individual test files directly"""
+    """Run individual test files directly using pytest"""
     print("Running individual test files...")
     success = True
     
@@ -41,18 +37,12 @@ def run_individual_tests():
     
     for test_file in test_files:
         print(f"\nRunning {test_file}...")
-        # Import the module
-        module_name = os.path.splitext(test_file)[0]  # Remove .py extension
         try:
-            # Use __import__ to dynamically import the module
-            module = __import__(module_name, fromlist=['*'])
-            
-            # If the module has a main function, call it
-            if hasattr(module, 'main'):
-                result = module.main()
-                if result is not None and result is False:
-                    success = False
-            # Otherwise, just let the module execute
+            # Run the test file with pytest
+            file_path = os.path.join(test_dir, test_file)
+            result = pytest.main(['-v', file_path])
+            if result != 0:
+                success = False
             print(f"Completed {test_file}")
         except Exception as e:
             print(f"Error running {test_file}: {e}")
