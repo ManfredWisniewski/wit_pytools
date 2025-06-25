@@ -74,6 +74,40 @@ def ncscandir(targetdir):
     if scan_result.returncode != 0:
         log_message(f"Warning: Folder rescan failed: {scan_result.stderr}")
 
+# Assigns a tag to a file or directory in Nextcloud with specified access level (defaults to public)
+# nextcloud tag access levels: public, restricted, invisible
+def nctagassign(target, tagname, access="public"):
+    scan_result = subprocess.run(
+        f'php /var/www/nextcloud/occ files:tag:assign --path="{target}" --tag="{tagname}" --access="{access}"',
+        capture_output=True,
+        shell=True,
+        text=True
+    )
+    if scan_result.returncode != 0:
+        log_message(f"Warning: Tag assignment failed: {scan_result.stderr}")
+
+# Removes a tag from a file or directory in Nextcloud
+def nctagremove(target, tagname):
+    scan_result = subprocess.run(
+        f'php /var/www/nextcloud/occ files:tag:remove --path="{target}" --tag="{tagname}"',
+        capture_output=True,
+        shell=True,
+        text=True
+    )
+    if scan_result.returncode != 0:
+        log_message(f"Warning: Tag removal failed: {scan_result.stderr}")
+
+def nctagedit(target, tagname, newtagname):
+    scan_result = subprocess.run(
+        f'php /var/www/nextcloud/occ files:tag:edit --path="{target}" --tag="{tagname}" --new-tag="{newtagname}"',
+        capture_output=True,
+        shell=True,
+        text=True
+    )
+    if scan_result.returncode != 0:
+        log_message(f"Warning: Tag edit failed: {scan_result.stderr}")
+
+
 # def nccopyfile(subdir, file, destdir, nfile, dryrun):
 #     if dryrun:
 #         print(' - copy: ' + os.path.join(subdir, file))
