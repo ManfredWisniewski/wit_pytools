@@ -52,6 +52,19 @@ def matchstring(file, matchtable=''):
                 found = True
         return True if found else False
 
+def parse_bowl_tags(tags_str):
+    """Parse a string containing tags with access levels in format 'tag1[level1] tag2[level2]'
+    Returns a dictionary mapping tag names to their access levels.
+    Example input: 'Photos[p] Private[i]' returns {'Photos': 'p', 'Private': 'i'}"""
+    tags = {}
+    if tags_str:
+        for tag_item in tags_str.split():
+            if '[' in tag_item and ']' in tag_item:
+                tag_name, level = tag_item.split('[', 1)
+                level = level.rstrip(']')
+                tags[tag_name] = level
+    return tags
+
 # list all bowls
 def bowllist(config_object=''):
     bowls = []
@@ -107,6 +120,11 @@ def bowldir(file, config_object=''):
             return ''
     return ''
 
+def bowllist_gps_tags(config_object):
+    if config_object.has_section("BOWLS_GPS_TAGS"):
+        return True
+    return False
+
 # check if file matches a criteria for an email bowl and return the corresponding bowl
 def bowldir_email(file, config_object=''):
     if config_object and len(config_object) > 0:
@@ -131,6 +149,14 @@ def bowldir_email(file, config_object=''):
                 
             return ''
     return ''
+
+def gps_fetch_default_distance(config_object):
+    if config_object.has_section('ITEMS') and config_object.has_option('ITEMS', 'gps_default_distancekm'):
+        distancekm = float(config_object.get('ITEMS', 'gps_default_distancekm').replace(',', '.'))
+        log_message("Using default distance of {} km for GPS bowls".format(distancekm), level="DEBUG")
+        return distancekm
+    log_message("Setting gps_default_distancekm not found, using 2 km as default for GPS bowls", level="DEBUG")
+    return 2 # fallback default distance if not found
 
 # check if file matches a criteria for a gps bowl and return the corresponding bowl
 def bowldir_gps(file, config_object='', image_coords=None):
@@ -161,6 +187,91 @@ def bowldir_gps(file, config_object='', image_coords=None):
                 # Extract distance from bowl key if present (format: 'Bowl Name;3=lat,lon')
                 if "!DEFAULT" in critlist:
                     continue
+                log_message(f"Checking bowl: {bowl} with criteria: {critlist}", level="DEBUG")
+                if ';' in bowl:
+                    parts = bowl.split(';')
+                    bowl_name = parts[0]
+                    tags_str = parts[1] if len(parts) > 2 else ''
+                    distance_str = parts[-1]
+                    
+                    # Parse tags and their access levels
+                    tags = parse_bowl_tags(tags_str)
+                    log_message(f"Parsed bowl name: {bowl_name}, tags: {tags}, distance string: {distance_str}", level="DEBUG")
+                    if '=' in distance_str:
+                        distance_val, _ = distance_str.split('=', 1)
+                        try:
+                            distancekm = float(distance_val.replace(',', '.'))
+                            log_message("Distance for bowl {} is {} km".format(bowl_name, distancekm), level="DEBUG")
+                        except ValueError:
+                            log_message(f"Invalid distance value in bowl key: {bowl}", level="ERROR")
+                            continue
+                    else:
+                        try:
+                            distancekm = float(distance_str.replace(',', '.'))
+                        except ValueError:
+                            log_message(f"Invalid distance value in bowl key: {bowl}", level="ERROR")
+                            continue
+                else:
+                    bowl_name = bowl
+                    
+                for crit in critlist.split(';'):
+                    # Normalize coordinates by removing spaces
+                    normalized_crit = crit.replace(' ', '')
+                    log_message(f"Checking GPS criterion: {normalized_crit}", level="DEBUG")
+                    valid = is_valid_gps(normalized_crit)
+                    log_message(f"is_valid_gps returned: {valid}", level="DEBUG")
+                    if valid:
+                        try:
+                            crit_lat, crit_lon = map(float, normalized_crit.split(','))
+                            log_message(f"Comparing bowl coordinates {crit_lat},{crit_lon} with image coordinates {image_coords}", level="DEBUG")
+                            
+                            # Parse coordinates if they're in string format (lat,lon)
+                            parsed_image_coords = image_coords
+                            if isinstance(image_coords, str) and ',' in image_coords:
+                                try:
+                                    lat, lon = map(float, image_coords.split(','))
+                                    parsed_image_coords = (lat, lon)
+                                    log_message(f"Parsed image coordinates from string: {parsed_image_coords}", level="DEBUG")
+                                except Exception as e:
+                                    log_message(f"Failed to parse image coordinates: {e}", level="ERROR")
+                                    continue
+                                
+                            try:
+                                dist = gps_distance(parsed_image_coords, (crit_lat, crit_lon))
+                                log_message(f"Distance: {dist} km (max allowed: {distancekm} km)", level="DEBUG")
+                                if dist < distancekm:
+                                    found = True
+                                    log_message(f"Found matching bowl: {bowl_name} with distance {dist} km", level="DEBUG")
+                                    return '/' + bowl_name
+                            except Exception as e:
+                                log_message(f"Error calculating distance: {e}", level="ERROR")
+                                continue
+                        except Exception as e:
+                            continue
+            
+            # If no match was found but we have a default bowl, use it
+            if default_bowl and not found:
+                return '/' + default_bowl
+                
+            return ''
+    return ''
+
+# check if file matches a criteria for a gps bowl and return the corresponding bowl
+def bowldir_gps_tags(file, config_object='', image_coords=None):
+    from wit_pytools.gpstools import is_valid_gps, gps_distance
+    log_message(f"bowldir_gps_tags called with file={file}, image_coords={image_coords}", level="DEBUG")
+    if config_object and len(config_object) > 0 and image_coords:
+        if config_object.has_section("BOWLS_GPS_TAGS"):
+            # fetch fallback distance if exists
+            distancekm = gps_fetch_default_distance(config_object)
+            log_message("Using default distance of {} km for GPS bowls".format(distancekm), level="DEBUG")
+            
+            default_bowl = ''
+            found = False
+            
+            # Then check for GPS matches
+            for (bowl, critlist) in config_object.items("BOWLS_GPS_TAGS", raw=True):
+                # Extract distance from bowl key if present (format: 'Bowl Name;3=lat,lon')
                 log_message(f"Checking bowl: {bowl} with criteria: {critlist}", level="DEBUG")
                 if ';' in bowl:
                     bowl_name, distance_str = bowl.rsplit(';', 1)
@@ -372,6 +483,43 @@ def handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
             return
     return
 
+def handle_gps_tags(file, sourcedir, config_object, dryrun=False):
+    # Check if this is a supported image file type (JPEG or JPG) that we should process
+    file_ext = os.path.splitext(file.name)[1].lower()
+    if file_ext in ['.jpg', '.jpeg'] and '_nogps' not in file.name.lower():
+        from wit_pytools.imgtools import img_getgps
+        from wit_pytools.nctools import nctagassign
+        try:
+            log_message(_('Handling GPS Tags: {}').format(os.path.join(sourcedir, file.name)))
+            image_coords = img_getgps(sourcedir, file.name)
+            if not image_coords:
+                log_message(f"No GPS coordinates found in {file.name}", level="WARNING")
+                return
+            
+            # Get bowl and tags based on GPS coordinates
+            bowl = bowldir_gps_tags(file.name, config_object, image_coords)
+            if not bowl or bowl.strip() == '':
+                log_message(f"No matching GPS bowl found for {file.name} at {image_coords}", level="WARNING")
+                return
+            
+            # Get the tags for this bowl
+            bowl_parts = bowl.split(';')
+            if len(bowl_parts) > 1:
+                tags_str = bowl_parts[1]
+                tags = parse_bowl_tags(tags_str)
+                if tags and not dryrun:
+                    log_message(f"Setting tags for {file.name}: {tags}", level="DEBUG")
+                    for tag_name, access_level in tags.items():
+                        nctagassign(file.name, tag_name, access_level)
+                    
+            log_message(f"Successfully processed GPS tags for {file.name}", level="DEBUG")
+            return True
+        except Exception as e:
+            log_message(f"Error handling GPS file {file.name}: {str(e)}", level="ERROR")
+            return False
+    return False
+
+
 def handle_oldfiles(file_path, time_diff):
     #TODO FINISH AND TEST
     try:
@@ -420,10 +568,16 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
         return
 
-    ## Handle GPS Bowls##
-    if bowllist_gps(config_object):
-        print("Handle GPS Bowls")
-        # Try GPS handling first
+    ## Handle GPS Bowls and Tags ##
+    if bowllist_gps(config_object) or bowllist_gps_tags(config_object):
+        print("Handle GPS Bowls and Tags")
+        # Try GPS tags handling first if enabled
+        if config_object.has_section("SETTINGS") and config_object.get("SETTINGS", "set_tags", fallback="false").lower() == "true":
+            if handle_gps_tags(file, sourcedir, config_object, dryrun):
+                # If GPS tags were successfully handled, continue with regular GPS bowl handling
+                log_message(f"Successfully handled GPS tags for {file.name}", level="DEBUG")
+
+        # Try GPS bowl handling next
         if handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
             # If GPS handling was successful (file was moved), we're done
             return
@@ -465,6 +619,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     jpg_quality = int(settings.get('jpg_quality', '85').strip())
     gps_moved_unmatched = settings.get('gps_moved_unmatched', 'false').strip().lower() == 'true'
     gps_compress = settings.get('gps_compress', 'false').strip().lower() == 'true'
+    set_tags = settings.get('set_tags', 'false').strip().lower() == 'true'
 
     # Fetch replacements from the REPLACEMENTS section
     replacements = {}
