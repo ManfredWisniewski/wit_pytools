@@ -620,9 +620,13 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         print("Handle Default Bowls")
         nfile = cleanfilestring(file.name)
         bowl = bowldir(nfile, config_object)
-        # Only move if a bowl was found
-        if bowl and bowl.strip():
-            movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+        # Only move if a bowl was found and it's not empty
+        if bowl:
+            # Make sure we're not moving to the root target directory
+            if bowl.strip() == '':
+                log_message(f"Empty bowl returned for {file.name}, skipping move", level="DEBUG")
+            else:
+                movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
         else:
             log_message(f"No matching bowl found for {file.name}", level="DEBUG")
 
