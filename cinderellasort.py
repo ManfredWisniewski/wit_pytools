@@ -74,17 +74,18 @@ def bowllist(config_object=''):
             bowls.append(bowl)
     return bowls
 
-# list all gps bowls
+# check if gps bowls are configured
 def bowllist_gps(config_object=''):
-    bowls = []
     if config_object and len(config_object) > 0 and config_object.has_section("BOWLS_GPS"):
         # Get bowls from config while preserving case
+        bowls = []
         for bowl, _ in config_object.items("BOWLS_GPS", raw=True):
             # Extract just the bowl path part before any parameters
             bowl_path = bowl.split(';')[0] if ';' in bowl else bowl
             bowls.append(bowl_path)
-    print(f"GPS Bowls found: {bowls}")
-    return bowls
+        print(f"GPS Bowls found: {bowls}")
+        return bool(bowls)  # Return True only if we found actual bowls
+    return False
 
 # list all email bowls
 def bowllist_email(config_object=''):
@@ -120,9 +121,17 @@ def bowldir(file, config_object=''):
             return ''
     return ''
 
-def bowllist_gps_tags(config_object):
-    if config_object.has_section("BOWLS_GPS_TAGS"):
-        return True
+# check if gps tag bowls are configured
+def bowllist_gps_tags(config_object=''):
+    if config_object and len(config_object) > 0 and config_object.has_section("BOWLS_GPS_TAGS"):
+        # Get bowls from config while preserving case
+        bowls = []
+        for bowl, _ in config_object.items("BOWLS_GPS_TAGS", raw=True):
+            # Extract just the bowl path part before any parameters
+            bowl_path = bowl.split(';')[0] if ';' in bowl else bowl
+            bowls.append(bowl_path)
+        print(f"GPS Tag Bowls found: {bowls}")
+        return bool(bowls)  # Return True only if we found actual bowls
     return False
 
 # check if file matches a criteria for an email bowl and return the corresponding bowl
