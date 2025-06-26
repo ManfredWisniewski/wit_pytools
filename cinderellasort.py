@@ -116,7 +116,7 @@ def bowldir(file, config_object=''):
             
             # If no match was found but we have a default bowl, use it
             if default_bowl and not found:
-                return '/' + default_bowl
+                return default_bowl
                 
             return ''
     return ''
@@ -154,7 +154,7 @@ def bowldir_email(file, config_object=''):
             
             # If no match was found but we have a default bowl, use it
             if default_bowl and not found:
-                return '/' + default_bowl
+                return default_bowl
                 
             return ''
     return ''
@@ -250,8 +250,8 @@ def bowldir_gps(file, config_object='', image_coords=None):
                                 log_message(f"Distance: {dist} km (max allowed: {distancekm} km)", level="DEBUG")
                                 if dist < distancekm:
                                     found = True
-                                    log_message(f"Found matching bowl: {bowl_name} with distance {dist} km", level="DEBUG")
-                                    return '/' + bowl_name
+                                    log_message(f"Found matching bowl: {bowl} with distance {dist} km", level="DEBUG")
+                                    return bowl
                             except Exception as e:
                                 log_message(f"Error calculating distance: {e}", level="ERROR")
                                 continue
@@ -260,7 +260,7 @@ def bowldir_gps(file, config_object='', image_coords=None):
             
             # If no match was found but we have a default bowl, use it
             if default_bowl and not found:
-                return '/' + default_bowl
+                return default_bowl
                 
             return ''
     return ''
@@ -280,27 +280,31 @@ def bowldir_gps_tags(file, config_object='', image_coords=None):
             
             # Then check for GPS matches
             for (bowl, critlist) in config_object.items("BOWLS_GPS_TAGS", raw=True):
-                # Extract distance from bowl key if present (format: 'Bowl Name;3=lat,lon')
                 log_message(f"Checking bowl: {bowl} with criteria: {critlist}", level="DEBUG")
+                
+                # Split bowl into name, tags, and distance
                 if ';' in bowl:
-                    bowl_name, distance_str = bowl.rsplit(';', 1)
-                    log_message(f"Parsed bowl name: {bowl_name}, distance string: {distance_str}", level="DEBUG")
+                    parts = bowl.split(';')
+                    if len(parts) < 2:
+                        log_message(f"Invalid GPS tag bowl format: {bowl}", level="WARNING")
+                        continue
+                        
+                    bowl_name = parts[0]
+                    tags_str = parts[1]
+                    distance_str = parts[2] if len(parts) > 2 else ''
+                    
+                    # Parse distance if present
                     if '=' in distance_str:
-                        distance_val, _ = distance_str.split('=', 1)
+                        distance_val = distance_str.split('=')[0]
                         try:
                             distancekm = float(distance_val.replace(',', '.'))
-                            log_message("Distance for bowl {} is {} km".format(bowl_name, distancekm), level="DEBUG")
-                        except ValueError:
-                            log_message(f"Invalid distance value in bowl key: {bowl}", level="ERROR")
-                            continue
-                    else:
-                        try:
-                            distancekm = float(distance_str.replace(',', '.'))
+                            log_message(f"Using specified distance: {distancekm} km", level="DEBUG")
                         except ValueError:
                             log_message(f"Invalid distance value in bowl key: {bowl}", level="ERROR")
                             continue
                 else:
                     bowl_name = bowl
+                    tags_str = ''
                     
                 for crit in critlist.split(';'):
                     # Normalize coordinates by removing spaces
@@ -329,8 +333,8 @@ def bowldir_gps_tags(file, config_object='', image_coords=None):
                                 log_message(f"Distance: {dist} km (max allowed: {distancekm} km)", level="DEBUG")
                                 if dist < distancekm:
                                     found = True
-                                    log_message(f"Found matching bowl: {bowl_name} with distance {dist} km", level="DEBUG")
-                                    return '/' + bowl_name
+                                    log_message(f"Found matching bowl: {bowl} with distance {dist} km", level="DEBUG")
+                                    return bowl
                             except Exception as e:
                                 log_message(f"Error calculating distance: {e}", level="ERROR")
                                 continue
@@ -339,7 +343,7 @@ def bowldir_gps_tags(file, config_object='', image_coords=None):
             
             # If no match was found but we have a default bowl, use it
             if default_bowl and not found:
-                return '/' + default_bowl
+                return default_bowl
                 
             return ''
     return ''
@@ -518,8 +522,9 @@ def handle_gps_tags(file, sourcedir, config_object, dryrun=False):
                 tags = parse_bowl_tags(tags_str)
                 if tags and not dryrun:
                     log_message(f"Setting tags for {file.name}: {tags}", level="DEBUG")
+                    file_path = os.path.join(sourcedir, file.name)
                     for tag_name, access_level in tags.items():
-                        nctagassign(file.name, tag_name, access_level)
+                        nctagassign(file_path, tag_name, access_level)
                     
             log_message(f"Successfully processed GPS tags for {file.name}", level="DEBUG")
             return True
