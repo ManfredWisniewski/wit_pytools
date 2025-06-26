@@ -582,12 +582,9 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         handle_emails(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
         return
 
-    ## Handle GPS Bowls and Tags ##
-    has_gps_bowls = bowllist_gps(config_object)
-    has_gps_tags = bowllist_gps_tags(config_object)
-    
     # Handle GPS tags if enabled
     log_message(f"GPS Tags check - has_gps_tags: {has_gps_tags}, has SETTINGS: {config_object.has_section('SETTINGS')}", level="DEBUG")
+    has_gps_tags = bowllist_gps_tags(config_object)
     if has_gps_tags:
         if config_object.has_section("SETTINGS"):
             set_tags = config_object.get("SETTINGS", "set_tags", fallback="false").lower() == "true"
@@ -604,15 +601,16 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         log_message("No GPS tag bowls configured", level="DEBUG")
 
     # Handle GPS bowls separately, only if BOWLS_GPS is configured
+    has_gps_bowls = bowllist_gps(config_object)
     if has_gps_bowls:
         print("Handle GPS Bowls")
         if handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
             # If GPS handling was successful (file was moved), we're done
             return
-            # If GPS handling returned False (no GPS data) and gps_moved_unmatched is False, skip further processing
-            if not gps_moved_unmatched and file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
-                log_message(f"Skipping file {file.name} as it has no GPS data and gps_moved_unmatched is False", level="INFO")
-                return
+        # If GPS handling returned False (no GPS data) and gps_moved_unmatched is False, skip further processing
+        if not gps_moved_unmatched and file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
+            log_message(f"Skipping file {file.name} as it has no GPS data and gps_moved_unmatched is False", level="INFO")
+            return
 
     ## Default behavior for standard bowls
     # Only proceed if there are standard bowls configured
@@ -731,16 +729,16 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
                             # print('del: ' + file)
                             delfile(subdir, file, dryrun)
 
-                if len(files) == 1:
-                    # add configure option
-                    # TEST what if MULTIPLE files in -subdirs-
-                    for file in files:
-                        nfile = cleanfilename(file, clean, clean_nocase, replacements, subdir)
-                        movefile(subdir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, overwrite=overwrite, dryrun=dryrun)
-                elif len(files) > 1:
-                    for file in files:
-                        nfile = cleanfilename(file, clean, clean_nocase, replacements)
-                        movefile(subdir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+#                if len(files) == 1:
+#                    # add configure option
+#                    # TEST what if MULTIPLE files in -subdirs-
+#                    for file in files:
+#                        nfile = cleanfilename(file, clean, clean_nocase, replacements, subdir)
+#                        movefile(subdir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+#                elif len(files) > 1:
+#                    for file in files:
+#                        nfile = cleanfilename(file, clean, clean_nocase, replacements)
+#                        movefile(subdir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, overwrite=overwrite, dryrun=dryrun)
         else:
             print(' #  No valid sort found!') 
 
