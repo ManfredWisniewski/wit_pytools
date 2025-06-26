@@ -614,11 +614,17 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                 log_message(f"Skipping file {file.name} as it has no GPS data and gps_moved_unmatched is False", level="INFO")
                 return
 
-    ## Default behavior for all other bowls
-    print("Handle Default Bowls")
-    nfile = cleanfilestring(file.name)
-    bowl = bowldir(nfile, config_object)
-    movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+    ## Default behavior for standard bowls
+    # Only proceed if there are standard bowls configured
+    if config_object.has_section("BOWLS") and len(list(config_object.items("BOWLS"))) > 0:
+        print("Handle Default Bowls")
+        nfile = cleanfilestring(file.name)
+        bowl = bowldir(nfile, config_object)
+        # Only move if a bowl was found
+        if bowl and bowl.strip():
+            movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+        else:
+            log_message(f"No matching bowl found for {file.name}", level="DEBUG")
 
 ## MAIN cinderellasort execution ##
 def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
