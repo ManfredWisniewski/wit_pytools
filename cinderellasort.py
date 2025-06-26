@@ -586,18 +586,29 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
     has_gps_bowls = bowllist_gps(config_object)
     has_gps_tags = bowllist_gps_tags(config_object)
     
-    if has_gps_tags or has_gps_bowls:
-        print("Handle GPS Bowls and Tags")
-        # Try GPS tags handling first if enabled
-        if has_gps_tags and config_object.has_section("SETTINGS") and config_object.get("SETTINGS", "set_tags", fallback="false").lower() == "true":
-            if handle_gps_tags(file, sourcedir, config_object, dryrun):
-                log_message(f"Successfully handled GPS tags for {file.name}", level="DEBUG")
+    # Handle GPS tags if enabled
+    log_message(f"GPS Tags check - has_gps_tags: {has_gps_tags}, has SETTINGS: {config_object.has_section('SETTINGS')}", level="DEBUG")
+    if has_gps_tags:
+        if config_object.has_section("SETTINGS"):
+            set_tags = config_object.get("SETTINGS", "set_tags", fallback="false").lower() == "true"
+            log_message(f"GPS Tags check - set_tags enabled: {set_tags}", level="DEBUG")
+            if set_tags:
+                print("Handle GPS Tags")
+                if handle_gps_tags(file, sourcedir, config_object, dryrun):
+                    log_message(f"Successfully handled GPS tags for {file.name}", level="DEBUG")
+            else:
+                log_message("GPS Tags disabled in SETTINGS (set_tags is not true)", level="DEBUG")
+        else:
+            log_message("SETTINGS section not found in config", level="DEBUG")
+    else:
+        log_message("No GPS tag bowls configured", level="DEBUG")
 
-        # Try GPS bowl handling next, but only if BOWLS_GPS is configured
-        if has_gps_bowls:
-            if handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
-                # If GPS handling was successful (file was moved), we're done
-                return
+    # Handle GPS bowls separately, only if BOWLS_GPS is configured
+    if has_gps_bowls:
+        print("Handle GPS Bowls")
+        if handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
+            # If GPS handling was successful (file was moved), we're done
+            return
             # If GPS handling returned False (no GPS data) and gps_moved_unmatched is False, skip further processing
             if not gps_moved_unmatched and file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
                 log_message(f"Skipping file {file.name} as it has no GPS data and gps_moved_unmatched is False", level="INFO")
