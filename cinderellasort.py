@@ -569,22 +569,25 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         return
 
     ## Handle GPS Bowls and Tags ##
-    if bowllist_gps(config_object) or bowllist_gps_tags(config_object):
+    has_gps_bowls = bowllist_gps(config_object)
+    has_gps_tags = bowllist_gps_tags(config_object)
+    
+    if has_gps_tags or has_gps_bowls:
         print("Handle GPS Bowls and Tags")
         # Try GPS tags handling first if enabled
-        if config_object.has_section("SETTINGS") and config_object.get("SETTINGS", "set_tags", fallback="false").lower() == "true":
+        if has_gps_tags and config_object.has_section("SETTINGS") and config_object.get("SETTINGS", "set_tags", fallback="false").lower() == "true":
             if handle_gps_tags(file, sourcedir, config_object, dryrun):
-                # If GPS tags were successfully handled, continue with regular GPS bowl handling
                 log_message(f"Successfully handled GPS tags for {file.name}", level="DEBUG")
 
-        # Try GPS bowl handling next
-        if handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
-            # If GPS handling was successful (file was moved), we're done
-            return
-        # If GPS handling returned False (no GPS data) and gps_moved_unmatched is False, skip further processing
-        if not gps_moved_unmatched and file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
-            log_message(f"Skipping file {file.name} as it has no GPS data and gps_moved_unmatched is False", level="INFO")
-            return
+        # Try GPS bowl handling next, but only if BOWLS_GPS is configured
+        if has_gps_bowls:
+            if handle_gps(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
+                # If GPS handling was successful (file was moved), we're done
+                return
+            # If GPS handling returned False (no GPS data) and gps_moved_unmatched is False, skip further processing
+            if not gps_moved_unmatched and file.name.lower().rsplit('.', 1)[0].endswith('_nogps'):
+                log_message(f"Skipping file {file.name} as it has no GPS data and gps_moved_unmatched is False", level="INFO")
+                return
 
     ## Default behavior for all other bowls
     print("Handle Default Bowls")
