@@ -583,8 +583,8 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         return
 
     # Handle GPS tags if enabled
-    log_message(f"GPS Tags check - has_gps_tags: {has_gps_tags}, has SETTINGS: {config_object.has_section('SETTINGS')}", level="DEBUG")
     has_gps_tags = bowllist_gps_tags(config_object)
+    log_message(f"GPS Tags check - has_gps_tags: {has_gps_tags}, has SETTINGS: {config_object.has_section('SETTINGS')}", level="DEBUG")
     if has_gps_tags:
         if config_object.has_section("SETTINGS"):
             set_tags = config_object.get("SETTINGS", "set_tags", fallback="false").lower() == "true"
