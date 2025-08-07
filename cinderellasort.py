@@ -380,26 +380,48 @@ def cleanfilename(file, clean, clean_nocase, replacements, subdir='', convert_nu
 def prepsort(config_object, targetdir, prepfilter = False):
     # Create directories if they don't exist
     # Normalize path separators to OS-specific ones
+    log_message(f"prepsort called with targetdir: {targetdir}", level="INFO")
     targetdir = str(targetdir).replace('\\', '/').replace('//', '/')
     targetdir = Path(targetdir)
+    log_message(f"Normalized targetdir: {targetdir}", level="INFO")
     
     # Create directories from BOWLS section
+    log_message("Checking BOWLS section for directories to create", level="INFO")
     bowls = bowllist(config_object)
+    log_message(f"Found {len(bowls)} bowls in BOWLS section: {bowls}", level="INFO")
     for bowl in bowls:
         # Normalize bowl path separators
         bowl = str(bowl).replace('\\', '/').replace('//', '/')
         directory = targetdir / bowl
+        log_message(f"Checking directory: {directory}", level="INFO")
         if not directory.exists():
-            directory.mkdir(parents=True, exist_ok=True)
+            log_message(f"Creating directory: {directory}", level="INFO")
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+                log_message(f"Successfully created directory: {directory}", level="INFO")
+            except Exception as e:
+                log_message(f"Error creating directory {directory}: {e}", level="ERROR")
+        else:
+            log_message(f"Directory already exists: {directory}", level="INFO")
             
     # Create directories from BOWLS_EMAIL section
+    log_message("Checking BOWLS_EMAIL section for directories to create", level="INFO")
     email_bowls = bowllist_email(config_object)
+    log_message(f"Found {len(email_bowls)} bowls in BOWLS_EMAIL section: {email_bowls}", level="INFO")
     for bowl in email_bowls:
         # Normalize bowl path separators
         bowl = str(bowl).replace('\\', '/').replace('//', '/')
         directory = targetdir / bowl
+        log_message(f"Checking directory: {directory}", level="INFO")
         if not directory.exists():
-            directory.mkdir(parents=True, exist_ok=True)
+            log_message(f"Creating directory: {directory}", level="INFO")
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+                log_message(f"Successfully created directory: {directory}", level="INFO")
+            except Exception as e:
+                log_message(f"Error creating directory {directory}: {e}", level="ERROR")
+        else:
+            log_message(f"Directory already exists: {directory}", level="INFO")
             
     if prepfilter:
         print(f"(Scan for all existing directories in the target directory: {targetdir})")
