@@ -382,6 +382,8 @@ def prepsort(config_object, targetdir, prepfilter = False):
     # Normalize path separators to OS-specific ones
     targetdir = str(targetdir).replace('\\', '/').replace('//', '/')
     targetdir = Path(targetdir)
+    
+    # Create directories from BOWLS section
     bowls = bowllist(config_object)
     for bowl in bowls:
         # Normalize bowl path separators
@@ -389,6 +391,16 @@ def prepsort(config_object, targetdir, prepfilter = False):
         directory = targetdir / bowl
         if not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)
+            
+    # Create directories from BOWLS_EMAIL section
+    email_bowls = bowllist_email(config_object)
+    for bowl in email_bowls:
+        # Normalize bowl path separators
+        bowl = str(bowl).replace('\\', '/').replace('//', '/')
+        directory = targetdir / bowl
+        if not directory.exists():
+            directory.mkdir(parents=True, exist_ok=True)
+            
     if prepfilter:
         print(f"(Scan for all existing directories in the target directory: {targetdir})")
         dirnames = []
@@ -538,7 +550,7 @@ def handle_oldfiles(file_path, time_diff):
     #TODO FINISH AND TEST
     try:
         os.remove(file_path)
-        print(f" - Deleted old file {file.name}: {time_diff.days} days old")
+        log_message(f"Deleted old file {file.name}: {time_diff.days} days old")
         return
     except Exception as e:
         print(f"Error deleting old file {file.name}: {e}")
