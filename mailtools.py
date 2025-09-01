@@ -4,6 +4,7 @@ import eml_parser
 
 date_format = "%Y-%m-%d"
 email_pattern = r'<(.*?)>'  # Matches anything inside < >
+forward_subject_prefix = re.compile(r'^\s*(fwd|fw|wg)\s*:', re.IGNORECASE)  # Common forward prefixes (EN/DE)
 
 # Email EML
 # https://pypi.org/project/eml-parser/
@@ -35,11 +36,40 @@ def parse_msg(file, dryrun=False):
             msg_date = msg.date
             msg_subj = msg.subject if msg.subject is not None else ""
 
-            match = re.search(email_pattern, msg_sender)
-            if match:
-                formatted_sender = match.group(1)  # Get the email address
-            else:
-                formatted_sender = msg_sender  # Fallback to the original sender if no match
+            # Prefer original sender if this is a forwarded mail
+            formatted_sender = msg_sender
+            try:
+                # Extract plain email if angle brackets are present
+                match = re.search(email_pattern, msg_sender)
+                if match:
+                    formatted_sender = match.group(1)
+            except Exception:
+                pass
+
+            try:
+                # Detect forward by common subject prefixes
+                is_forward = bool(forward_subject_prefix.search(msg_subj))
+                if is_forward:
+                    body_text = getattr(msg, 'body', '') or ''
+                    # Search for original From/Von line in the forwarded header block
+                    # Example lines:
+                    #   From: John Doe <john@example.com>
+                    #   Von: Jane Doe <jane@example.com>
+                    from_line_match = re.search(r'^(?:From|Von)\s*:\s*(.+)$', body_text, re.IGNORECASE | re.MULTILINE)
+                    if from_line_match:
+                        from_line = from_line_match.group(1).strip()
+                        # Prefer email inside angle brackets
+                        m_angle = re.search(email_pattern, from_line)
+                        if m_angle and m_angle.group(1):
+                            formatted_sender = m_angle.group(1)
+                        else:
+                            # Fallback: bare email somewhere on the line
+                            m_bare = re.search(r'[\w\.-]+@[\w\.-]+', from_line)
+                            if m_bare:
+                                formatted_sender = m_bare.group(0)
+            except Exception:
+                # If anything goes wrong, keep the original formatted_sender
+                pass
 
             mailinfo = []
             # Ensure date is not None
@@ -47,7 +77,7 @@ def parse_msg(file, dryrun=False):
                 mailinfo.append(format(msg_date.strftime(date_format)))
             else:
                 mailinfo.append("")
-                
+            
             mailinfo.append(format(formatted_sender))
             mailinfo.append(format(msg_subj))
             
