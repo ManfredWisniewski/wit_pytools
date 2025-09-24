@@ -51,18 +51,26 @@ def ncdelfile(ncfile):
 
 def ncmovefile(ncfile, ncdest):
     with start_action(action_type=f"ncmovefile: moving file {ncfile} to {ncdest}", level="INFO"):
-        try:
-            #TODO variable nextcloudpath
-            subprocess.run(
-                f'php /var/www/nextcloud/occ files:move "{ncfile}" "{ncdest}"',
-                capture_output=True,
-                shell=True,
-                text=True,
-                check=True
+        # TODO: make Nextcloud path configurable
+        cmd = f'php /var/www/nextcloud/occ files:move "{ncfile}" "{ncdest}"'
+        log_message(f"ncmovefile: running command: {cmd}", level="DEBUG")
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            shell=True,
+            text=True
+        )
+        if result.returncode != 0:
+            log_message(
+                f"ncmovefile ERROR: returncode={result.returncode}, stdout={result.stdout.strip()}, stderr={result.stderr.strip()}",
+                level="ERROR"
             )
-        except:
-            #ignore directory already exists error TODO: make more elegant
-            True
+            raise RuntimeError(f"Nextcloud move failed for {ncfile} -> {ncdest}")
+        else:
+            log_message(
+                f"ncmovefile OK: returncode={result.returncode}, stdout={result.stdout.strip()}",
+                level="INFO"
+            )
 
 def ncscandir(targetdir):
     scan_result = subprocess.run(

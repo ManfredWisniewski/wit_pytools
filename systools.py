@@ -104,8 +104,29 @@ def movefile(subdir, file, destdir, nfile, filemode='win', overwrite=False, dryr
                     log_message(f"movefile win: Successfully moved file to {target_path}", level="INFO")
                 elif filemode == 'nc':
                     from wit_pytools import nctools
-                    nctools.ncmovefile(nctools.getncpath(source_path), nctools.getncpath(target_path))
-                    log_message(f"movefile nc: Successfully moved file to {target_path}", level="INFO")
+                    src_nc = nctools.getncpath(source_path)
+                    tgt_nc = nctools.getncpath(target_path)
+                    try:
+                        nctools.ncmovefile(src_nc, tgt_nc)
+                        log_message(f"movefile nc: Successfully moved file to {target_path}", level="INFO")
+                    except Exception as e:
+                        # If move fails (e.g., target exists), try enumerated filenames like base#2.ext
+                        base, ext = os.path.splitext(target_path)
+                        i = 2
+                        while True:
+                            new_target = f"{base}#{i}{ext}"
+                            new_tgt_nc = nctools.getncpath(new_target)
+                            log_message(f"movefile nc: retrying with enumerated target: {new_target}", level="INFO")
+                            try:
+                                nctools.ncmovefile(src_nc, new_tgt_nc)
+                                log_message(f"movefile nc: Successfully moved file to {new_target}", level="INFO")
+                                break
+                            except Exception as e2:
+                                i += 1
+                                # Avoid infinite loops; cap attempts
+                                if i > 99:
+                                    log_message(f"movefile nc: ERROR: giving up after 98 attempts. Last error: {str(e2)}", level="ERROR")
+                                    raise
                 else:
                     log_message(f"movefile: Unknown filemode '{filemode}'", level="ERROR")
         except FileNotFoundError:
