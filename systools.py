@@ -1,4 +1,5 @@
 import os, shutil
+from wit_pytools.sanitizers import cleanfilestring
 from stat import filemode
 
 # Helper function for dry run printing
@@ -74,6 +75,9 @@ def movefile(subdir, file, destdir, nfile, filemode='win', overwrite=False, dryr
         subdir, file, destdir, nfile = cleaned_args
         
         source_path = os.path.join(subdir, file)
+        # Sanitize filename for Nextcloud if needed
+        if filemode == 'nc':
+            nfile = cleanfilestring(nfile)
         target_path = os.path.join(destdir, nfile)
         log_message(f"movefile: os={filemode}, overwrite={overwrite}, source_path={source_path}, target_path={target_path}", level="INFO")
 
