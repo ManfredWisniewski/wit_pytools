@@ -104,61 +104,61 @@ def parse_msg(file, dryrun=False):
 # Requires: Windows + Outlook installed
 # Run: python create_msg.py
 
-import win32com.client as win32
-from datetime import datetime
+# import win32com.client as win32
+# from datetime import datetime
 
-def create_msg(
-    path,
-    subject="Test Subject",
-    sender_name="Alice Sender",
-    sender_email="alice@example.com",
-    to="bob@example.com",
-    cc="",
-    bcc="",
-    body_html="<p>Hello, this is a test.</p>",
-    sent_dt=datetime(2025, 9, 1, 10, 30),
-    importance=2,  # 0 Low, 1 Normal, 2 High
-    attachments=None
-):
-    outlook = win32.Dispatch("Outlook.Application")
-    mail = outlook.CreateItem(0)  # olMailItem
+# def create_msg(
+#     path,
+#     subject="Test Subject",
+#     sender_name="Alice Sender",
+#     sender_email="alice@example.com",
+#     to="bob@example.com",
+#     cc="",
+#     bcc="",
+#     body_html="<p>Hello, this is a test.</p>",
+#     sent_dt=datetime(2025, 9, 1, 10, 30),
+#     importance=2,  # 0 Low, 1 Normal, 2 High
+#     attachments=None
+# ):
+#     outlook = win32.Dispatch("Outlook.Application")
+#     mail = outlook.CreateItem(0)  # olMailItem
 
-    mail.Subject = subject
-    mail.HTMLBody = body_html
-    mail.To = to
-    mail.CC = cc
-    mail.BCC = bcc
-    mail.Importance = importance
+#     mail.Subject = subject
+#     mail.HTMLBody = body_html
+#     mail.To = to
+#     mail.CC = cc
+#     mail.BCC = bcc
+#     mail.Importance = importance
 
-    # Set sender (only works for accounts you can send-as; otherwise it will save with default)
-    # For testing metadata, adding "From" as a header-like line in body is often sufficient if send-as isn't available.
+#     # Set sender (only works for accounts you can send-as; otherwise it will save with default)
+#     # For testing metadata, adding "From" as a header-like line in body is often sufficient if send-as isn't available.
 
-    if attachments:
-        for fp in attachments:
-            mail.Attachments.Add(fp)
+#     if attachments:
+#         for fp in attachments:
+#             mail.Attachments.Add(fp)
 
-    # Set SentOn for saved draft-style item (Outlook may override on send; for saved .msg it’s kept)
-    mail.SentOn = sent_dt
+#     # Set SentOn for saved draft-style item (Outlook may override on send; for saved .msg it’s kept)
+#     mail.SentOn = sent_dt
 
-    mail.SaveAs(path, 3)  # 3 = olMSG
-    print(f"Saved: {path}")
+#     mail.SaveAs(path, 3)  # 3 = olMSG
+#     print(f"Saved: {path}")
 
-if __name__ == "__main__":
-    create_msg(
-        path="test_mail.msg",
-        subject="Project Update – Sprint 15",
-        sender_name="Alice Sender",
-        sender_email="alice@example.com",
-        to="Bob Receiver <bob@example.com>",
-        cc="Team Lead <lead@example.com>",
-        bcc="",
-        body_html="""
-        <html><body>
-        <p>Hi Bob,</p>
-        <p>Here’s the update for Sprint 15.</p>
-        <ul><li>Task A done</li><li>Task B in progress</li></ul>
-        <p>Regards,<br>Alice</p>
-        </body></html>
-        """,
-        attachments=[],
-    )
+# if __name__ == "__main__":
+#     create_msg(
+#         path="test_mail.msg",
+#         subject="Project Update – Sprint 15",
+#         sender_name="Alice Sender",
+#         sender_email="alice@example.com",
+#         to="Bob Receiver <bob@example.com>",
+#         cc="Team Lead <lead@example.com>",
+#         bcc="",
+#         body_html="""
+#         <html><body>
+#         <p>Hi Bob,</p>
+#         <p>Here’s the update for Sprint 15.</p>
+#         <ul><li>Task A done</li><li>Task B in progress</li></ul>
+#         <p>Regards,<br>Alice</p>
+#         </body></html>
+#         """,
+#         attachments=[],
+#     )
