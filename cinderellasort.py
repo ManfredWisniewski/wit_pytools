@@ -250,8 +250,9 @@ def bowldir_gps(file, config_object='', image_coords=None):
                                 log_message(f"Distance: {dist} km (max allowed: {distancekm} km)", level="DEBUG")
                                 if dist < distancekm:
                                     found = True
-                                    log_message(f"Found matching bowl: {bowl} with distance {dist} km", level="DEBUG")
-                                    return bowl
+                                    log_message(f"Found matching bowl: {bowl_name} with distance {dist} km", level="DEBUG")
+                                    # Return normalized bowl path with leading slash, e.g. '/TestBowl'
+                                    return '/' + bowl_name
                             except Exception as e:
                                 log_message(f"Error calculating distance: {e}", level="ERROR")
                                 continue
@@ -260,7 +261,8 @@ def bowldir_gps(file, config_object='', image_coords=None):
             
             # If no match was found but we have a default bowl, use it
             if default_bowl and not found:
-                return default_bowl
+                # Return normalized default bowl path with leading slash
+                return '/' + default_bowl
                 
             return ''
     return ''
