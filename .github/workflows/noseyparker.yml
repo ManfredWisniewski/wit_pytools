@@ -1,0 +1,40 @@
+name: Nosey Parker
+#TODO: enable commented SARIF when public
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 3 * * *'  # Daily at 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+#  security-events: write
+  actions: read
+
+jobs:
+  scan:
+    name: Nosey Parker Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          path: main
+
+      - name: Run Nosey Parker
+        id: noseyparker
+        uses: bpsizemore/noseyparker-action@v1.0.0
+        with:
+          scan-directory: main
+          local-output: 'true'
+#          report-format-sarif: 'true'
+          report-name: noseyparker
+          fail-on-finding: 'true'
+
+#      - name: Upload SARIF to GitHub Code Scanning
+#        uses: github/codeql-action/upload-sarif@v3
+#        with:
+#          sarif_file: reports/noseyparker.sarif
+#          category: noseyparker
