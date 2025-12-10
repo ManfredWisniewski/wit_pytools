@@ -1,4 +1,5 @@
 # $ pip install eliot eliot-tree requests
+import os
 import requests, argparse
 from eliot import start_action, to_file, log_message
 
@@ -35,3 +36,46 @@ try:
     checkargs()
 except ValueError:
     print("Error.")
+
+
+def send_gotify_alert(message, title="mailsort_nightly: leftover .eml files", priority=None, url=None, token=None):
+    """Send a Gotify notification.
+
+    Uses GOTIFY_URL, GOTIFY_TOKEN and GOTIFY_PRIORITY environment variables
+    by default. Returns True on success, False if config is missing or
+    if the request fails.
+    """
+
+    gotify_url = url or os.environ.get("GOTIFY_URL", "").rstrip("/")
+    gotify_token = token or os.environ.get("GOTIFY_TOKEN", "")
+    if not gotify_token:
+        token_path = os.path.expanduser("~/.gotify_token")
+        try:
+            with open(token_path, "r", encoding="utf-8") as f:
+                gotify_token = f.read().strip()
+        except Exception:
+            gotify_token = ""
+
+    if priority is None:
+        try:
+            priority = int(os.environ.get("GOTIFY_PRIORITY", "5"))
+        except ValueError:
+            priority = 5
+
+    if not gotify_url or not gotify_token:
+        return False
+
+    try:
+        resp = requests.post(
+            f"{gotify_url}/message?token={gotify_token}",
+            data={
+                "title": title,
+                "message": message,
+                "priority": priority,
+            },
+            timeout=5,
+        )
+        resp.raise_for_status()
+        return True
+    except Exception:
+        return False
