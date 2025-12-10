@@ -116,7 +116,7 @@ def bowldir(file, config_object=''):
             
             # If no match was found but we have a default bowl, use it
             if default_bowl and not found:
-                return default_bowl
+                return '/' + default_bowl
                 
             return ''
     return ''
@@ -154,7 +154,7 @@ def bowldir_email(file, config_object=''):
             
             # If no match was found but we have a default bowl, use it
             if default_bowl and not found:
-                return default_bowl
+                return '/' + default_bowl
                 
             return ''
     return ''
