@@ -2,7 +2,7 @@ import pytest
 from pathlib import Path
 from wit_pytools.imgtools import svg_trace_monochrome
 
-TEST_IMG_DIR = Path("/home/klaxigon/Bilder/jpg_input")  # Input-Bilder
+TEST_IMG_DIR = Path("/home/klaxigon/Bilder/jpg_input")
 OUTPUT_DIR = Path("/home/klaxigon/Bilder/svg_outputs")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -15,13 +15,11 @@ def test_svg_trace_creates_svg(img_path):
 
     svg_file = svg_trace_monochrome(
         img_path,
-        output_dir=OUTPUT_DIR,  # <-- hier den echten Output
+        output_dir=OUTPUT_DIR,
         threshold=50
     )
-
-    # Prüfen, ob SVG erstellt wurde
+    
     assert svg_file.exists(), f"SVG wurde nicht erstellt: {svg_file}"
 
-    # Prüfen, ob Datei SVG-Content enthält
     content = svg_file.read_text()
     assert "<svg" in content, "Erstellte Datei enthält kein SVG"

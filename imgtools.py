@@ -431,7 +431,7 @@ def svg_trace_monochrome(
     svg_file = output_dir / f"{image_path.stem}.svg"
 
     try:
-        # convert to PBM (black & white)
+
         subprocess.run(
             [
                 "convert",
@@ -443,7 +443,6 @@ def svg_trace_monochrome(
             check=True
         )
 
-        # potrace: PBM -> SVG
         subprocess.run(
             [
                 "potrace",
@@ -455,7 +454,7 @@ def svg_trace_monochrome(
         )
 
     finally:
-        # PBM löschen, bleibt nur SVG
+    
         if pbm_file.exists():
             pbm_file.unlink()
 
@@ -499,7 +498,7 @@ def auto_svg_trace(
 
 
 if __name__ == "__main__":
-    # Einfach ausführen, wandelt alles automatisch um
+
     auto_svg_trace(
         input_dir="/home/klaxigon/Bilder/jpg_input/",
         output_dir="/home/klaxigon/Bilder/svg_outputs/",
