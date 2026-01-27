@@ -404,3 +404,105 @@ def img_getgps(sourcedir, image):
 #png2jpg(sourceimage, os.path.join(target_dir, filename), quality=75)
 
 #img_getexif(script_dir, r"P:\git\witnctools\wit_pytools\tests\imgtools\testimage.jpg")
+
+import subprocess
+from pathlib import Path
+
+def svg_trace_monochrome(
+    image_path: str | Path,
+    output_dir: str | Path,
+    threshold: int = 50
+):
+    """
+    Convert a bitmap image to a monochrome SVG using potrace.
+    """
+
+    image_path = Path(image_path)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if not image_path.exists():
+        raise FileNotFoundError(image_path)
+
+    if image_path.suffix.lower() not in {".jpg", ".jpeg", ".png"}:
+        raise ValueError(f"Unsupported image format: {image_path.suffix}")
+
+    pbm_file = output_dir / f"{image_path.stem}.pbm"
+    svg_file = output_dir / f"{image_path.stem}.svg"
+
+    try:
+        # convert to PBM (black & white)
+        subprocess.run(
+            [
+                "convert",
+                str(image_path),
+                "-alpha", "remove",
+                "-threshold", f"{threshold}%",
+                str(pbm_file),
+            ],
+            check=True
+        )
+
+        # potrace: PBM -> SVG
+        subprocess.run(
+            [
+                "potrace",
+                str(pbm_file),
+                "-s",
+                "-o", str(svg_file),
+            ],
+            check=True
+        )
+
+    finally:
+        # PBM löschen, bleibt nur SVG
+        if pbm_file.exists():
+            pbm_file.unlink()
+
+    if not svg_file.exists():
+        raise RuntimeError(f"SVG was not created for {image_path}")
+
+    return svg_file
+
+
+def auto_svg_trace(
+    input_dir: str | Path = "/home/klaxigon/Bilder/jpg_input/",
+    output_dir: str | Path = "/home/klaxigon/Bilder/svg_outputs/",
+    threshold: int = 50,
+    overwrite: bool = False
+):
+    """
+    Convert all supported bitmap images in a folder to monochrome SVGs.
+    """
+
+    input_dir = Path(input_dir)
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    supported_exts = {".jpg", ".jpeg", ".png"}
+
+    for img_path in input_dir.iterdir():
+        if not img_path.is_file() or img_path.suffix.lower() not in supported_exts:
+            continue
+
+        svg_path = output_dir / f"{img_path.stem}.svg"
+
+        if svg_path.exists() and not overwrite:
+            print(f"{svg_path} existiert bereits – übersprungen")
+            continue
+
+        try:
+            svg_trace_monochrome(img_path, output_dir=output_dir, threshold=threshold)
+            print(f"SVG erstellt: {svg_path}")
+        except Exception as e:
+            print(f"Fehler bei {img_path}: {e}")
+
+
+if __name__ == "__main__":
+    # Einfach ausführen, wandelt alles automatisch um
+    auto_svg_trace(
+        input_dir="/home/klaxigon/Bilder/jpg_input/",
+        output_dir="/home/klaxigon/Bilder/svg_outputs/",
+        threshold=50,
+        overwrite=True
+    )
