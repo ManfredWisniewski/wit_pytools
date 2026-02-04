@@ -61,12 +61,24 @@ def parse_msg(file, dryrun=False):
                         # Prefer email inside angle brackets
                         m_angle = re.search(email_pattern, from_line)
                         if m_angle and m_angle.group(1):
-                            formatted_sender = m_angle.group(1)
+                            extracted_sender = m_angle.group(1)
                         else:
                             # Fallback: bare email somewhere on the line
                             m_bare = re.search(r'[\w\.-]+@[\w\.-]+', from_line)
                             if m_bare:
-                                formatted_sender = m_bare.group(0)
+                                extracted_sender = m_bare.group(0)
+                        
+                        # Only use extracted sender if it looks like a valid forward
+                        # (contains @ and doesn't match the actual sender domain)
+                        if extracted_sender and '@' in extracted_sender:
+                            # Check if extracted sender domain differs from actual sender domain
+                            actual_domain = formatted_sender.split('@')[-1] if '@' in formatted_sender else ''
+                            extracted_domain = extracted_sender.split('@')[-1] if '@' in extracted_sender else ''
+                            
+                            # Only use extracted sender if domains are different
+                            # This prevents misidentification of replies (AW) as forwards
+                            if actual_domain and extracted_domain and actual_domain != extracted_domain:
+                                formatted_sender = extracted_sender
             except Exception:
                 # If anything goes wrong, keep the original formatted_sender
                 pass
