@@ -6,6 +6,7 @@ from configparser import ConfigParser
 from pathlib import Path
 from wit_pytools.witpytools import dryprint
 from wit_pytools.sanitizers import prepregex, cleanfilestring, convert_numerals_arabic_western
+from wit_pytools.validators import valid_email_address
 from eliot import log_message
 import gettext
 
@@ -140,17 +141,28 @@ def bowldir_email(file, config_object=''):
         if config_object.has_section("BOWLS_EMAIL"):
             found = False
             default_bowl = ''
+            malformed_bowl = ''
             
-            # First pass: look for matches and find default bowl if it exists
+            # First pass: look for matches and find special bowls if they exist
             for (bowl, critlist) in config_object.items("BOWLS_EMAIL"):
                 if "!DEFAULT" in critlist:
                     default_bowl = bowl
+                    continue
+                if "!MALFORMED" in critlist:
+                    malformed_bowl = bowl
                     continue
                     
                 for crit in critlist.split(','):
                     crit = crit.strip()
                     if crit and crit in file and not found:
                         return '/' + bowl
+            
+            # Check if file has a valid email address
+            has_valid_email = valid_email_address(file)
+            
+            # If no email found and we have a malformed bowl, use it
+            if not has_valid_email and malformed_bowl:
+                return '/' + malformed_bowl
             
             # If no match was found but we have a default bowl, use it
             if default_bowl and not found:

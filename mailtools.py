@@ -1,6 +1,7 @@
 import os, re, sys, shutil
 import extract_msg
 import eml_parser
+from wit_pytools.validators import valid_email_address
 
 date_format = "%Y-%m-%d"
 email_pattern = r'<(.*?)>'  # Matches anything inside < >
@@ -38,13 +39,40 @@ def parse_msg(file, dryrun=False):
 
             # Prefer original sender if this is a forwarded mail
             formatted_sender = msg_sender
+            print(f"DEBUG: raw msg_sender = '{msg_sender}'")
+            
+            # Try to extract email from msg.sender_email property (SMTP address)
             try:
-                # Extract plain email if angle brackets are present
-                match = re.search(email_pattern, msg_sender)
-                if match:
-                    formatted_sender = match.group(1)
+                if hasattr(msg, 'sender_email') and msg.sender_email:
+                    formatted_sender = msg.sender_email
+                    print(f"DEBUG: using sender_email = '{formatted_sender}'")
             except Exception:
                 pass
+            
+            # If still no email (just display name), search for email pattern in the sender string
+            if '@' not in formatted_sender:
+                try:
+                    # Look for email in angle brackets within sender
+                    match = re.search(email_pattern, msg_sender)
+                    if match and '@' in match.group(1):
+                        formatted_sender = match.group(1)
+                        print(f"DEBUG: extracted from angle brackets = '{formatted_sender}'")
+                except Exception:
+                    pass
+            
+            # If still no email, try to get from message headers
+            if '@' not in formatted_sender:
+                try:
+                    from_header = msg.header.get('From', '') if hasattr(msg, 'header') else ''
+                    print(f"DEBUG: From header = '{from_header}'")
+                    if from_header:
+                        match = re.search(email_pattern, from_header)
+                        if match and '@' in match.group(1):
+                            formatted_sender = match.group(1)
+                            print(f"DEBUG: extracted from header = '{formatted_sender}'")
+                except Exception as e:
+                    print(f"DEBUG: header extraction error = {e}")
+                    pass
 
             try:
                 # Detect forward by common subject prefixes
