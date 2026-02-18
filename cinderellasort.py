@@ -7,6 +7,7 @@ from pathlib import Path
 from wit_pytools.witpytools import dryprint
 from wit_pytools.sanitizers import prepregex, cleanfilestring, convert_numerals_arabic_western
 from wit_pytools.validators import valid_email_address
+from wit_pytools.systools import walklevel, rmemptydir, movefile, copyfile, delfile
 from eliot import log_message
 import gettext
 
@@ -26,9 +27,6 @@ def setup_translations(language='de'):
 
 # Initialize translations
 _ = setup_translations()
-
-# Now import the modules
-from wit_pytools.systools import walklevel, rmemptydir, movefile, copyfile
 
 dryrun = (True)
 
@@ -605,13 +603,15 @@ def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
             log_message(f"Error handling PDF file {file.name}: {e}", level="ERROR")
     return
 
-def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress):
+def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None):
     # First check if the file matches any of the specified file types
     file_matches_type = False
+    file_ext = ''
     for ftype in ftype_sort.split(','):
         ftype = ftype.strip().casefold()
         if file.name.lower().endswith(ftype):
             file_matches_type = True
+            file_ext = ftype
             break
 
     if not file_matches_type:
@@ -664,7 +664,35 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
     # Only proceed if there are standard bowls configured
     if config_object.has_section("BOWLS") and len(list(config_object.items("BOWLS"))) > 0:
         print("Handle Default Bowls")
-        nfile = cleanfilestring(file.name)
+        
+        # Check if we should use directory name instead of filename
+        if use_directory_name and dir_file_count == 1 and dirname:
+            # For directory names, don't treat them as filenames with extensions.
+            # Apply clean/clean_nocase/replacements to the entire dirname, then add file extension.
+            cleaned_dirname = cleanfilestring(dirname)  # Remove invalid chars first
+            # Apply clean list (case-sensitive)
+            if clean and clean != "NOTdefined":
+                for rstring in clean.split(','):
+                    if rstring:
+                        rstring_escaped = prepregex(rstring)
+                        cleaned_dirname = re.sub(rstring_escaped, '', cleaned_dirname)
+            # Apply clean_nocase list (case-insensitive)
+            if clean_nocase and clean_nocase != "NOTdefined":
+                for rstring in clean_nocase.split(','):
+                    if rstring:
+                        rstring_escaped = prepregex(rstring)
+                        cleaned_dirname = re.sub(rstring_escaped, '', cleaned_dirname, flags=re.IGNORECASE)
+            # Apply replacements
+            if replacements:
+                for rstring, nstring in replacements.items():
+                    cleaned_dirname = cleaned_dirname.replace(rstring, nstring)
+            # Strip trailing whitespace
+            cleaned_dirname = cleaned_dirname.strip()
+            print(f"  Using directory name: {cleaned_dirname} (count={dir_file_count})")
+            nfile = cleaned_dirname + file_ext
+        else:
+            nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
+        
         bowl = bowldir(nfile, config_object)
         # Only move if a bowl was found and it's not empty
         if bowl:
@@ -704,13 +732,20 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     gps_moved_unmatched = settings.get('gps_moved_unmatched', 'false').strip().lower() == 'true'
     gps_compress = settings.get('gps_compress', 'false').strip().lower() == 'true'
     set_tags = settings.get('set_tags', 'false').strip().lower() == 'true'
+    use_directory_name = settings.get('usedirectoryname', 'false').strip().lower() == 'true'
 
     # Fetch replacements from the REPLACEMENTS section
     replacements = {}
     if "REPLACEMENTS" in config_object:
         replacements_section = config_object["REPLACEMENTS"]
         for key in replacements_section:
-            replacements[key] = replacements_section[key]
+            value = replacements_section.get(key, raw=True)
+            # Strip quotes if present
+            if value.startswith('"') and value.endswith('"'):
+                value = value[1:-1]
+            elif value.startswith("'") and value.endswith("'"):
+                value = value[1:-1]
+            replacements[key] = value
     
     if not filemode == 'nc':
         print('\n###########################################')
@@ -725,7 +760,8 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
         print('overwrite: ' + str(overwrite))
         print(' jpg qual: ' + str(jpg_quality))
         print(' gps move unmatched: ' + str(gps_moved_unmatched))
-        print(' gps comp: ' + str(gps_compress)) 
+        print(' gps comp: ' + str(gps_compress))
+        print(' use dir name: ' + str(use_directory_name)) 
 
     # ADD unzip
 
@@ -744,15 +780,48 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
         if file_path.is_file():
             handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress)
     else:
-        # Handle all files in sourcedir and all subdirectories
+        # First pass: delete unwanted files in directories with valid sorts
         print("Running cinderellasort in all-files mode")
         print("Sourcedir: " + sourcedir)
+        print("\n## First pass: deleting unwanted files")
+        for root, dirs, files in os.walk(sourcedir):
+            if isvalidsort(root, ftype_sort):
+                print(f'   Valid sort dir: {root}')
+                for file in files:
+                    for ftype in ftype_delete.split(','):
+                        ftype_clean = ftype.strip()
+                        if file.casefold().endswith(ftype_clean):
+                            print(f'   -> deleting {file} (matches {ftype_clean})')
+                            delfile(root, file, dryrun)
+        
+        # Second pass: process and move files
+        print("\n## Second pass: processing files")
         processed_files = 0
+        
+        # First, count valid sort files per directory
+        dir_file_counts = {}
+        if use_directory_name:
+            print("  Counting valid files per directory...")
+            for root, dirs, files in os.walk(sourcedir):
+                valid_count = 0
+                for filename in files:
+                    for ftype in ftype_sort.split(','):
+                        ftype_clean = ftype.strip().casefold()
+                        if filename.lower().endswith(ftype_clean):
+                            valid_count += 1
+                            break
+                if valid_count > 0:
+                    dir_file_counts[root] = valid_count
+                    print(f"    {root}: {valid_count} valid files")
+        
         for root, dirs, files in os.walk(sourcedir):
             for filename in files:
                 print("Filename: " + filename)
                 file_path = Path(os.path.join(root, filename))
-                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress)
+                # Get directory name and file count for this file
+                dirname = os.path.basename(root) if use_directory_name else None
+                dir_count = dir_file_counts.get(root, 0) if use_directory_name else None
+                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname)
                 processed_files += 1
         log_message(f"Processed {processed_files} files in {sourcedir} and subdirectories")
         
@@ -760,14 +829,18 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     dirlist = [f for f in Path(sourcedir).resolve().glob('**/*') if f.is_dir()]
     print([str(d) for d in dirlist])
     for maindir in dirlist:
+        print(f'Checking dir: {maindir}')
         if isvalidsort(str(maindir), ftype_sort):
             print(' #  valid sort found:' + ftype_delete)
             for subdir, dirs, files in walklevel(str(maindir), 2):
+                print(f'   Scanning subdir: {subdir}, files: {files}')
                 #TODO replace with handlefile()
                 for file in files:
                     # print('# remove unwanted filetypes')
                     for ftype in ftype_delete.split(','):
-                        if file.casefold().endswith(ftype.strip()):
+                        ftype_clean = ftype.strip()
+                        if file.casefold().endswith(ftype_clean):
+                            print(f'   -> deleting {file} (matches {ftype_clean})')
                             delfile(subdir, file, dryrun)
                     # print('# removing files that match trash')
                     for ftype in ftype_sort.split(','):
@@ -790,6 +863,5 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
         else:
             print(' #  No valid sort found!') 
 
-#    print(f"\n## Removing empty directories:")
-#    rmemptydir(sourcedir,dryrun)
-#    rmemptydir(sourcedir,dryrun)
+    print(f"\n## Removing empty directories:")
+    rmemptydir(sourcedir,dryrun)

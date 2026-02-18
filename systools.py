@@ -54,10 +54,19 @@ def rmemptydir(rootdir, dryrun = (False)):
 
 def delfile(subdir, file, dryrun=False):
     #TODO: (low) known problems handling 0 byte files on smb network shares
+    filepath = os.path.join(subdir, file)
     if dryrun:
         print(' -  del: ' + file)
     else:
-        os.remove((os.path.join(subdir, file)))
+        try:
+            os.remove(filepath)
+            log_message(f"Deleted file: {filepath}", level="INFO")
+        except FileNotFoundError:
+            log_message(f"ERROR: File not found for deletion: {filepath}", level="ERROR")
+        except PermissionError:
+            log_message(f"ERROR: Permission denied deleting: {filepath}", level="ERROR")
+        except Exception as e:
+            log_message(f"ERROR: Failed to delete {filepath}: {str(e)}", level="ERROR")
 
 def movefile(subdir, file, destdir, nfile, filemode='win', overwrite=False, dryrun=False):
     #TODO: add rights handeling before attempt (gets stuck sometimes when copy but no write access
