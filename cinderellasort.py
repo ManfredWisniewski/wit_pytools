@@ -603,7 +603,7 @@ def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
             log_message(f"Error handling PDF file {file.name}: {e}", level="ERROR")
     return
 
-def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None):
+def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None, skip_unmatched=True):
     # First check if the file matches any of the specified file types
     file_matches_type = False
     file_ext = ''
@@ -702,7 +702,12 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
             else:
                 movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
         else:
-            log_message(f"No matching bowl found for {file.name}", level="DEBUG")
+            # No matching bowl
+            if skip_unmatched:
+                print(f"  No bowl match, skipping: {nfile}")
+            else:
+                print(f"  No bowl match, moving to base target: {nfile}")
+                movefile(sourcedir, file, targetdir, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
 
 ## MAIN cinderellasort execution ##
 def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
@@ -733,6 +738,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     gps_compress = settings.get('gps_compress', 'false').strip().lower() == 'true'
     set_tags = settings.get('set_tags', 'false').strip().lower() == 'true'
     use_directory_name = settings.get('usedirectoryname', 'false').strip().lower() == 'true'
+    skip_unmatched = settings.get('skipunmatched', 'true').strip().lower() == 'true'
 
     # Fetch replacements from the REPLACEMENTS section
     replacements = {}
@@ -761,7 +767,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
         print(' jpg qual: ' + str(jpg_quality))
         print(' gps move unmatched: ' + str(gps_moved_unmatched))
         print(' gps comp: ' + str(gps_compress))
-        print(' use dir name: ' + str(use_directory_name)) 
+        print(' skip unmatched: ' + str(skip_unmatched)) 
 
     # ADD unzip
 
@@ -778,7 +784,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
         file_path = Path(os.path.join(file_dir, file_name))
         
         if file_path.is_file():
-            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress)
+            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, skip_unmatched=skip_unmatched)
     else:
         # First pass: delete unwanted files in directories with valid sorts
         print("Running cinderellasort in all-files mode")
@@ -821,7 +827,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
                 # Get directory name and file count for this file
                 dirname = os.path.basename(root) if use_directory_name else None
                 dir_count = dir_file_counts.get(root, 0) if use_directory_name else None
-                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname)
+                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname, skip_unmatched)
                 processed_files += 1
         log_message(f"Processed {processed_files} files in {sourcedir} and subdirectories")
         
