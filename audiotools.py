@@ -11,8 +11,9 @@ import subprocess
 import sys
 import shutil
 from pathlib import Path
-from typing import List, Optional, Union, Tuple, Dict
+from typing import List, Optional, Union, Tuple, Dict, Sequence
 import tempfile
+from os import PathLike
 import importlib.util
 
 
@@ -206,6 +207,80 @@ def estimate_m4b_size(
     return estimated_size, original_size, compression_ratio, size_info
 
 
+PathLikeType = Union[str, PathLike]
+
+
+def is_ffmpeg_available() -> bool:
+    """Return True if the ``ffmpeg`` executable is available."""
+
+    return shutil.which("ffmpeg") is not None
+
+
+def encode_m4a(
+    input_file: PathLikeType,
+    output_file: PathLikeType,
+    *,
+    bitrate: str = "64k",
+    audio_codec: str = "aac",
+    sample_rate: Optional[int] = None,
+    channels: Optional[int] = None,
+    extra_args: Optional[Sequence[str]] = None,
+    overwrite: bool = True,
+) -> Path:
+    """Encode ``input_file`` to an M4A (AAC) file using FFmpeg."""
+
+    if not is_ffmpeg_available():
+        raise RuntimeError(
+            "FFmpeg is not available on PATH. Install it from https://ffmpeg.org/download.html"
+        )
+
+    input_path = Path(input_file)
+    if not input_path.exists():
+        raise FileNotFoundError(f"Input file does not exist: {input_path}")
+
+    output_path = Path(output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cmd: List[str] = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+    ]
+
+    cmd.append("-y" if overwrite else "-n")
+    cmd.extend(["-i", str(input_path)])
+    cmd.extend(["-map", "0:a:0"])
+    cmd.extend(["-vn", "-sn", "-dn"])
+    cmd.extend(["-map_metadata", "0"])
+    cmd.extend(["-c:a", audio_codec])
+    cmd.extend(["-b:a", bitrate])
+
+    if sample_rate:
+        cmd.extend(["-ar", str(sample_rate)])
+
+    if channels:
+        cmd.extend(["-ac", str(channels)])
+
+    if extra_args:
+        cmd.extend(list(extra_args))
+
+    cmd.append(str(output_path))
+
+    try:
+        completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.strip() if exc.stderr else "(no error output)"
+        raise RuntimeError(
+            f"FFmpeg failed to encode '{input_path}' to '{output_path}': {stderr}"
+        ) from exc
+
+    if completed.stdout:
+        print(completed.stdout.strip())
+
+    return output_path
+
+
 def convert_to_m4b(
     input_folder: Union[str, Path],
     output_file: Optional[Union[str, Path]] = None,
@@ -237,7 +312,7 @@ def convert_to_m4b(
         cover_image: Path to cover image file
         extensions: List of file extensions to include (for filtering files, not passed to m4b-util)
         chapter_pattern: Pattern for chapter names (not directly supported by m4b-util)
-        bitrate: Audio bitrate (e.g. '64k') - NOTE: Not directly supported by m4b-util bind
+        bitrate: Audio bitrate (e.g. '64k') to use for size estimation and m4b-util binding
         verbose: Whether to print verbose output
         estimate_size: Whether to estimate and return size information
         debug: Whether to enable debug mode with additional logging
@@ -432,6 +507,10 @@ def convert_to_m4b(
             if decode_durations:
                 cmd.append('--decode-durations')
             
+            if bitrate:
+                cmd.append(f"--audio-bitrate={bitrate}")
+
+
             if debug:
                 print(f"Debug: Full command: m4b-util {' '.join(str(arg) for arg in cmd)}")
                 print(f"Debug: Final output file: {final_output_file}")
@@ -452,12 +531,12 @@ def convert_to_m4b(
                 result = run_m4b_util_command(
                     cmd,
                     check=True,
-                    capture_output=not (verbose or debug),
+                    capture_output=True,
                     text=True,
                     env=env
                 )
                 
-                if (verbose or debug) and result.stdout:
+                if debug:
                     print(result.stdout)
                 
                 # Update size info with actual file size if available
@@ -477,8 +556,9 @@ def convert_to_m4b(
             
             except (subprocess.CalledProcessError, RuntimeError) as e:
                 error_msg = f"Error converting to M4B: {e}"
-                if hasattr(e, 'stderr') and e.stderr:
-                    error_msg += f"\nError output: {e.stderr}"
+                stderr_output = getattr(e, 'stderr', None)
+                if stderr_output:
+                    error_msg += f"\nError output: {stderr_output.strip()}"
                 
                 if debug:
                     print(f"Debug: Error occurred: {error_msg}")
