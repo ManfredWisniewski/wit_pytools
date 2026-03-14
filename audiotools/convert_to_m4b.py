@@ -142,7 +142,7 @@ def main():
     args = parser.parse_args()
 
     # Replace with your actual MP3 folder path, or override via env
-    mp3_folder = os.environ.get('AUDIOBOOK_INPUT_FOLDER', r'H:\midgard\encode\audiobooks-encode\Irvin D Yalom 2012 The Spinoza Problem')
+    mp3_folder = os.environ.get('AUDIOBOOK_INPUT_FOLDER', r'.\')
     
     # https://github.com/sandreas/m4b-tool
     # This bitrate is only used for size estimation, not passed to m4b-util
@@ -195,7 +195,7 @@ def main():
         print("No cover images found in the directory.")
     
     # Get output path (optional)
-    output_directory = os.environ.get('AUDIOBOOK_OUTPUT_DIR', r"H:\midgard\encode\audiobooks-encode")
+    output_directory = os.environ.get('AUDIOBOOK_OUTPUT_DIR', r".\")
     if output_directory:
         filename_parts = []
         if author:

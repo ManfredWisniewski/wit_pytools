@@ -18,7 +18,7 @@ set "WORK_DIR=P:\sort"
 
 REM List of config INI files to process (space-separated, leave empty to use cinderellasort.ini in work dir)
 REM Example: set "CONFIG_FILES=P:\sort\downloads.ini P:\sort\emails.ini"
-set "CONFIG_FILES=P:\sort\downloads.ini P:\sort\movies.ini P:\sort\library.ini P:\sort\comics.ini"
+set "CONFIG_FILES=.\cinderellasort_config.ini"
 
 REM Additional options to pass to cinderellasort
 REM Options: --dryrun, --verbose, etc.
@@ -26,11 +26,7 @@ set "EXTRA_OPTS="
 REM set "EXTRA_OPTS=--dryrun"
 
 REM Example: move all files between directories (requires Python call)
-python -c "import sys; sys.path.insert(0, r'P:\git\witnctools'); from wit_pytools.systools import moveallfiles; moveallfiles(r'H:\svartalvheim\usenet\done\3d', r'H:\midgard\sort-3d', False)"
-python -c "import sys; sys.path.insert(0, r'P:\git\witnctools'); from wit_pytools.systools import moveallfiles; moveallfiles(r'H:\svartalvheim\usenet\done\courses', r'H:\midgard\encode\courses', False)"
-python -c "import sys; sys.path.insert(0, r'P:\git\witnctools'); from wit_pytools.systools import moveallfiles; moveallfiles(r'H:\svartalvheim\usenet\done\audiobooks', r'H:\midgard\encode\audiobooks-sort', False)"
-python -c "import sys; sys.path.insert(0, r'P:\git\witnctools'); from wit_pytools.systools import moveallfiles; moveallfiles(r'H:\svartalvheim\usenet\done\games', r'H:\midgard\sort-games', False)"
-python -c "import sys; sys.path.insert(0, r'P:\git\witnctools'); from wit_pytools.systools import moveallfiles; moveallfiles(r'H:\svartalvheim\usenet\done\_music', r'H:\midgard\encode\music', False)"
+python -c "import sys; sys.path.insert(0, r'P:\git\witnctools'); from wit_pytools.systools import moveallfiles; moveallfiles(r'Disk:\source', r'Disk:\target', False)"
 
 REM ==============================================================================
 REM SCRIPT LOGIC - Do not edit below this line unless necessary

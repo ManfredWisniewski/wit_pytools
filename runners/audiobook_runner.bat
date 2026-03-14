@@ -20,7 +20,7 @@ REM Optional: Explicit output M4B file path (including filename)
 set "OUTPUT_FILE="
 
 REM Optional: Output directory (used if OUTPUT_FILE is empty)
-set "OUTPUT_DIR=H:\midgard\encode"
+set "OUTPUT_DIR=.\"
 
 REM Optional metadata overrides
 set "TITLE="

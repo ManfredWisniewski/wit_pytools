@@ -35,7 +35,7 @@ def main() -> None:
         nargs="?",
         default=os.environ.get(
             "AUDIOBOOK_INPUT_FOLDER",
-            r"H:\midgard\encode\audiobooks-encode",
+            r".\",
         ),
         help="Folder containing source audio (defaults to AUDIOBOOK_INPUT_FOLDER env)",
     )

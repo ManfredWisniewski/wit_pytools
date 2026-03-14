@@ -11,7 +11,7 @@ REM Path to Python executable (leave empty to use default 'python')
 set "PYTHON_PATH="
 
 REM Path to root directory containing subdirectories to process
-set "ROOT_DIR=H:\midgard\encode\audiobooks-encode"
+set "ROOT_DIR=.\"
 
 REM Python script to run for each subdirectory (absolute or relative path)
 REM set "PYTHON_SCRIPT=P:\git\witnctools\wit_pytools\audiotools\convert_to_m4a.py"
@@ -19,7 +19,7 @@ set "PYTHON_SCRIPT=P:\git\witnctools\wit_pytools\audiotools\convert_to_m4b.py"
 set "SCRIPT_ARGS=--preferred-format m4a"
 
 REM Optional output directory to pass to script via env var
-set "OUTPUT_DIR=H:\midgard\encode\audiobooks-encode"
+set "OUTPUT_DIR=.\"
 
 REM Environment variable names used by the target script
 set "ENV_INPUT=AUDIOBOOK_INPUT_FOLDER"
