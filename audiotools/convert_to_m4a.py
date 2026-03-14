@@ -8,9 +8,9 @@ from pathlib import Path
 from typing import Iterable, List
 
 # Allow running from repository root without installing wit_pytools
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 
-from audiotools import encode_m4a, is_ffmpeg_available  # noqa: E402
+from wit_pytools.audiotools import encode_m4a, is_ffmpeg_available  # noqa: E402
 
 
 def discover_audio_files(root: Path, extensions: Iterable[str]) -> List[Path]:

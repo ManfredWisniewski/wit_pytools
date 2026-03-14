@@ -14,8 +14,9 @@ REM Path to root directory containing subdirectories to process
 set "ROOT_DIR=H:\midgard\encode\audiobooks-encode"
 
 REM Python script to run for each subdirectory (absolute or relative path)
-REM set "PYTHON_SCRIPT=P:\git\witnctools\wit_pytools\runners\convert_to_m4b.py"
-set "PYTHON_SCRIPT=P:\git\witnctools\wit_pytools\runners\convert_to_m4a.py"
+REM set "PYTHON_SCRIPT=P:\git\witnctools\wit_pytools\audiotools\convert_to_m4a.py"
+set "PYTHON_SCRIPT=P:\git\witnctools\wit_pytools\audiotools\convert_to_m4b.py"
+set "SCRIPT_ARGS=--preferred-format m4a"
 
 REM Optional output directory to pass to script via env var
 set "OUTPUT_DIR=H:\midgard\encode\audiobooks-encode"
@@ -99,8 +100,8 @@ for /d %%D in ("%ROOT_DIR%\*") do (
             )
         )
 
-        echo Running: %PYTHON_PATH% "%PYTHON_SCRIPT%"
-        %PYTHON_PATH% "%PYTHON_SCRIPT%"
+        echo Running: %PYTHON_PATH% "%PYTHON_SCRIPT%" %SCRIPT_ARGS%
+        %PYTHON_PATH% "%PYTHON_SCRIPT%" %SCRIPT_ARGS%
         set "RC=!ERRORLEVEL!"
 
         if not "!RC!"=="0" (

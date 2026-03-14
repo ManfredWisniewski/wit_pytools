@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 # requires: m4b-util
 """
-Audio conversion tools for creating M4B audiobook files.
-This module provides a simple wrapper around the m4b-util package.
+Audio handling and conversion tools.
 """
 
 import os
@@ -289,6 +288,7 @@ def convert_to_m4b(
     author: Optional[str] = None,
     cover_image: Optional[Union[str, Path]] = None,
     extensions: Optional[List[str]] = None,
+    preferred_format: Optional[str] = None,
     chapter_pattern: Optional[str] = None,
     bitrate: Optional[str] = None,
     verbose: bool = False,
@@ -311,6 +311,7 @@ def convert_to_m4b(
         author: Author of the audiobook
         cover_image: Path to cover image file
         extensions: List of file extensions to include (for filtering files, not passed to m4b-util)
+        preferred_format: Preferred audio extension to use when multiple formats exist (e.g. 'm4a' or 'mp3')
         chapter_pattern: Pattern for chapter names (not directly supported by m4b-util)
         bitrate: Audio bitrate (e.g. '64k') to use for size estimation and m4b-util binding
         verbose: Whether to print verbose output
@@ -348,12 +349,28 @@ def convert_to_m4b(
     if not os.path.exists(input_folder) and not specific_files:
         raise ValueError(f"Input folder does not exist: {input_folder}")
     
+    preferred_normalized = None
+    if preferred_format:
+        preferred_normalized = preferred_format.lstrip('.').lower()
+
     if extensions is None:
         extensions = ['mp3']
-    
-    # Normalize extensions (remove leading dots, convert to lowercase)
-    normalized_extensions = [ext.lstrip('.').lower() for ext in extensions]
-    
+        if preferred_normalized and preferred_normalized not in [ext.lstrip('.') for ext in extensions]:
+            extensions.insert(0, preferred_normalized)
+
+    # Normalize extensions (remove leading dots, convert to lowercase) while preserving order
+    normalized_extensions: List[str] = []
+    for ext in extensions:
+        norm = ext.lstrip('.').lower()
+        if norm not in normalized_extensions:
+            normalized_extensions.append(norm)
+
+    if preferred_normalized:
+        if preferred_normalized not in normalized_extensions:
+            normalized_extensions.insert(0, preferred_normalized)
+        else:
+            normalized_extensions.insert(0, normalized_extensions.pop(normalized_extensions.index(preferred_normalized)))
+
     # Check if there are any audio files in the input folder (only if not using specific_files)
     has_audio_files = False
     if not specific_files:
@@ -408,6 +425,8 @@ def convert_to_m4b(
             
             # Create symlinks to audio files only
             audio_file_count = 0
+            selected_files: Dict[str, Path] = {}
+
             for ext in normalized_extensions:
                 for audio_file in Path(input_folder).glob(f'**/*.{ext}'):
                     # Skip image files that might have audio extensions
@@ -415,20 +434,34 @@ def convert_to_m4b(
                         if debug:
                             print(f"Debug: Skipping image file with audio extension: {audio_file}")
                         continue
-                    
-                    # Create symlink in temp directory
-                    link_path = os.path.join(temp_dir, audio_file.name)
-                    try:
-                        # On Windows, we need to use a different approach for symlinks
-                        if os.name == 'nt':
-                            # For Windows, copy the file instead of symlinking
-                            shutil.copy2(audio_file, link_path)
-                        else:
-                            os.symlink(audio_file, link_path)
-                        audio_file_count += 1
-                    except (OSError, shutil.Error) as e:
+
+                    rel_key = str(audio_file.relative_to(input_folder).with_suffix(''))
+                    current = selected_files.get(rel_key)
+                    current_ext = audio_file.suffix.lstrip('.').lower()
+
+                    if current is None:
+                        selected_files[rel_key] = audio_file
+                    elif preferred_normalized and current.suffix.lstrip('.').lower() != preferred_normalized and current_ext == preferred_normalized:
                         if debug:
-                            print(f"Debug: Error creating link for {audio_file}: {e}")
+                            print(f"Debug: Preferring {audio_file} over {current}")
+                        selected_files[rel_key] = audio_file
+
+            audio_file_count = 0
+
+            for audio_file in selected_files.values():
+                # Create symlink in temp directory
+                link_path = os.path.join(temp_dir, audio_file.name)
+                try:
+                    # On Windows, we need to use a different approach for symlinks
+                    if os.name == 'nt':
+                        # For Windows, copy the file instead of symlinking
+                        shutil.copy2(audio_file, link_path)
+                    else:
+                        os.symlink(audio_file, link_path)
+                    audio_file_count += 1
+                except (OSError, shutil.Error) as e:
+                    if debug:
+                        print(f"Debug: Error creating link for {audio_file}: {e}")
             
             if debug:
                 print(f"Debug: Created links for {audio_file_count} audio files")

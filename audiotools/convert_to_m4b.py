@@ -1,18 +1,17 @@
 #!/usr/bin/env python
-"""
-Example script to convert audio files to M4B format.
-"""
+"""Example script to convert audio files to M4B format."""
 
+import argparse
 import os
 import sys
 import re
 import glob
 from pathlib import Path
 
-# Add parent directory to path so we can import wit_pytools
-sys.path.append(str(Path(__file__).parent.parent))
+# Add repository root to path so we can import wit_pytools
+sys.path.append(str(Path(__file__).resolve().parents[2]))
 
-from audiotools import convert_to_m4b, estimate_m4b_size
+from wit_pytools.audiotools import convert_to_m4b, estimate_m4b_size
 
 def extract_title_from_directory(directory_path):
     """
@@ -127,6 +126,21 @@ def find_cover_images(directory_path):
     return jpg_files
 
 def main():
+    parser = argparse.ArgumentParser(
+        description="Convert audiobook folders to M4B with optional format preference"
+    )
+    parser.add_argument(
+        "--preferred-format",
+        choices=["mp3", "m4a"],
+        help="Preferred audio format to select when multiple encodings exist",
+    )
+    parser.add_argument(
+        "--extensions",
+        nargs="+",
+        help="Audio file extensions to consider (default: based on preferred format)",
+    )
+    args = parser.parse_args()
+
     # Replace with your actual MP3 folder path, or override via env
     mp3_folder = os.environ.get('AUDIOBOOK_INPUT_FOLDER', r'H:\midgard\encode\audiobooks-encode\Irvin D Yalom 2012 The Spinoza Problem')
     
@@ -138,6 +152,14 @@ def main():
         print(f"Error: Folder '{mp3_folder}' does not exist.")
         return
     
+    # Determine extensions to scan
+    if args.extensions:
+        extensions = [ext.lstrip('.').lower() for ext in args.extensions]
+    else:
+        extensions = ["mp3"]
+        if args.preferred_format and args.preferred_format not in extensions:
+            extensions.insert(0, args.preferred_format)
+
     # Extract metadata from directory name
     title = extract_title_from_directory(mp3_folder)
     author = extract_author_from_directory(mp3_folder)
@@ -215,6 +237,9 @@ def main():
     print(f"Use filename as chapter title: {use_filename_as_chapter}")
     print(f"Decode durations: {decode_durations}")
     print(f"Debug mode: {'Enabled' if debug else 'Disabled'}")
+    if args.preferred_format:
+        print(f"Preferred format: {args.preferred_format}")
+    print(f"Extensions scanned: {', '.join(extensions)}")
     print(f"Max size increase allowed: {(max_size_ratio - 1) * 100:.0f}%")
     print("-" * 50)
     
@@ -233,7 +258,7 @@ def main():
     estimated_size, original_size, compression_ratio, size_info = estimate_m4b_size(
         mp3_folder,
         bitrate=bitrate,
-        extensions=["mp3"]
+        extensions=extensions
     )
     
     print(f"Original size: {original_size / (1024*1024):.2f} MB")
@@ -258,7 +283,8 @@ def main():
             author=author,
             cover_image=cover_image,
             bitrate=bitrate,
-            extensions=["mp3"],  # Only used for filtering, not passed to m4b-util
+            extensions=extensions,
+            preferred_format=args.preferred_format,
             verbose=True,
             estimate_size=True,
             debug=debug,
