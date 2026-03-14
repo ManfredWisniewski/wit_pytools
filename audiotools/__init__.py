@@ -539,9 +539,6 @@ def convert_to_m4b(
             
             if decode_durations:
                 cmd.append('--decode-durations')
-            
-            if bitrate:
-                cmd.append(f"--audio-bitrate={bitrate}")
 
 
             if debug:
