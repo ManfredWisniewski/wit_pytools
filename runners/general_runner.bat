@@ -32,6 +32,12 @@ set "EXTRA_ENV="
 REM Log file (overwritten each run)
 set "LOG_FILE=%~dp0runner.log"
 
+echo.
+echo Running %PYTHON_SCRIPT% for subdirectories in:
+echo   %ROOT_DIR%
+echo All further output deferred to %LOG_FILE%.
+echo.
+
 call :MAIN > "%LOG_FILE%" 2>&1
 exit /b %ERRORLEVEL%
 
