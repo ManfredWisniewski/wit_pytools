@@ -13,7 +13,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from wit_pytools.audiotools import estimate_m4b_size
 
 def main():
-    mp3_folder = os.environ.get('AUDIOBOOK_INPUT_FOLDER', r'.\')
+    mp3_folder = os.environ.get('AUDIOBOOK_INPUT_FOLDER', r'.')
     bitrate = "64k"
     
     print(f"\nnEstimating M4B size for files in: {mp3_folder}")
