@@ -6,12 +6,21 @@ import os
 import sys
 import re
 import glob
+import shutil
+import subprocess
 from pathlib import Path
 
 # Add repository root to path so we can import wit_pytools
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
-from wit_pytools.audiotools import convert_to_m4b, estimate_m4b_size
+from wit_pytools.audiotools import (
+    convert_to_m4b,
+    estimate_m4b_size,
+    probe_audio_bitrate,
+    reencode_audio,
+)
+from wit_pytools.datatools import bps_to_bitrate, bitrate_to_bps
+
 
 def extract_title_from_directory(directory_path):
     """
@@ -125,6 +134,52 @@ def find_cover_images(directory_path):
     
     return jpg_files
 
+
+def detect_source_bitrate(directory_path, extensions, sample_limit=None):
+    """Return the lowest detected bitrate (bps) across input audio files."""
+
+    directory = Path(directory_path)
+    if not directory.exists():
+        return None
+
+    detected = []
+
+    for ext in extensions:
+        for file_path in directory.glob(f"**/*.{ext}"):
+            if not file_path.is_file():
+                continue
+
+            bitrate_bps = probe_audio_bitrate(file_path)
+            if bitrate_bps:
+                detected.append(bitrate_bps)
+                if sample_limit and len(detected) >= sample_limit:
+                    return min(detected) if detected else None
+
+    return min(detected) if detected else None
+
+def cleanup_directory(directory_path):
+    """Remove known temp files before running conversion."""
+
+    directory = Path(directory_path)
+    if not directory.exists():
+        return
+
+    position_file = directory / "position.sabp.dat"
+    if position_file.exists():
+        try:
+            position_file.unlink()
+            print(f"Removed stale file: {position_file}")
+        except OSError as err:
+            print(f"Warning: could not remove {position_file}: {err}")
+
+    for cue_file in list(directory.glob("*.cue")) + list(directory.glob("*.CUE")):
+        if cue_file.exists():
+            try:
+                cue_file.unlink()
+                print(f"Removed cue file: {cue_file}")
+            except OSError as err:
+                print(f"Warning: could not remove {cue_file}: {err}")
+
 def main():
     parser = argparse.ArgumentParser(
         description="Convert audiobook folders to M4B with optional format preference"
@@ -139,14 +194,19 @@ def main():
         nargs="+",
         help="Audio file extensions to consider (default: based on preferred format)",
     )
+    parser.add_argument(
+        "--bitrate",
+        default=os.environ.get("AUDIOBOOK_TARGET_BITRATE", "64k"),
+        help="Target audio bitrate for size estimation and final re-encode (default: 64k)",
+    )
     args = parser.parse_args()
 
     # Replace with your actual MP3 folder path, or override via env
     mp3_folder = os.environ.get('AUDIOBOOK_INPUT_FOLDER', '.')
     
     # https://github.com/sandreas/m4b-tool
-    # This bitrate is only used for size estimation, not passed to m4b-util
-    bitrate = "64k"
+    # Bitrate used for size estimation and optional re-encode
+    bitrate = args.bitrate
 
     if not os.path.exists(mp3_folder):
         print(f"Error: Folder '{mp3_folder}' does not exist.")
@@ -159,6 +219,34 @@ def main():
         extensions = ["mp3"]
         if args.preferred_format and args.preferred_format not in extensions:
             extensions.insert(0, args.preferred_format)
+
+    cleanup_directory(mp3_folder)
+
+    source_bitrate_bps = detect_source_bitrate(mp3_folder, extensions)
+    target_bitrate_bps = bitrate_to_bps(bitrate)
+    effective_bitrate_bps = target_bitrate_bps or source_bitrate_bps
+
+    if source_bitrate_bps and target_bitrate_bps:
+        if source_bitrate_bps < target_bitrate_bps:
+            adjusted_bitrate = bps_to_bitrate(source_bitrate_bps)
+            if adjusted_bitrate:
+                if adjusted_bitrate != bitrate:
+                    print(
+                        "Detected source bitrate"
+                        f" {bps_to_bitrate(source_bitrate_bps) or source_bitrate_bps}"
+                        f" below configured target {bps_to_bitrate(target_bitrate_bps) or target_bitrate_bps}."
+                    )
+                    print("Using source bitrate for re-encoding.")
+                bitrate = adjusted_bitrate
+                effective_bitrate_bps = source_bitrate_bps
+    elif source_bitrate_bps and not target_bitrate_bps:
+        adjusted_bitrate = bps_to_bitrate(source_bitrate_bps)
+        if adjusted_bitrate:
+            bitrate = adjusted_bitrate
+            effective_bitrate_bps = source_bitrate_bps
+
+    if effective_bitrate_bps is None:
+        effective_bitrate_bps = bitrate_to_bps(bitrate)
 
     # Extract metadata from directory name
     title = extract_title_from_directory(mp3_folder)
@@ -194,25 +282,91 @@ def main():
     else:
         print("No cover images found in the directory.")
     
-    # Get output path (optional)
-    output_directory = os.environ.get('AUDIOBOOK_OUTPUT_DIR', r".")
-    if output_directory:
-        filename_parts = []
-        if author:
-            filename_parts.append(author)
-        if year:
-            filename_parts.append(year)
-        if title:
-            filename_parts.append(title)
-        filename_base = " ".join(part for part in filename_parts if part).strip()
-        if narrator:
-            filename_base = f"{filename_base}; {narrator}" if filename_base else narrator
-        if not filename_base:
-            filename_base = os.path.basename(mp3_folder)
+    # Get output path (same directory as source files)
+    output_dir_path = Path(mp3_folder)
+    output_dir_path.mkdir(parents=True, exist_ok=True)
 
-        output_file = os.path.join(output_directory, f"{filename_base}.m4b")
-    else:
-        output_file = None
+    filename_parts = []
+    if author:
+        filename_parts.append(author)
+    if year:
+        filename_parts.append(year)
+    if title:
+        filename_parts.append(title)
+    filename_base = " ".join(part for part in filename_parts if part).strip()
+    if narrator:
+        filename_base = f"{filename_base}; {narrator}" if filename_base else narrator
+    if not filename_base:
+        filename_base = os.path.basename(mp3_folder)
+
+    output_file = str(output_dir_path / f"{filename_base}.m4b")
+
+    existing_output = Path(output_file)
+    if existing_output.exists():
+        try:
+            existing_output.unlink()
+            print(f"Removed existing output file: {existing_output}")
+        except OSError as err:
+            print(f"Warning: could not remove {existing_output}: {err}")
+
+    # Handle directories that already contain a single M4B file
+    existing_m4b_files = sorted(Path(mp3_folder).glob("*.m4b"))
+    if len(existing_m4b_files) == 1:
+        source_m4b = existing_m4b_files[0]
+        print("\nSingle M4B detected in source directory. Re-encoding to target bitrate...")
+
+        target_path = Path(output_file) if output_file else source_m4b
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        target_bitrate_bps = effective_bitrate_bps
+        current_bitrate_bps = probe_audio_bitrate(source_m4b)
+        if (
+            target_bitrate_bps is not None
+            and current_bitrate_bps is not None
+            and current_bitrate_bps <= target_bitrate_bps
+        ):
+            print(
+                "Existing M4B bitrate is lower or equal to target; skipping re-encode."
+            )
+            if target_path != source_m4b:
+                shutil.copy2(source_m4b, target_path)
+                print(f"Copied to output path: {target_path}")
+            else:
+                print("Output path matches source; no action taken.")
+
+            final_size = target_path.stat().st_size if target_path.exists() else 0
+            if final_size:
+                print(f"File size: {final_size / (1024 * 1024):.2f} MB")
+            return
+
+        temp_reencode_path = target_path.with_name(f"{target_path.stem}_reencoded{target_path.suffix}")
+        if temp_reencode_path.exists():
+            temp_reencode_path.unlink()
+
+        try:
+            original_size = source_m4b.stat().st_size
+            reencode_audio(
+                source_m4b,
+                temp_reencode_path,
+                bitrate=bitrate,
+                audio_codec="aac",
+                overwrite=True,
+            )
+            os.replace(temp_reencode_path, target_path)
+        except Exception as err:
+            if temp_reencode_path.exists():
+                temp_reencode_path.unlink()
+            print(f"Error: Re-encode of existing M4B failed ({err})")
+            return
+
+        new_size = target_path.stat().st_size if target_path.exists() else 0
+        print("Re-encode complete!")
+        print(f"Source file: {source_m4b}")
+        print(f"Output file: {target_path}")
+        print(f"Original size: {original_size / (1024 * 1024):.2f} MB")
+        if new_size:
+            print(f"New size: {new_size / (1024 * 1024):.2f} MB")
+        return
     
     # Enable debug mode
     debug = True
@@ -222,7 +376,7 @@ def main():
     decode_durations = True  # More accurate duration calculation
     
     # Maximum allowed size increase (1.2 means 20% larger)
-    max_size_ratio = 1.2
+    max_size_ratio = 1.9
     
     print(f"\nConverting files in: {mp3_folder}")
     print(f"Title: {title}")
@@ -266,9 +420,14 @@ def main():
     print(f"Compression ratio: {compression_ratio:.2f}x")
     
     # Check if the estimated size meets our criteria
+    if compression_ratio == 0:
+        print("\nUnable to estimate compression ratio (estimated size is 0). Skipping conversion.")
+        return
+
     if compression_ratio < 1 / max_size_ratio:
         print(f"\n Conversion would result in a file that is more than {(max_size_ratio - 1) * 100:.0f}% larger.")
-        print(f"  Expected size increase: {(1/compression_ratio - 1) * 100:.1f}%")
+        expected_increase = (1 / compression_ratio - 1) * 100
+        print(f"  Expected size increase: {expected_increase:.1f}%")
         print("  Skipping conversion.")
         return
     
@@ -294,16 +453,54 @@ def main():
             narrator=narrator
         )
         
-        # Print results
         if isinstance(result, tuple):
-            output_file, size_info = result
+            final_output_path_str, size_info = result
+        else:
+            final_output_path_str = result
+            size_info = None
+
+        final_output_path = Path(final_output_path_str)
+
+        # Optional re-encode step to enforce target bitrate/codec
+        if final_output_path.exists():
+            temp_reencode_path = final_output_path.with_name(
+                f"{final_output_path.stem}_reencoded{final_output_path.suffix}"
+            )
+            if temp_reencode_path.exists():
+                temp_reencode_path.unlink()
+
+            try:
+                print("\nRe-encoding final M4B to target bitrate...")
+                reencode_audio(
+                    final_output_path,
+                    temp_reencode_path,
+                    bitrate=bitrate,
+                    audio_codec="aac",
+                    overwrite=True,
+                )
+                os.replace(temp_reencode_path, final_output_path)
+            except Exception as re_err:
+                if temp_reencode_path.exists():
+                    temp_reencode_path.unlink()
+                print(f"Warning: Re-encode step failed ({re_err})")
+            else:
+                # Update size metrics after re-encode if available
+                if size_info is not None:
+                    new_size = final_output_path.stat().st_size
+                    size_info['actual_m4b_size'] = new_size
+                    size_info['actual_compression_ratio'] = (
+                        size_info['original_size'] / new_size if new_size else 0
+                    )
+
+        # Print results
+        if size_info is not None:
             print("\nConversion complete!")
-            print(f"Output file: {output_file}")
+            print(f"Output file: {final_output_path}")
             print(f"Original size: {size_info['original_size'] / (1024*1024):.2f} MB")
             print(f"M4B size: {size_info['actual_m4b_size'] / (1024*1024):.2f} MB")
             print(f"Compression ratio: {size_info['actual_compression_ratio']:.2f}x")
-            
-            # Show savings
+
+            # Show savings or increase
             if size_info['actual_compression_ratio'] > 1:
                 savings = size_info['original_size'] - size_info['actual_m4b_size']
                 savings_percent = (savings / size_info['original_size']) * 100
@@ -313,7 +510,7 @@ def main():
                 increase_percent = (increase / size_info['original_size']) * 100
                 print(f"\nFile size increased by {increase / (1024*1024):.2f} MB ({increase_percent:.1f}%)")
         else:
-            print(f"\nConversion complete! Output file: {result}")
+            print(f"\nConversion complete! Output file: {final_output_path}")
     
     except Exception as e:
         print(f"\n Error during conversion: {e}")

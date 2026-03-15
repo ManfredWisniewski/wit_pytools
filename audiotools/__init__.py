@@ -215,6 +215,107 @@ def is_ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
+def probe_audio_bitrate(audio_file: Union[str, Path]) -> Optional[int]:
+    """
+    Probe an audio file and return its bitrate in bits per second.
+    
+    Args:
+        audio_file: Path to the audio file
+        
+    Returns:
+        Bitrate in bits per second, or None if unable to determine
+    """
+    if not is_ffmpeg_available():
+        return None
+    
+    try:
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-select_streams', 'a:0',
+            '-show_entries', 'stream=bit_rate',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            str(audio_file)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        bitrate_str = result.stdout.strip()
+        if bitrate_str and bitrate_str.isdigit():
+            return int(bitrate_str)
+    except (subprocess.SubprocessError, ValueError):
+        pass
+    
+    return None
+
+
+def reencode_audio(
+    input_file: PathLikeType,
+    output_file: PathLikeType,
+    *,
+    bitrate: str = "64k",
+    audio_codec: str = "aac",
+    sample_rate: Optional[int] = None,
+    channels: Optional[int] = None,
+    extra_args: Optional[Sequence[str]] = None,
+    overwrite: bool = True,
+    format: Optional[str] = None,
+) -> Path:
+    """Re-encode an audio file using FFmpeg."""
+
+    if not is_ffmpeg_available():
+        raise RuntimeError(
+            "FFmpeg is not available on PATH. Install it from https://ffmpeg.org/download.html"
+        )
+
+    input_path = Path(input_file)
+    if not input_path.exists():
+        raise FileNotFoundError(f"Input file does not exist: {input_path}")
+
+    output_path = Path(output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cmd: List[str] = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+    ]
+
+    cmd.append("-y" if overwrite else "-n")
+    cmd.extend(["-i", str(input_path)])
+    cmd.extend(["-map", "0:a:0"])
+    cmd.extend(["-vn", "-sn", "-dn"])
+    cmd.extend(["-map_metadata", "0"])
+    cmd.extend(["-c:a", audio_codec])
+    cmd.extend(["-b:a", bitrate])
+
+    if sample_rate:
+        cmd.extend(["-ar", str(sample_rate)])
+
+    if channels:
+        cmd.extend(["-ac", str(channels)])
+
+    if extra_args:
+        cmd.extend(list(extra_args))
+
+    if format:
+        cmd.extend(["-f", format])
+
+    cmd.append(str(output_path))
+
+    try:
+        completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.strip() if exc.stderr else "(no error output)"
+        raise RuntimeError(
+            f"FFmpeg failed to reencode '{input_path}' to '{output_path}': {stderr}"
+        ) from exc
+
+    if completed.stdout:
+        print(completed.stdout.strip())
+
+    return output_path
+
+
 def encode_m4a(
     input_file: PathLikeType,
     output_file: PathLikeType,

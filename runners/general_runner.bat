@@ -30,7 +30,7 @@ REM Example: set "EXTRA_ENV=BITRATE=64k,DEBUG=1"
 set "EXTRA_ENV="
 
 REM Log file (overwritten each run)
-set "LOG_FILE=%~dp0runner.log"
+set "LOG_FILE=%~dp0general_runner.log"
 
 echo.
 echo Running %PYTHON_SCRIPT% for subdirectories in:
