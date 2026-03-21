@@ -5,6 +5,20 @@ import os
 import re
 from typing import Optional
 
+
+INVALID_PATH_CHARS = set('<>:"/\\|?*')
+
+
+def sanitize_path(value: str) -> str:
+    """Normalize a string for safe filesystem usage."""
+
+    if value is None:
+        return ""
+
+    cleaned = "".join('_' if ch in INVALID_PATH_CHARS else ch for ch in value)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip().strip('.').strip()
+
 #   prepare strings to be used correctly in regex expressions (escape special characters)
 def prepregex(ostring):
     mapping = str.maketrans({'.': '\\.', '[': '\\[', ']': '\\]'})
