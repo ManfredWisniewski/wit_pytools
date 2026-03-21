@@ -17,6 +17,8 @@ import tempfile
 from os import PathLike
 import importlib.util
 
+from wit_pytools.sanitizers import sanitize_path
+
 
 def is_m4b_util_installed() -> bool:
     """Check if m4b-util is installed."""
@@ -76,7 +78,9 @@ def run_m4b_util_command(
             check=check,
             capture_output=capture_output,
             text=text,
-            env=env
+            env=env,
+            encoding="utf-8",
+            errors="replace",
         )
     except (subprocess.SubprocessError, FileNotFoundError) as e:
         if isinstance(e, FileNotFoundError):
@@ -87,7 +91,9 @@ def run_m4b_util_command(
                     check=check,
                     capture_output=capture_output,
                     text=text,
-                    env=env
+                    env=env,
+                    encoding="utf-8",
+                    errors="replace",
                 )
             except subprocess.SubprocessError as module_e:
                 raise module_e
@@ -167,7 +173,7 @@ def estimate_m4b_size(
                     '-of', 'default=noprint_wrappers=1:nokey=1', 
                     str(file_path)
                 ]
-                result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+                result = subprocess.run(cmd, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace")
                 duration = float(result.stdout.strip())
                 total_duration_seconds += duration
                 
@@ -239,7 +245,7 @@ def probe_audio_bitrate(audio_file: Union[str, Path]) -> Optional[int]:
             '-of', 'default=noprint_wrappers=1:nokey=1',
             str(audio_file)
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace")
         bitrate_str = result.stdout.strip()
         if bitrate_str and bitrate_str.isdigit():
             return int(bitrate_str)
@@ -266,7 +272,7 @@ def _probe_audio_stream(audio_file: Union[str, Path]) -> Tuple[Optional[Dict[str
     ]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace")
         data = json.loads(result.stdout)
     except subprocess.CalledProcessError as err:
         reason = err.stderr.strip() if err.stderr else "ffprobe failed"
@@ -310,6 +316,60 @@ def _slim_audio_metadata(stream_info: Optional[Dict[str, Any]], format_info: Opt
                 details[f"format_{key}"] = value
 
     return details
+
+
+def _find_first_audio_file(folder: Path, extensions: Sequence[str]) -> Optional[Path]:
+
+    for ext in extensions:
+        direct = sorted(folder.glob(f"*.{ext}"))
+        if direct:
+            return direct[0]
+    for ext in extensions:
+        recursive = sorted(folder.glob(f"**/*.{ext}"))
+        if recursive:
+            return recursive[0]
+    return None
+
+
+def _extract_tags_from_audio(audio_file: Optional[Path], debug: bool = False) -> Dict[str, str]:
+    if not audio_file:
+        return {}
+
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-print_format",
+        "json",
+        "-show_entries",
+        "format_tags:stream_tags",
+        str(audio_file),
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace")
+        data = json.loads(result.stdout)
+    except (subprocess.SubprocessError, json.JSONDecodeError) as exc:
+        if debug:
+            print(f"Debug: Failed to extract tags from {audio_file}: {exc}")
+        return {}
+
+    format_tags = (data.get("format", {}) or {}).get("tags", {}) or {}
+    stream_tags: Dict[str, Any] = {}
+    for stream in data.get("streams", []) or []:
+        tags = stream.get("tags") or {}
+        stream_tags.update(tags)
+
+    tags: Dict[str, str] = {}
+    for source in (format_tags, stream_tags):
+        for key, value in source.items():
+            if isinstance(value, str) and value.strip():
+                tags.setdefault(key.lower(), value.strip())
+
+    if not tags and debug:
+        print(f"Debug: No tags found for {audio_file}")
+
+    return tags
 
 
 def is_m4b_compatible_audio(audio_file: Union[str, Path]) -> Tuple[bool, Optional[str], Dict[str, Any]]:
@@ -390,7 +450,7 @@ def reencode_audio(
     cmd.append(str(output_path))
 
     try:
-        completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        completed = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.strip() if exc.stderr else "(no error output)"
         raise RuntimeError(
@@ -455,7 +515,7 @@ def encode_m4a(
     cmd.append(str(output_path))
 
     try:
-        completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        completed = subprocess.run(cmd, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.strip() if exc.stderr else "(no error output)"
         raise RuntimeError(
@@ -555,7 +615,7 @@ def convert_to_m4b(
 
     if usesource_mode:
         fallback_raw = input_folder_path.name.replace('$USESOURCE', '')
-        fallback_name = _sanitize_path_component(fallback_raw) or "Audiobook"
+        fallback_name = sanitize_path(fallback_raw) or "Audiobook"
         first_audio = _find_first_audio_file(input_folder_path, search_extensions)
         tags = _extract_tags_from_audio(first_audio, debug=debug) if first_audio else {}
         metadata_from_source = _build_usesource_metadata(tags, fallback_name)
@@ -564,7 +624,7 @@ def convert_to_m4b(
             raise ValueError(f"USESOURCE mode requires an author tag in {input_folder_path}")
 
         new_folder_base = metadata_from_source.get('base_name') or fallback_name
-        new_folder_base = _sanitize_path_component(new_folder_base) or fallback_name
+        new_folder_base = sanitize_path(new_folder_base) or fallback_name
         original_folder_path = input_folder_path
         target_path = input_folder_path.parent / new_folder_base
 
@@ -678,7 +738,22 @@ def convert_to_m4b(
     else:
         # If we're using a folder, we need to filter out image files
         # Create a temporary directory with symlinks to audio files only
-        with tempfile.TemporaryDirectory() as temp_dir:
+        temp_dir_kwargs: Dict[str, Any] = {}
+        temp_root_env = os.environ.get("AUDIOBOOK_TEMP_DIR")
+        if temp_root_env:
+            temp_root_path = Path(temp_root_env).expanduser()
+            try:
+                temp_root_path.mkdir(parents=True, exist_ok=True)
+            except OSError as err:
+                if debug:
+                    print(
+                        f"Debug: Failed to prepare AUDIOBOOK_TEMP_DIR '{temp_root_path}': {err}"
+                    )
+            else:
+                temp_dir_kwargs["dir"] = str(temp_root_path)
+
+        with tempfile.TemporaryDirectory(**temp_dir_kwargs) as temp_dir:
+            
             if debug:
                 print(f"Debug: Created temporary directory for filtered files: {temp_dir}")
             
@@ -849,6 +924,9 @@ def convert_to_m4b(
             
             # Set environment variables to fix Rich library color output issues
             env = os.environ.copy()
+            env["TMPDIR"] = temp_dir
+            env["TMP"] = temp_dir
+            env["TEMP"] = temp_dir
             env["TERM"] = "dumb"  # Disable colored output
             env["PYTHONIOENCODING"] = "utf-8"  # Force UTF-8 encoding
             env["FORCE_COLOR"] = "0"  # Disable Rich color output
@@ -894,25 +972,19 @@ def convert_to_m4b(
                     print(f"Debug: Error occurred: {error_msg}")
                     print(f"Debug: Checking if m4b-util is properly installed...")
                     try:
-                        version_result = subprocess.run(['m4b-util', '--version'], 
-                                                    capture_output=True, 
-                                                    text=True)
+                        version_result = subprocess.run(['m4b-util', '--version'], capture_output=True, text=True, encoding="utf-8", errors="replace")
                         print(f"Debug: m4b-util version: {version_result.stdout.strip()}")
                     except:
                         print("Debug: Could not get m4b-util version using command line")
                         try:
-                            module_check = subprocess.run([sys.executable, '-m', 'm4b_util', '--version'], 
-                                                        capture_output=True, 
-                                                        text=True)
+                            module_check = subprocess.run([sys.executable, '-m', 'm4b_util', '--version'], capture_output=True, text=True, encoding="utf-8", errors="replace")
                             print(f"Debug: m4b_util module version: {module_check.stdout.strip()}")
                         except:
                             print("Debug: Could not get m4b_util module version")
                     
                     # Check if ffmpeg is installed
                     try:
-                        ffmpeg_result = subprocess.run(['ffmpeg', '-version'], 
-                                                    capture_output=True, 
-                                                    text=True)
+                        ffmpeg_result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, encoding="utf-8", errors="replace")
                         print(f"Debug: ffmpeg is installed")
                     except:
                         print("Debug: ffmpeg is NOT installed or not in PATH - this is required by m4b-util")
@@ -1208,7 +1280,7 @@ def _build_usesource_metadata(tags: Dict[str, str], fallback_name: str) -> Dict[
     if not base:
         base = fallback_name
 
-    base = _sanitize_path_component(base)
+    base = sanitize_path(base)
 
     return {
         "author": author,
