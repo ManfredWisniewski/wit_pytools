@@ -8,10 +8,19 @@ import re
 import glob
 import shutil
 import subprocess
+import io
 from pathlib import Path
 
 # Add repository root to path so we can import wit_pytools
 sys.path.append(str(Path(__file__).resolve().parents[2]))
+
+if os.name == "nt":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 from wit_pytools.audiotools import (
     convert_to_m4b,
