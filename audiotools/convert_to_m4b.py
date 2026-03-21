@@ -316,12 +316,6 @@ def main():
     output_file = str(output_dir_path / f"{filename_base}.m4b")
 
     existing_output = Path(output_file)
-    if existing_output.exists():
-        try:
-            existing_output.unlink()
-            print(f"Removed existing output file: {existing_output}")
-        except OSError as err:
-            print(f"Warning: could not remove {existing_output}: {err}")
 
     # Handle directories that already contain a single M4B file
     existing_m4b_files = sorted(Path(mp3_folder).glob("*.m4b"))
@@ -446,6 +440,13 @@ def main():
         return
     
     print(f"\n Size criteria met. Proceeding with conversion...")
+
+    if existing_output.exists():
+        try:
+            existing_output.unlink()
+            print(f"Removed existing output file: {existing_output}")
+        except OSError as err:
+            print(f"Warning: could not remove {existing_output}: {err}")
     
     # Convert to M4B with size estimation
     try:
