@@ -8,29 +8,29 @@ REM CONFIGURATION
 REM ==============================================================================
 
 REM Path to Python executable (leave empty to use default 'python')
-set "PYTHON_PATH="
+if not defined PYTHON_PATH set "PYTHON_PATH=python"
 
-REM Path to root directory containing subdirectories to process
-set "ROOT_DIR=.\"
+REM Whether to append the subdirectory path as the final argument (1=yes,0=no)
+if not defined PASS_SUBDIR_AS_ARG set "PASS_SUBDIR_AS_ARG=1"
 
-REM Python script to run for each subdirectory (absolute or relative path)
-REM set "PYTHON_SCRIPT=P:\git\witnctools\wit_pytools\audiotools\convert_to_m4a.py"
-set "PYTHON_SCRIPT=P:\git\witnctools\wit_pytools\audiotools\convert_to_m4b.py"
-set "SCRIPT_ARGS=--preferred-format m4a"
+REM Log file (overwritten each run) uses runner script name by default
+if not defined LOG_FILE set "LOG_FILE=%~dpn0.log"
 
-REM Optional output directory to pass to script via env var
-set "OUTPUT_DIR=.\"
+REM Required environment variables: ROOT_DIR, PYTHON_SCRIPT
+if not defined ROOT_DIR (
+    echo Error: ROOT_DIR environment variable is not set.
+    exit /b 1
+)
 
-REM Environment variable names used by the target script
-set "ENV_INPUT=AUDIOBOOK_INPUT_FOLDER"
-set "ENV_OUTPUT=AUDIOBOOK_OUTPUT_DIR"
+if not defined PYTHON_SCRIPT (
+    echo Error: PYTHON_SCRIPT environment variable is not set.
+    exit /b 1
+)
 
-REM Additional environment variables (comma-separated KEY=VALUE pairs)
-REM Example: set "EXTRA_ENV=BITRATE=64k,DEBUG=1"
-set "EXTRA_ENV="
+if not defined SCRIPT_ARGS set "SCRIPT_ARGS="
 
-REM Log file (overwritten each run)
-set "LOG_FILE=%~dp0general_runner.log"
+set "SCRIPT_ARGS_CMD="
+if defined SCRIPT_ARGS set "SCRIPT_ARGS_CMD= %SCRIPT_ARGS%"
 
 echo.
 echo Running %PYTHON_SCRIPT% for subdirectories in:
@@ -95,19 +95,13 @@ for /d %%D in ("%ROOT_DIR%\*") do (
         echo Path: %%~fD
         echo ----------------------------------------
 
-        set "%ENV_INPUT%=%%~fD"
-        if not "%OUTPUT_DIR%"=="" set "%ENV_OUTPUT%=%OUTPUT_DIR%"
-
-        if not "%EXTRA_ENV%"=="" (
-            for %%E in (%EXTRA_ENV%) do (
-                for /f "tokens=1,2 delims==" %%K in ("%%E") do (
-                    if not "%%K"=="" set "%%K=%%L"
-                )
-            )
+        if "%PASS_SUBDIR_AS_ARG%"=="1" (
+            echo Running: %PYTHON_PATH% "%PYTHON_SCRIPT%"%SCRIPT_ARGS_CMD% "%%~fD"
+            call "%PYTHON_PATH%" "%PYTHON_SCRIPT%"%SCRIPT_ARGS_CMD% "%%~fD"
+        ) else (
+            echo Running: %PYTHON_PATH% "%PYTHON_SCRIPT%"%SCRIPT_ARGS_CMD%
+            call "%PYTHON_PATH%" "%PYTHON_SCRIPT%"%SCRIPT_ARGS_CMD%
         )
-
-        echo Running: %PYTHON_PATH% "%PYTHON_SCRIPT%" %SCRIPT_ARGS%
-        %PYTHON_PATH% "%PYTHON_SCRIPT%" %SCRIPT_ARGS%
         set "RC=!ERRORLEVEL!"
 
         if not "!RC!"=="0" (

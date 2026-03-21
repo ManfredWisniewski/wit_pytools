@@ -33,7 +33,7 @@ set "COVER_IMAGE="
 
 REM Audio settings
 set "BITRATE=64k"
-set "EXTENSIONS=mp3"
+set "EXTENSIONS=mp3 flac"
 
 REM Behaviour toggles (0 = disabled, 1 = enabled)
 set "ESTIMATE_ONLY=0"
