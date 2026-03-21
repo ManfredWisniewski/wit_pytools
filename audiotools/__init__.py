@@ -560,6 +560,9 @@ def convert_to_m4b(
         tags = _extract_tags_from_audio(first_audio, debug=debug) if first_audio else {}
         metadata_from_source = _build_usesource_metadata(tags, fallback_name)
 
+        if not metadata_from_source.get("author"):
+            raise ValueError(f"USESOURCE mode requires an author tag in {input_folder_path}")
+
         new_folder_base = metadata_from_source.get('base_name') or fallback_name
         new_folder_base = _sanitize_path_component(new_folder_base) or fallback_name
         original_folder_path = input_folder_path
@@ -1178,3 +1181,39 @@ if __name__ == "__main__":
     
     else:
         parser.print_help()
+
+
+def _build_usesource_metadata(tags: Dict[str, str], fallback_name: str) -> Dict[str, Optional[str]]:
+    lowered = {k.lower(): v for k, v in tags.items()}
+
+    comment = lowered.get("comment")
+    if comment and "read by" in comment.lower():
+        comment = re.sub(r"(?i)read by", "", comment).strip()
+
+    author = lowered.get("artist") or lowered.get("album_artist") or lowered.get("composer")
+    title = lowered.get("album") or lowered.get("title")
+    narrator = (
+        lowered.get("narrator")
+        or lowered.get("performer")
+        or comment
+        or lowered.get("reader")
+    )
+    date = lowered.get("date") or lowered.get("year") or lowered.get("originaldate")
+
+    components = [part for part in [author, date, title] if part]
+    base = " ".join(components).strip()
+    if narrator:
+        base = f"{base}; {narrator}" if base else narrator
+
+    if not base:
+        base = fallback_name
+
+    base = _sanitize_path_component(base)
+
+    return {
+        "author": author,
+        "title": title,
+        "narrator": narrator,
+        "date": date,
+        "base_name": base,
+    }
