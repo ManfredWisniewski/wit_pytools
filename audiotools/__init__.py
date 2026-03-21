@@ -526,20 +526,86 @@ def convert_to_m4b(
             "m4b-util is not installed. Install it with 'pip install m4b-util'"
         )
     
-    # Convert paths to strings
-    input_folder = str(input_folder)
-    
+    # Normalize input folder path
+    input_folder_path = Path(input_folder)
+
     # Default bitrate if not specified - NOTE: m4b-util bind doesn't support bitrate directly
     if bitrate is None:
         bitrate = '64k'
-    
+
     # Check if input folder exists and has audio files
-    if not os.path.exists(input_folder) and not specific_files:
-        raise ValueError(f"Input folder does not exist: {input_folder}")
-    
+    if not input_folder_path.exists() and not specific_files:
+        raise ValueError(f"Input folder does not exist: {input_folder_path}")
+
+    usesource_mode = (
+        specific_files is None
+        and "$USESOURCE" in input_folder_path.name
+    )
+
     preferred_normalized = None
     if preferred_format:
         preferred_normalized = preferred_format.lstrip('.').lower()
+
+    # Determine extensions list early for potential $USESOURCE handling
+    search_extensions = (
+        [ext.lstrip('.').lower() for ext in extensions]
+        if extensions
+        else ['mp3', 'm4a', 'flac', 'aac', 'm4b']
+    )
+
+    if usesource_mode:
+        fallback_raw = input_folder_path.name.replace('$USESOURCE', '')
+        fallback_name = _sanitize_path_component(fallback_raw) or "Audiobook"
+        first_audio = _find_first_audio_file(input_folder_path, search_extensions)
+        tags = _extract_tags_from_audio(first_audio, debug=debug) if first_audio else {}
+        metadata_from_source = _build_usesource_metadata(tags, fallback_name)
+
+        new_folder_base = metadata_from_source.get('base_name') or fallback_name
+        new_folder_base = _sanitize_path_component(new_folder_base) or fallback_name
+        original_folder_path = input_folder_path
+        target_path = input_folder_path.parent / new_folder_base
+
+        suffix = 1
+        while target_path.exists() and target_path != input_folder_path:
+            target_path = input_folder_path.parent / f"{new_folder_base}_{suffix}"
+            suffix += 1
+
+        if target_path != input_folder_path:
+            if debug:
+                print(f"Debug: Renaming source folder to {target_path}")
+            original_folder_path.rename(target_path)
+            input_folder_path = target_path
+
+            if output_file:
+                output_path_candidate = Path(output_file)
+                try:
+                    rel_out = output_path_candidate.relative_to(original_folder_path)
+                except ValueError:
+                    pass
+                else:
+                    output_file = str(input_folder_path / rel_out)
+
+            if output_dir:
+                output_dir_candidate = Path(output_dir)
+                try:
+                    rel_dir = output_dir_candidate.relative_to(original_folder_path)
+                except ValueError:
+                    pass
+                else:
+                    output_dir = str(input_folder_path / rel_dir)
+
+        # Override metadata fields when available
+        if metadata_from_source.get('title'):
+            title = metadata_from_source['title']
+        if metadata_from_source.get('author'):
+            author = metadata_from_source['author']
+        if metadata_from_source.get('narrator'):
+            narrator = metadata_from_source['narrator']
+        if metadata_from_source.get('date'):
+            date = metadata_from_source['date']
+
+    # Convert paths to strings for downstream processing
+    input_folder = str(input_folder_path)
 
     if extensions:
         extensions = list(extensions)
