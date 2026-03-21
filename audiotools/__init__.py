@@ -9,6 +9,8 @@ import re
 import subprocess
 import sys
 import shutil
+import json
+
 from pathlib import Path
 from typing import List, Optional, Union, Tuple, Dict, Sequence
 import tempfile
@@ -245,6 +247,43 @@ def probe_audio_bitrate(audio_file: Union[str, Path]) -> Optional[int]:
         pass
     
     return None
+
+
+def is_m4b_compatible_audio(audio_file: Union[str, Path]) -> Tuple[bool, Optional[str]]:
+    """Return (True, None) if the file's codec can be copied into an M4B container."""
+
+    if not is_ffmpeg_available():
+        return False, "ffmpeg not installed"
+
+    try:
+        cmd = [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_streams",
+            "-select_streams",
+            "a:0",
+            "-of",
+            "json",
+            str(audio_file),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+    except subprocess.CalledProcessError as err:
+        reason = err.stderr.strip() if err.stderr else "ffprobe failed"
+        return False, reason or "ffprobe failed"
+    except json.JSONDecodeError:
+        return False, "ffprobe JSON parse error"
+
+    streams = data.get("streams") or []
+    if not streams:
+        return False, "no audio streams"
+
+    codec = streams[0].get("codec_name")
+    if codec in {"aac", "alac", "mp4a", "mp4"}:
+        return True, None
+
+    return False, f"unsupported codec: {codec or 'unknown'}"
 
 
 def reencode_audio(
@@ -526,6 +565,7 @@ def convert_to_m4b(
             
             # Create symlinks to audio files only
             audio_file_count = 0
+            skipped_files: List[Path] = []
             selected_files: Dict[str, Path] = {}
 
             for ext in normalized_extensions:
@@ -550,22 +590,33 @@ def convert_to_m4b(
             audio_file_count = 0
 
             for audio_file in selected_files.values():
-                # Create symlink in temp directory
-                link_path = os.path.join(temp_dir, audio_file.name)
+                compatible, reason = is_m4b_compatible_audio(audio_file)
+                if not compatible:
+                    skipped_files.append(audio_file)
+                    if debug:
+                        detail = f": {reason}" if reason else ""
+                        print(f"Debug: Skipping {audio_file}{detail}")
+                    continue
+
+                link_path = Path(temp_dir) / audio_file.name
+
                 try:
-                    # On Windows, we need to use a different approach for symlinks
                     if os.name == 'nt':
-                        # For Windows, copy the file instead of symlinking
                         shutil.copy2(audio_file, link_path)
                     else:
+                        if link_path.exists():
+                            link_path.unlink()
                         os.symlink(audio_file, link_path)
                     audio_file_count += 1
                 except (OSError, shutil.Error) as e:
                     if debug:
-                        print(f"Debug: Error creating link for {audio_file}: {e}")
+                        print(f"Debug: Error preparing {audio_file}: {e}")
+                    skipped_files.append(audio_file)
             
             if debug:
                 print(f"Debug: Created links for {audio_file_count} audio files")
+                if skipped_files:
+                    print(f"Debug: Skipped {len(skipped_files)} files: {[str(s) for s in skipped_files]}")
             
             if audio_file_count == 0:
                 raise ValueError(f"No valid audio files found in {input_folder}")
@@ -688,8 +739,11 @@ def convert_to_m4b(
             except (subprocess.CalledProcessError, RuntimeError) as e:
                 error_msg = f"Error converting to M4B: {e}"
                 stderr_output = getattr(e, 'stderr', None)
+                stdout_output = getattr(e, 'stdout', None)
+                if stdout_output:
+                    error_msg += f"\nStdout: {stdout_output.strip()}"
                 if stderr_output:
-                    error_msg += f"\nError output: {stderr_output.strip()}"
+                    error_msg += f"\nStderr: {stderr_output.strip()}"
                 
                 if debug:
                     print(f"Debug: Error occurred: {error_msg}")

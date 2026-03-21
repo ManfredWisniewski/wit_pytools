@@ -271,14 +271,9 @@ def main():
             print("Found multiple cover images:")
             for i, img in enumerate(cover_images):
                 print(f"  {i+1}. {os.path.basename(img)}")
-            
-            # Ask user to select one
-            selection = input("Enter number to select a cover image (or press Enter to skip): ")
-            if selection and selection.isdigit() and 1 <= int(selection) <= len(cover_images):
-                cover_image = cover_images[int(selection) - 1]
-                print(f"Selected cover image: {os.path.basename(cover_image)}")
-            else:
-                print("No cover image selected.")
+
+            cover_image = cover_images[0]
+            print(f"Automatically selected cover image: {os.path.basename(cover_image)}")
     else:
         print("No cover images found in the directory.")
     
