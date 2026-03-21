@@ -194,6 +194,11 @@ def main():
         description="Convert audiobook folders to M4B with optional format preference"
     )
     parser.add_argument(
+        "input_folder",
+        nargs="?",
+        help="Audiobook folder to convert (defaults to AUDIOBOOK_INPUT_FOLDER or current directory)",
+    )
+    parser.add_argument(
         "--preferred-format",
         choices=["mp3", "m4a"],
         help="Preferred audio format to select when multiple encodings exist",
@@ -210,8 +215,9 @@ def main():
     )
     args = parser.parse_args()
 
-    # Replace with your actual MP3 folder path, or override via env
-    mp3_folder = os.environ.get('AUDIOBOOK_INPUT_FOLDER', '.')
+    # Resolve target folder from argument or environment
+    mp3_folder = args.input_folder or os.environ.get('AUDIOBOOK_INPUT_FOLDER', '.')
+    mp3_folder = os.path.abspath(mp3_folder)
     
     # https://github.com/sandreas/m4b-tool
     # Bitrate used for size estimation and optional re-encode
@@ -225,9 +231,13 @@ def main():
     if args.extensions:
         extensions = [ext.lstrip('.').lower() for ext in args.extensions]
     else:
-        extensions = ["mp3"]
-        if args.preferred_format and args.preferred_format not in extensions:
-            extensions.insert(0, args.preferred_format)
+        extensions = ["mp3", "flac", "m4a", "m4b", "aac"]
+        if args.preferred_format:
+            pref = args.preferred_format.lstrip('.').lower()
+            if pref not in extensions:
+                extensions.insert(0, pref)
+            else:
+                extensions.insert(0, extensions.pop(extensions.index(pref)))
 
     cleanup_directory(mp3_folder)
 

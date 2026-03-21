@@ -12,7 +12,7 @@ import shutil
 import json
 
 from pathlib import Path
-from typing import List, Optional, Union, Tuple, Dict, Sequence
+from typing import List, Optional, Union, Tuple, Dict, Sequence, Any
 import tempfile
 from os import PathLike
 import importlib.util
@@ -249,41 +249,89 @@ def probe_audio_bitrate(audio_file: Union[str, Path]) -> Optional[int]:
     return None
 
 
-def is_m4b_compatible_audio(audio_file: Union[str, Path]) -> Tuple[bool, Optional[str]]:
-    """Return (True, None) if the file's codec can be copied into an M4B container."""
+def _probe_audio_stream(audio_file: Union[str, Path]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
+    """Return (stream_info, format_info, error_message)."""
 
-    if not is_ffmpeg_available():
-        return False, "ffmpeg not installed"
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-show_streams",
+        "-show_format",
+        "-select_streams",
+        "a:0",
+        "-of",
+        "json",
+        str(audio_file),
+    ]
 
     try:
-        cmd = [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_streams",
-            "-select_streams",
-            "a:0",
-            "-of",
-            "json",
-            str(audio_file),
-        ]
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         data = json.loads(result.stdout)
     except subprocess.CalledProcessError as err:
         reason = err.stderr.strip() if err.stderr else "ffprobe failed"
-        return False, reason or "ffprobe failed"
+        return None, None, reason or "ffprobe failed"
     except json.JSONDecodeError:
-        return False, "ffprobe JSON parse error"
+        return None, None, "ffprobe JSON parse error"
 
     streams = data.get("streams") or []
-    if not streams:
-        return False, "no audio streams"
+    stream_info = streams[0] if streams else None
+    format_info = data.get("format")
+    return stream_info, format_info, None
 
-    codec = streams[0].get("codec_name")
-    if codec in {"aac", "alac", "mp4a", "mp4"}:
-        return True, None
 
-    return False, f"unsupported codec: {codec or 'unknown'}"
+def _slim_audio_metadata(stream_info: Optional[Dict[str, Any]], format_info: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Reduce ffprobe metadata to a compact dictionary for logging."""
+
+    details: Dict[str, Any] = {}
+
+    if stream_info:
+        for key in [
+            "codec_name",
+            "codec_long_name",
+            "profile",
+            "codec_tag_string",
+            "codec_tag",
+            "sample_rate",
+            "channels",
+            "channel_layout",
+            "bit_rate",
+            "bits_per_raw_sample",
+            "sample_fmt",
+        ]:
+            value = stream_info.get(key)
+            if value not in (None, "", "N/A"):
+                details[key] = value
+
+    if format_info:
+        for key in ["format_name", "format_long_name", "bit_rate", "duration"]:
+            value = format_info.get(key)
+            if value not in (None, "", "N/A"):
+                details[f"format_{key}"] = value
+
+    return details
+
+
+def is_m4b_compatible_audio(audio_file: Union[str, Path]) -> Tuple[bool, Optional[str], Dict[str, Any]]:
+    """Return (is_compatible, reason, metadata)."""
+
+    if not is_ffmpeg_available():
+        return False, "ffmpeg not installed", {}
+
+    stream_info, format_info, error = _probe_audio_stream(audio_file)
+    metadata = _slim_audio_metadata(stream_info, format_info)
+
+    if error:
+        return False, error, metadata
+
+    if not stream_info:
+        return False, "no audio streams", metadata
+
+    codec = stream_info.get("codec_name")
+    if codec in {"aac", "alac", "mp4a", "mp4", "mp3"}:
+        return True, None, metadata
+
+    return False, f"unsupported codec: {codec or 'unknown'}", metadata
 
 
 def reencode_audio(
@@ -493,8 +541,10 @@ def convert_to_m4b(
     if preferred_format:
         preferred_normalized = preferred_format.lstrip('.').lower()
 
-    if extensions is None:
-        extensions = ['mp3']
+    if extensions:
+        extensions = list(extensions)
+    else:
+        extensions = ['mp3', 'flac', 'm4a', 'm4b', 'aac']
         if preferred_normalized and preferred_normalized not in [ext.lstrip('.') for ext in extensions]:
             extensions.insert(0, preferred_normalized)
 
@@ -567,6 +617,7 @@ def convert_to_m4b(
             audio_file_count = 0
             skipped_files: List[Path] = []
             selected_files: Dict[str, Path] = {}
+            aac_transcode_dir: Optional[Path] = None
 
             for ext in normalized_extensions:
                 for audio_file in Path(input_folder).glob(f'**/*.{ext}'):
@@ -590,27 +641,52 @@ def convert_to_m4b(
             audio_file_count = 0
 
             for audio_file in selected_files.values():
-                compatible, reason = is_m4b_compatible_audio(audio_file)
+                working_file = audio_file
+
+                if audio_file.suffix.lower() == '.flac':
+                    try:
+                        if aac_transcode_dir is None:
+                            aac_transcode_dir = Path(temp_dir) / "aac_from_flac"
+                            aac_transcode_dir.mkdir(parents=True, exist_ok=True)
+                        from .convert_to_aac import convert_file_to_aac  # local import to avoid circular dependency
+                        converted_path = aac_transcode_dir / f"{audio_file.stem}.m4a"
+                        if debug:
+                            print(f"Debug: Transcoding FLAC to AAC: {audio_file} -> {converted_path}")
+                        convert_file_to_aac(
+                            audio_file,
+                            converted_path,
+                            bitrate=bitrate,
+                        )
+                        working_file = converted_path
+                    except Exception as exc:  # pylint: disable=broad-except
+                        if debug:
+                            print(f"Debug: Failed to transcode {audio_file}: {exc}")
+                        skipped_files.append(audio_file)
+                        continue
+
+                compatible, reason, metadata = is_m4b_compatible_audio(working_file)
                 if not compatible:
                     skipped_files.append(audio_file)
                     if debug:
                         detail = f": {reason}" if reason else ""
-                        print(f"Debug: Skipping {audio_file}{detail}")
+                        meta_str = f" | metadata={metadata}" if metadata else ""
+                        print(f"Debug: Skipping {working_file}{detail}{meta_str}")
                     continue
 
-                link_path = Path(temp_dir) / audio_file.name
+                source_for_link = working_file
+                link_path = Path(temp_dir) / working_file.name
 
                 try:
                     if os.name == 'nt':
-                        shutil.copy2(audio_file, link_path)
+                        shutil.copy2(source_for_link, link_path)
                     else:
                         if link_path.exists():
                             link_path.unlink()
-                        os.symlink(audio_file, link_path)
+                        os.symlink(source_for_link, link_path)
                     audio_file_count += 1
                 except (OSError, shutil.Error) as e:
                     if debug:
-                        print(f"Debug: Error preparing {audio_file}: {e}")
+                        print(f"Debug: Error preparing {source_for_link}: {e}")
                     skipped_files.append(audio_file)
             
             if debug:
