@@ -255,6 +255,28 @@ def probe_audio_bitrate(audio_file: Union[str, Path]) -> Optional[int]:
     return None
 
 
+def probe_audio_codec(audio_file: Union[str, Path]) -> Optional[str]:
+    """Return the codec name of the primary audio stream using ffprobe."""
+
+    if not is_ffmpeg_available():
+        return None
+
+    try:
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-select_streams', 'a:0',
+            '-show_entries', 'stream=codec_name',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            str(audio_file)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        codec = result.stdout.strip()
+        return codec or None
+    except subprocess.SubprocessError:
+        return None
+
+
 def _probe_audio_stream(audio_file: Union[str, Path]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]], Optional[str]]:
     """Return (stream_info, format_info, error_message)."""
 
@@ -343,7 +365,7 @@ def _extract_tags_from_audio(audio_file: Optional[Path], debug: bool = False) ->
         "json",
         "-show_entries",
         "format_tags:stream_tags",
-        str(audio_file),
+        str(audio_file)
     ]
 
     try:
@@ -546,7 +568,8 @@ def convert_to_m4b(
     specific_files: Optional[List[Union[str, Path]]] = None,
     decode_durations: bool = False,
     date: Optional[str] = None,
-    narrator: Optional[str] = None
+    narrator: Optional[str] = None,
+    force_transcode: bool = False,
 ) -> Union[str, Tuple[str, Dict[str, int]]]:
     """
     Convert a folder of audio files to a single M4B audiobook file.
@@ -570,6 +593,7 @@ def convert_to_m4b(
         decode_durations: Fully decode each file to determine duration (more accurate)
         date: Date to include in metadata (e.g. "2023" or "2023-01-01")
         narrator: Narrator name (will be appended to title as "Title (Narrator: Name)" since m4b-util doesn't have a direct narrator field)
+        force_transcode: If True, re-encode staged audio to AAC before binding
         
     Returns:
         If estimate_size is False:
@@ -753,91 +777,77 @@ def convert_to_m4b(
                 temp_dir_kwargs["dir"] = str(temp_root_path)
 
         with tempfile.TemporaryDirectory(**temp_dir_kwargs) as temp_dir:
-            
+
             if debug:
                 print(f"Debug: Created temporary directory for filtered files: {temp_dir}")
-            
-            # Create symlinks to audio files only
-            audio_file_count = 0
-            skipped_files: List[Path] = []
+
+            # Discover candidate audio files while preferring the specified format
             selected_files: Dict[str, Path] = {}
-            aac_transcode_dir: Optional[Path] = None
-
-            for ext in normalized_extensions:
-                for audio_file in Path(input_folder).glob(f'**/*.{ext}'):
-                    # Skip image files that might have audio extensions
-                    if any(img_ext in audio_file.name.lower() for img_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']):
-                        if debug:
-                            print(f"Debug: Skipping image file with audio extension: {audio_file}")
-                        continue
-
-                    rel_key = str(audio_file.relative_to(input_folder).with_suffix(''))
-                    current = selected_files.get(rel_key)
-                    current_ext = audio_file.suffix.lstrip('.').lower()
-
-                    if current is None:
-                        selected_files[rel_key] = audio_file
-                    elif preferred_normalized and current.suffix.lstrip('.').lower() != preferred_normalized and current_ext == preferred_normalized:
-                        if debug:
-                            print(f"Debug: Preferring {audio_file} over {current}")
-                        selected_files[rel_key] = audio_file
-
-            audio_file_count = 0
-
-            for audio_file in selected_files.values():
-                working_file = audio_file
-
-                if audio_file.suffix.lower() == '.flac':
-                    try:
-                        if aac_transcode_dir is None:
-                            aac_transcode_dir = Path(temp_dir) / "aac_from_flac"
-                            aac_transcode_dir.mkdir(parents=True, exist_ok=True)
-                        from .convert_to_aac import convert_file_to_aac  # local import to avoid circular dependency
-                        converted_path = aac_transcode_dir / f"{audio_file.stem}.m4a"
-                        if debug:
-                            print(f"Debug: Transcoding FLAC to AAC: {audio_file} -> {converted_path}")
-                        convert_file_to_aac(
-                            audio_file,
-                            converted_path,
-                            bitrate=bitrate,
-                        )
-                        working_file = converted_path
-                    except Exception as exc:  # pylint: disable=broad-except
-                        if debug:
-                            print(f"Debug: Failed to transcode {audio_file}: {exc}")
-                        skipped_files.append(audio_file)
-                        continue
-
-                compatible, reason, metadata = is_m4b_compatible_audio(working_file)
-                if not compatible:
-                    skipped_files.append(audio_file)
-                    if debug:
-                        detail = f": {reason}" if reason else ""
-                        meta_str = f" | metadata={metadata}" if metadata else ""
-                        print(f"Debug: Skipping {working_file}{detail}{meta_str}")
+            for audio_file in Path(input_folder).rglob('*'):
+                if not audio_file.is_file():
                     continue
 
-                source_for_link = working_file
-                link_path = Path(temp_dir) / working_file.name
+                suffix = audio_file.suffix.lstrip('.').lower()
+                if suffix not in normalized_extensions:
+                    continue
 
-                try:
-                    if os.name == 'nt':
-                        shutil.copy2(source_for_link, link_path)
-                    else:
-                        if link_path.exists():
-                            link_path.unlink()
-                        os.symlink(source_for_link, link_path)
-                    audio_file_count += 1
-                except (OSError, shutil.Error) as e:
+                lower_name = audio_file.name.lower()
+                if any(img_ext in lower_name for img_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']):
                     if debug:
-                        print(f"Debug: Error preparing {source_for_link}: {e}")
-                    skipped_files.append(audio_file)
-            
+                        print(f"Debug: Skipping image masquerading as audio: {audio_file}")
+                    continue
+
+                rel_key = str(audio_file.relative_to(input_folder).with_suffix(''))
+                current = selected_files.get(rel_key)
+                if current is None:
+                    selected_files[rel_key] = audio_file
+                elif preferred_normalized and current.suffix.lstrip('.').lower() != preferred_normalized and suffix == preferred_normalized:
+                    if debug:
+                        print(f"Debug: Preferring {audio_file} over {current}")
+                    selected_files[rel_key] = audio_file
+
             if debug:
-                print(f"Debug: Created links for {audio_file_count} audio files")
-                if skipped_files:
-                    print(f"Debug: Skipped {len(skipped_files)} files: {[str(s) for s in skipped_files]}")
-            
+                print(f"Debug: Found {len(selected_files)} candidate audio files before staging")
+
+            # Create symlinks/copies (and optional transcodes) in the temp directory
+            audio_file_count = 0
+
+            def _unique_destination(base_path: Path) -> Path:
+                candidate = base_path
+                counter = 1
+                while candidate.exists():
+                    candidate = candidate.with_name(f"{base_path.stem}_{counter}{base_path.suffix}")
+                    counter += 1
+                return candidate
+
+            for audio_file in selected_files.values():
+                try:
+                    suffix = audio_file.suffix.lower()
+                    if force_transcode and suffix not in {'.m4a', '.m4b', '.aac'}:
+                        dest_path = _unique_destination(Path(temp_dir) / (audio_file.stem + '.m4a'))
+                        if debug:
+                            print(f"Debug: Transcoding {audio_file} -> {dest_path}")
+                        reencode_audio(
+                            audio_file,
+                            dest_path,
+                            bitrate=bitrate or '64k',
+                            audio_codec='aac',
+                            overwrite=True,
+                        )
+                    else:
+                        dest_path = _unique_destination(Path(temp_dir) / audio_file.name)
+                        if os.name == 'nt':
+                            shutil.copy2(audio_file, dest_path)
+                        else:
+                            os.symlink(audio_file, dest_path)
+                    audio_file_count += 1
+                except (OSError, shutil.Error, RuntimeError) as e:
+                    if debug:
+                        print(f"Debug: Error preparing {audio_file}: {e}")
+
+            if debug:
+                print(f"Debug: Prepared {audio_file_count} audio files (force_transcode={force_transcode})")
+
             if audio_file_count == 0:
                 raise ValueError(f"No valid audio files found in {input_folder}")
             

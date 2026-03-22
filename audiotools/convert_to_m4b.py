@@ -9,6 +9,7 @@ import glob
 import shutil
 import subprocess
 import io
+from typing import Dict, Optional, Tuple
 from pathlib import Path
 
 # Add repository root to path so we can import wit_pytools
@@ -441,15 +442,7 @@ def main():
     
     print(f"\n Size criteria met. Proceeding with conversion...")
 
-    if existing_output.exists():
-        try:
-            existing_output.unlink()
-            print(f"Removed existing output file: {existing_output}")
-        except OSError as err:
-            print(f"Warning: could not remove {existing_output}: {err}")
-    
-    # Convert to M4B with size estimation
-    try:
+    def attempt_conversion(force_transcode: bool) -> Tuple[str, Optional[Dict[str, int]]]:
         result = convert_to_m4b(
             mp3_folder,
             output_file=output_file,
@@ -465,75 +458,55 @@ def main():
             use_filename_as_chapter=use_filename_as_chapter,
             decode_durations=decode_durations,
             date=year,
-            narrator=narrator
+            narrator=narrator,
+            force_transcode=force_transcode,
         )
-        
         if isinstance(result, tuple):
-            final_output_path_str, size_info = result
+            return result
+        return result, None
+
+    try:
+        final_output_path_str, size_info = attempt_conversion(force_transcode=False)
+    except RuntimeError as initial_error:
+        error_text = str(initial_error).lower()
+        mp3_error_hints = (
+            "codec mp3",
+            "not currently supported in container",
+            "could not write header",
+            "invalid argument",
+        )
+        if any(hint in error_text for hint in mp3_error_hints):
+            print("\nInitial bind failed because the sources are MP3. Re-encoding to AAC and retrying...")
+            final_output_path_str, size_info = attempt_conversion(force_transcode=True)
         else:
-            final_output_path_str = result
-            size_info = None
+            print(f"\n Error during conversion: {initial_error}")
+            print("\nTroubleshooting tips:")
+            print("1. Make sure FFmpeg is installed and in your PATH")
+            print("2. Check that the input folder contains MP3 files")
+            print("3. Verify you have write permissions to the output location")
+            print("4. Try running the command directly: m4b-util bind --help")
+            return
 
-        final_output_path = Path(final_output_path_str)
+    final_output_path = Path(final_output_path_str)
 
-        # Optional re-encode step to enforce target bitrate/codec
-        if final_output_path.exists():
-            temp_reencode_path = final_output_path.with_name(
-                f"{final_output_path.stem}_reencoded{final_output_path.suffix}"
-            )
-            if temp_reencode_path.exists():
-                temp_reencode_path.unlink()
+    if size_info is not None:
+        print("\nConversion complete!")
+        print(f"Output file: {final_output_path}")
+        print(f"Original size: {size_info['original_size'] / (1024*1024):.2f} MB")
+        print(f"M4B size: {size_info['actual_m4b_size'] / (1024*1024):.2f} MB")
+        print(f"Compression ratio: {size_info['actual_compression_ratio']:.2f}x")
 
-            try:
-                print("\nRe-encoding final M4B to target bitrate...")
-                reencode_audio(
-                    final_output_path,
-                    temp_reencode_path,
-                    bitrate=bitrate,
-                    audio_codec="aac",
-                    overwrite=True,
-                )
-                os.replace(temp_reencode_path, final_output_path)
-            except Exception as re_err:
-                if temp_reencode_path.exists():
-                    temp_reencode_path.unlink()
-                print(f"Warning: Re-encode step failed ({re_err})")
-            else:
-                # Update size metrics after re-encode if available
-                if size_info is not None:
-                    new_size = final_output_path.stat().st_size
-                    size_info['actual_m4b_size'] = new_size
-                    size_info['actual_compression_ratio'] = (
-                        size_info['original_size'] / new_size if new_size else 0
-                    )
-
-        # Print results
-        if size_info is not None:
-            print("\nConversion complete!")
-            print(f"Output file: {final_output_path}")
-            print(f"Original size: {size_info['original_size'] / (1024*1024):.2f} MB")
-            print(f"M4B size: {size_info['actual_m4b_size'] / (1024*1024):.2f} MB")
-            print(f"Compression ratio: {size_info['actual_compression_ratio']:.2f}x")
-
-            # Show savings or increase
-            if size_info['actual_compression_ratio'] > 1:
-                savings = size_info['original_size'] - size_info['actual_m4b_size']
-                savings_percent = (savings / size_info['original_size']) * 100
-                print(f"\nYou saved {savings / (1024*1024):.2f} MB ({savings_percent:.1f}%)")
-            else:
-                increase = size_info['actual_m4b_size'] - size_info['original_size']
-                increase_percent = (increase / size_info['original_size']) * 100
-                print(f"\nFile size increased by {increase / (1024*1024):.2f} MB ({increase_percent:.1f}%)")
+        # Show savings or increase
+        if size_info['actual_compression_ratio'] > 1:
+            savings = size_info['original_size'] - size_info['actual_m4b_size']
+            savings_percent = (savings / size_info['original_size']) * 100
+            print(f"\nYou saved {savings / (1024*1024):.2f} MB ({savings_percent:.1f}%)")
         else:
-            print(f"\nConversion complete! Output file: {final_output_path}")
-    
-    except Exception as e:
-        print(f"\n Error during conversion: {e}")
-        print("\nTroubleshooting tips:")
-        print("1. Make sure FFmpeg is installed and in your PATH")
-        print("2. Check that the input folder contains MP3 files")
-        print("3. Verify you have write permissions to the output location")
-        print("4. Try running the command directly: m4b-util bind --help")
+            increase = size_info['actual_m4b_size'] - size_info['original_size']
+            increase_percent = (increase / size_info['original_size']) * 100
+            print(f"\nFile size increased by {increase / (1024*1024):.2f} MB ({increase_percent:.1f}%)")
+    else:
+        print(f"\nConversion complete! Output file: {final_output_path}")
 
 if __name__ == "__main__":
     main()
