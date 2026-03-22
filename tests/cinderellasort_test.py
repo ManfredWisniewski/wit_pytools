@@ -70,6 +70,10 @@ def test_clean_with_all_features():
     result = cleanfilename("test<>:\"/\\|?*١٢٣ABC.txt", "ABC", "", replacements)
     assert result == "demo123.txt"
 
+def test_clean_collapses_whitespace():
+    result = cleanfilename("   Foo   Bar   .txt", "", "", {})
+    assert result == "Foo Bar.txt"
+
 def test_gpsbowl_functionality():
     """Test the GPSBOWL functionality with the cronmode option"""
     # Create a temporary directory for the test

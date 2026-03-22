@@ -5,7 +5,7 @@ from datetime import datetime
 from configparser import ConfigParser
 from pathlib import Path
 from wit_pytools.witpytools import dryprint
-from wit_pytools.sanitizers import prepregex, cleanfilestring, convert_numerals_arabic_western
+from wit_pytools.sanitizers import prepregex, cleanfilestring, convert_numerals_arabic_western, normalize_spaces
 from wit_pytools.validators import valid_email_address
 from wit_pytools.systools import walklevel, rmemptydir, movefile, copyfile, delfile
 from eliot import log_message
@@ -388,7 +388,7 @@ def cleanfilename(file, clean, clean_nocase, replacements, subdir='', convert_nu
     # Clean the filename part without extension
     nfile = cleanfilestring(nfile)
     # Return with the original extension
-    return nfile + file_extension
+    return normalize_spaces(nfile + file_extension)
 
 # Prepare everything for the current sort process
 def prepsort(config_object, targetdir, prepfilter = False):
@@ -598,6 +598,7 @@ def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
         try:
             log_message(_('Handling PDF: {}').format(os.path.join(sourcedir, file)))
             nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
+            nfile = normalize_spaces(nfile)
             bowl = bowldir(nfile, config_object)
             if not dryrun:
                 movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)

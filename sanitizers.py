@@ -19,6 +19,13 @@ def sanitize_path(value: str) -> str:
     cleaned = re.sub(r"\s+", " ", cleaned)
     return cleaned.strip().strip('.').strip()
 
+# whitespace normalization helper
+def normalize_spaces(value: Optional[str]) -> str:
+    if value is None:
+        return ''
+    return re.sub(r'\s+', ' ', value).strip()
+
+
 #   prepare strings to be used correctly in regex expressions (escape special characters)
 def prepregex(ostring):
     mapping = str.maketrans({'.': '\\.', '[': '\\[', ']': '\\]'})
@@ -35,8 +42,7 @@ def cleanfilestring(file):
     # Remove invalid characters from filename
     invalid_chars = r'[<>:"/\\|?*]'
     nfile = re.sub(invalid_chars, '', nfile)
-    # Replace multiple spaces with single space
-    nfile = re.sub(r'\s+', ' ', nfile.rstrip())
+    nfile = normalize_spaces(nfile.rstrip())
     # Remove last character period
     nfile = nfile.rstrip('.')
     # Remove leading and trailing spaces
@@ -44,8 +50,8 @@ def cleanfilestring(file):
     
     # Only add extension if it's not just a period
     if file_extension and file_extension != '.':
-        return (nfile + file_extension).strip()
-    return nfile.strip()
+        return normalize_spaces(nfile + file_extension)
+    return normalize_spaces(nfile)
 
 
 def convert_numerals_arabic_western(text: str) -> Optional[str]:
