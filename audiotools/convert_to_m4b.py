@@ -322,26 +322,29 @@ def main():
     existing_m4b_files = sorted(Path(mp3_folder).glob("*.m4b"))
     if len(existing_m4b_files) == 1:
         source_m4b = existing_m4b_files[0]
-        print("\nSingle M4B detected in source directory. Re-encoding to target bitrate...")
+        print("\nSingle M4B detected in source directory. Normalizing bitrate...")
 
         target_path = Path(output_file) if output_file else source_m4b
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
-        target_bitrate_bps = effective_bitrate_bps
+        desired_bitrate_bps = (
+            effective_bitrate_bps
+            or probe_audio_bitrate(source_m4b)
+            or target_bitrate_bps
+        )
         current_bitrate_bps = probe_audio_bitrate(source_m4b)
-        if (
-            target_bitrate_bps is not None
-            and current_bitrate_bps is not None
-            and current_bitrate_bps <= target_bitrate_bps
-        ):
-            print(
-                "Existing M4B bitrate is lower or equal to target; skipping re-encode."
-            )
+        skip_reencode = (
+            current_bitrate_bps is not None
+            and desired_bitrate_bps is not None
+            and current_bitrate_bps == desired_bitrate_bps
+        )
+
+        if skip_reencode:
             if target_path != source_m4b:
                 shutil.copy2(source_m4b, target_path)
-                print(f"Copied to output path: {target_path}")
+                print(f"Bitrate already matches target. Copied to output: {target_path}")
             else:
-                print("Output path matches source; no action taken.")
+                print("Bitrate already matches target. Output path matches source; no action taken.")
 
             final_size = target_path.stat().st_size if target_path.exists() else 0
             if final_size:
@@ -354,10 +357,11 @@ def main():
 
         try:
             original_size = source_m4b.stat().st_size
+            target_bitrate = bps_to_bitrate(desired_bitrate_bps) or bitrate
             reencode_audio(
                 source_m4b,
                 temp_reencode_path,
-                bitrate=bitrate,
+                bitrate=target_bitrate,
                 audio_codec="aac",
                 overwrite=True,
             )
@@ -466,7 +470,7 @@ def main():
         return result, None
 
     try:
-        final_output_path_str, size_info = attempt_conversion(force_transcode=False)
+        final_output_path_str, size_info = attempt_conversion(force_transcode=True)
     except RuntimeError as initial_error:
         error_text = str(initial_error).lower()
         mp3_error_hints = (
@@ -476,8 +480,8 @@ def main():
             "invalid argument",
         )
         if any(hint in error_text for hint in mp3_error_hints):
-            print("\nInitial bind failed because the sources are MP3. Re-encoding to AAC and retrying...")
-            final_output_path_str, size_info = attempt_conversion(force_transcode=True)
+            print("\nInitial bind failed even after transcoding. Retrying with direct bind for diagnostics...")
+            final_output_path_str, size_info = attempt_conversion(force_transcode=False)
         else:
             print(f"\n Error during conversion: {initial_error}")
             print("\nTroubleshooting tips:")
