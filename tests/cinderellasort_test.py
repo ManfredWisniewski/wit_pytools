@@ -156,5 +156,53 @@ def test_gpsbowl_functionality():
         assert os.path.exists(os.path.join(source_dir, 'testimage_0gps_nogps.jpg')), \
             "testimage_0gps.jpg should be renamed with _nogps and stay in source directory"
 
+
+def test_trash_nocase_removes_sample_files(tmp_path):
+    source_dir = tmp_path / 'source'
+    target_dir = tmp_path / 'target'
+    source_dir.mkdir()
+    target_dir.mkdir()
+
+    sample_files = ['Sample.mkv', 'Sample#2.mkv', 'sample_lower.mkv']
+    keep_file = 'KeepThis.mkv'
+
+    for filename in sample_files + [keep_file]:
+        (source_dir / filename).write_text('dummy')
+
+    config = ConfigParser()
+    config.optionxform = str
+    config.add_section('TABLE')
+    config['TABLE']['sourcedir'] = str(source_dir)
+    config['TABLE']['targetdir'] = str(target_dir)
+    config['TABLE']['ftype_sort'] = '.mkv'
+    config['TABLE']['ftype_delete'] = 'notdefined'
+    config['TABLE']['clean'] = ''
+    config['TABLE']['clean_nocase'] = ''
+    config['TABLE']['trash'] = 'notdefined'
+    config['TABLE']['trash_nocase'] = 'sample'
+    config['TABLE']['filemode'] = 'win'
+
+    config.add_section('SETTINGS')
+    config['SETTINGS']['overwrite'] = 'false'
+    config['SETTINGS']['jpg_quality'] = '85'
+    config['SETTINGS']['gps_moved_unmatched'] = 'false'
+    config['SETTINGS']['gps_compress'] = 'false'
+    config['SETTINGS']['set_tags'] = 'false'
+    config['SETTINGS']['usedirectoryname'] = 'false'
+    config['SETTINGS']['skipunmatched'] = 'true'
+
+    config_path = tmp_path / 'trash-sort.ini'
+    with config_path.open('w') as configfile:
+        config.write(configfile)
+
+    from wit_pytools.cinderellasort import cinderellasort
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    for filename in sample_files:
+        assert not (source_dir / filename).exists(), f"Expected {filename} to be deleted"
+
+    assert (source_dir / keep_file).exists(), "Non-matching files should remain"
+
 if __name__ == '__main__':
     pytest.main()

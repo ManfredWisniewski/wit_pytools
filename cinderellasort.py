@@ -43,13 +43,15 @@ def isvalidsort(sourcedir, ftype_sort):
     return False
 
 def matchstring(file, matchtable=''):
-    if len(matchtable) > 0:
-        found = False
-        for matchstring in matchtable.split(','):
-            if matchstring in file:
-                #print('Matchstring: ' + matchstring)
-                found = True
-        return True if found else False
+    if not matchtable:
+        return False
+    for token in matchtable.split(','):
+        token = token.strip()
+        if not token:
+            continue
+        if token in file:
+            return True
+    return False
 
 def parse_bowl_tags(tags_str):
     """Parse a string containing tags with access levels in format 'tag1[level1] tag2[level2]'
@@ -729,6 +731,9 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     clean_nocase = (table["clean_nocase"].casefold()) if "clean_nocase" in table else "NOTdefined"
     trash = (table['trash']) if "trash" in table else "NOTdefined"
     trash_nocase = (table['trash_nocase'].casefold()) if "trash_nocase" in table else "NOTdefined"
+    has_trash = trash != "NOTdefined"
+    has_trash_nocase = trash_nocase != "notdefined"
+    
     filemode = (table['filemode'].casefold()) if "filemode" in table else "win"
 
     settings = config_object["SETTINGS"]
@@ -823,6 +828,23 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
         for root, dirs, files in os.walk(sourcedir):
             for filename in files:
                 print("Filename: " + filename)
+                lower_name = filename.casefold()
+                delete_candidate = False
+                for ftype in ftype_sort.split(','):
+                    ftype_clean = ftype.strip().casefold()
+                    if not ftype_clean:
+                        continue
+                    if lower_name.endswith(ftype_clean):
+                        if has_trash and matchstring(filename, trash):
+                            delfile(root, filename, dryrun)
+                            delete_candidate = True
+                            break
+                        if has_trash_nocase and matchstring(lower_name, trash_nocase):
+                            delfile(root, filename, dryrun)
+                            delete_candidate = True
+                            break
+                if delete_candidate:
+                    continue
                 file_path = Path(os.path.join(root, filename))
                 # Get directory name and file count for this file
                 dirname = os.path.basename(root) if use_directory_name else None
