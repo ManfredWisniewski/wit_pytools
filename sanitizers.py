@@ -3,10 +3,16 @@
 
 import os
 import re
+import unicodedata
 from typing import Optional
 
 
 INVALID_PATH_CHARS = set('<>:"/\\|?*')
+
+
+TRANSLITERATION_MAP = {
+    'ß': 'ss',
+}
 
 
 def sanitize_path(value: str) -> str:
@@ -16,6 +22,22 @@ def sanitize_path(value: str) -> str:
         return ""
 
     cleaned = "".join('_' if ch in INVALID_PATH_CHARS else ch for ch in value)
+    normalized = unicodedata.normalize("NFKD", cleaned)
+
+    ascii_chars = []
+    for ch in normalized:
+        if unicodedata.combining(ch):
+            continue
+        replacement = TRANSLITERATION_MAP.get(ch)
+        if replacement is not None:
+            ascii_chars.append(replacement)
+            continue
+        if ch.isascii():
+            ascii_chars.append(ch)
+        else:
+            ascii_chars.append('_')
+
+    cleaned = "".join(ascii_chars)
     cleaned = re.sub(r"\s+", " ", cleaned)
     return cleaned.strip().strip('.').strip()
 
