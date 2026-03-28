@@ -111,13 +111,13 @@ def get_directory_audio_size(
     Args:
         directory: Directory containing audio files
         extensions: List of file extensions to include (e.g. ['mp3', 'wav'])
-                   If None, defaults to ['mp3']
+                   If None, defaults to ['mp3', 'mp4']
     
     Returns:
         Total size in bytes
     """
     if extensions is None:
-        extensions = ['mp3']
+        extensions = ['mp3', 'mp4']
     
     # Normalize extensions (remove leading dots, convert to lowercase)
     extensions = [ext.lstrip('.').lower() for ext in extensions]
@@ -153,38 +153,42 @@ def estimate_m4b_size(
         - Dictionary with detailed size information
     """
     if extensions is None:
-        extensions = ['mp3']
-    
+        extensions = ['mp3', 'mp4']
+
     input_folder = Path(input_folder)
-    
-    # Get total duration of all audio files
-    total_duration_seconds = 0
-    file_sizes = {}
-    
-    for ext in extensions:
-        ext = ext.lstrip('.')
-        for file_path in input_folder.glob(f'**/*.{ext}'):
-            try:
-                # Get audio duration using ffprobe
-                cmd = [
-                    'ffprobe', 
-                    '-v', 'error', 
-                    '-show_entries', 'format=duration', 
-                    '-of', 'default=noprint_wrappers=1:nokey=1', 
-                    str(file_path)
-                ]
-                result = subprocess.run(cmd, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace")
-                duration = float(result.stdout.strip())
-                total_duration_seconds += duration
-                
-                # Store file size
-                file_size = file_path.stat().st_size
-                file_sizes[str(file_path)] = file_size
-                
-            except (subprocess.SubprocessError, ValueError) as e:
-                print(f"Warning: Could not get duration for {file_path}: {e}")
-    
-    # Calculate original total size
+
+    extensions_set = {ext.lstrip('.').lower() for ext in extensions}
+
+    audio_files: List[Path] = []
+    for file_path in input_folder.rglob('*'):
+        if not file_path.is_file():
+            continue
+        suffix = file_path.suffix.lstrip('.').lower()
+        if suffix in extensions_set:
+            audio_files.append(file_path)
+
+    total_duration_seconds = 0.0
+    file_sizes: Dict[str, int] = {}
+
+    for file_path in audio_files:
+        file_size = file_path.stat().st_size
+        file_sizes[str(file_path)] = file_size
+
+        try:
+            cmd = [
+                'ffprobe',
+                '-v', 'error',
+                '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1',
+                str(file_path)
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True, encoding="utf-8", errors="replace")
+            duration_text = result.stdout.strip()
+            if duration_text:
+                total_duration_seconds += float(duration_text)
+        except (subprocess.SubprocessError, ValueError) as e:
+            print(f"Warning: Could not get duration for {file_path}: {e}")
+
     original_size = sum(file_sizes.values())
     
     # Parse bitrate string to get bits per second
@@ -197,10 +201,13 @@ def estimate_m4b_size(
     
     # Calculate estimated size: (bits per second * duration in seconds) / 8 bits per byte
     # Add 5% overhead for container, metadata, chapters, etc.
-    estimated_size = int((bits_per_second * total_duration_seconds / 8) * 1.05)
-    
-    # Calculate compression ratio
-    compression_ratio = original_size / estimated_size if estimated_size > 0 else 0
+    estimated_size = int((bits_per_second * total_duration_seconds / 8) * 1.05) if total_duration_seconds > 0 else 0
+
+    if estimated_size == 0 and original_size > 0:
+        estimated_size = original_size
+        compression_ratio = 1.0
+    else:
+        compression_ratio = original_size / estimated_size if estimated_size > 0 else 0
     
     # Prepare detailed info
     size_info = {
@@ -634,7 +641,7 @@ def convert_to_m4b(
     search_extensions = (
         [ext.lstrip('.').lower() for ext in extensions]
         if extensions
-        else ['mp3', 'm4a', 'flac', 'aac', 'm4b']
+        else ['mp3', 'm4a', 'flac', 'aac', 'm4b', 'mp4']
     )
 
     if usesource_mode:
@@ -697,7 +704,7 @@ def convert_to_m4b(
     if extensions:
         extensions = list(extensions)
     else:
-        extensions = ['mp3', 'flac', 'm4a', 'm4b', 'aac']
+        extensions = ['mp3', 'flac', 'm4a', 'm4b', 'aac', 'mp4']
         if preferred_normalized and preferred_normalized not in [ext.lstrip('.') for ext in extensions]:
             extensions.insert(0, preferred_normalized)
 
@@ -820,11 +827,20 @@ def convert_to_m4b(
                     counter += 1
                 return candidate
 
-            for audio_file in selected_files.values():
+            for index, audio_file in enumerate(selected_files.values(), start=1):
                 try:
                     suffix = audio_file.suffix.lower()
+                    staged_base = sanitize_path(audio_file.stem) or f"track_{index:03d}"
+
                     if force_transcode and suffix not in {'.m4a', '.m4b', '.aac'}:
-                        dest_path = _unique_destination(Path(temp_dir) / (audio_file.stem + '.m4a'))
+                        staged_suffix = '.m4a'
+                    else:
+                        staged_suffix = suffix if suffix else ''
+
+                    dest_name = f"{staged_base}{staged_suffix}"
+                    dest_path = _unique_destination(Path(temp_dir) / dest_name)
+
+                    if force_transcode and suffix not in {'.m4a', '.m4b', '.aac'}:
                         if debug:
                             print(f"Debug: Transcoding {audio_file} -> {dest_path}")
                         reencode_audio(
@@ -835,7 +851,6 @@ def convert_to_m4b(
                             overwrite=True,
                         )
                     else:
-                        dest_path = _unique_destination(Path(temp_dir) / audio_file.name)
                         if os.name == 'nt':
                             shutil.copy2(audio_file, dest_path)
                         else:

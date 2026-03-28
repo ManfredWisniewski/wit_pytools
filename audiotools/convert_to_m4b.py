@@ -380,6 +380,27 @@ def main():
         if new_size:
             print(f"New size: {new_size / (1024 * 1024):.2f} MB")
         return
+
+    extension_set = {ext.lstrip('.').lower() for ext in extensions}
+    source_audio_files = [
+        path for path in Path(mp3_folder).rglob('*')
+        if path.is_file() and path.suffix.lstrip('.').lower() in extension_set
+    ]
+
+    if not source_audio_files:
+        swapped_extensions = [ext if ext != 'mp3' else 'mp4' for ext in extensions]
+        extension_set = {ext.lstrip('.').lower() for ext in swapped_extensions}
+        source_audio_files = [
+            path for path in Path(mp3_folder).rglob('*')
+            if path.is_file() and path.suffix.lstrip('.').lower() in extension_set
+        ]
+
+        if source_audio_files:
+            extensions = swapped_extensions
+
+    if not source_audio_files:
+        print("\nNo compatible audio source files found. Skipping conversion.")
+        return
     
     # Enable debug mode
     debug = True
@@ -434,10 +455,9 @@ def main():
     
     # Check if the estimated size meets our criteria
     if compression_ratio == 0:
-        print("\nUnable to estimate compression ratio (estimated size is 0). Skipping conversion.")
-        return
+        print("\nUnable to estimate compression ratio (estimated size is 0). Proceeding based on original file size.")
 
-    if compression_ratio < 1 / max_size_ratio:
+    if compression_ratio != 0 and compression_ratio < 1 / max_size_ratio:
         print(f"\n Conversion would result in a file that is more than {(max_size_ratio - 1) * 100:.0f}% larger.")
         expected_increase = (1 / compression_ratio - 1) * 100
         print(f"  Expected size increase: {expected_increase:.1f}%")
@@ -470,7 +490,7 @@ def main():
         return result, None
 
     try:
-        final_output_path_str, size_info = attempt_conversion(force_transcode=True)
+        final_output_path_str, size_info = attempt_conversion(force_transcode=False)
     except RuntimeError as initial_error:
         error_text = str(initial_error).lower()
         mp3_error_hints = (
@@ -480,8 +500,9 @@ def main():
             "invalid argument",
         )
         if any(hint in error_text for hint in mp3_error_hints):
-            print("\nInitial bind failed even after transcoding. Retrying with direct bind for diagnostics...")
-            final_output_path_str, size_info = attempt_conversion(force_transcode=False)
+            print("Conversion failed! Retrying with re-encoding.")
+            print("Initial bind failed because the sources are MP3. Re-encoding to AAC and retrying...")
+            final_output_path_str, size_info = attempt_conversion(force_transcode=True)
         else:
             print(f"\n Error during conversion: {initial_error}")
             print("\nTroubleshooting tips:")
@@ -492,6 +513,64 @@ def main():
             return
 
     final_output_path = Path(final_output_path_str)
+
+    desired_bitrate_bps = effective_bitrate_bps or target_bitrate_bps
+    target_bitrate_label = bps_to_bitrate(desired_bitrate_bps) if desired_bitrate_bps else bitrate
+
+    if desired_bitrate_bps:
+        final_bitrate_bps = probe_audio_bitrate(final_output_path)
+        reencode_needed = (
+            final_bitrate_bps is None
+            or final_bitrate_bps != desired_bitrate_bps
+        )
+
+        if reencode_needed:
+            temp_normalized_path = final_output_path.with_name(f"{final_output_path.stem}_normalized{final_output_path.suffix}")
+            if temp_normalized_path.exists():
+                temp_normalized_path.unlink()
+
+            try:
+                print(f"\nNormalizing final M4B to bitrate {target_bitrate_label}...")
+                reencode_audio(
+                    final_output_path,
+                    temp_normalized_path,
+                    bitrate=target_bitrate_label,
+                    audio_codec="aac",
+                    overwrite=True,
+                )
+                os.replace(temp_normalized_path, final_output_path)
+            except Exception as err:
+                if temp_normalized_path.exists():
+                    temp_normalized_path.unlink()
+                print(f"Warning: Failed to normalize final M4B bitrate ({err}). Keeping original bind output.")
+            else:
+                size_info = size_info or {}
+                if "original_size" not in size_info and original_size:
+                    size_info["original_size"] = original_size
+                actual_size = final_output_path.stat().st_size if final_output_path.exists() else 0
+                if actual_size:
+                    size_info["actual_m4b_size"] = actual_size
+                    if size_info.get("original_size"):
+                        size_info["actual_compression_ratio"] = size_info["original_size"] / actual_size
+                final_bitrate_bps = probe_audio_bitrate(final_output_path)
+                if final_bitrate_bps:
+                    print(f"Normalized final bitrate: {bps_to_bitrate(final_bitrate_bps) or final_bitrate_bps}")
+
+    def delete_source_mp3_files(folder: Path) -> None:
+        removed_any = False
+        for mp3_file in folder.rglob("*.mp3"):
+            try:
+                mp3_file.unlink()
+                removed_any = True
+                print(f"Deleted source MP3: {mp3_file}")
+            except OSError as err:
+                print(f"Warning: Failed to delete MP3 {mp3_file}: {err}")
+        if not removed_any:
+            print("No MP3 source files found to delete.")
+
+    source_folder = Path(mp3_folder)
+    if source_folder.exists():
+        delete_source_mp3_files(source_folder)
 
     if size_info is not None:
         print("\nConversion complete!")
