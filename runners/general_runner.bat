@@ -120,4 +120,7 @@ if %OVERALL_EXIT%==0 (
     echo One or more conversions failed.
 )
 
+REM echo Initiating system shutdown in 60 seconds...
+shutdown /s /f /t 60 /c "general_runner.bat completed. System will shut down in 60 seconds."
+
 exit /b %OVERALL_EXIT%
