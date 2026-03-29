@@ -556,21 +556,33 @@ def main():
                 if final_bitrate_bps:
                     print(f"Normalized final bitrate: {bps_to_bitrate(final_bitrate_bps) or final_bitrate_bps}")
 
-    def delete_source_mp3_files(folder: Path) -> None:
+    def delete_source_audio_files(folder: Path, audio_extensions: Sequence[str], output_path: Optional[Path] = None) -> None:
+        normalized_exts = {ext.lstrip('.').lower() for ext in audio_extensions if ext}
         removed_any = False
-        for mp3_file in folder.rglob("*.mp3"):
-            try:
-                mp3_file.unlink()
-                removed_any = True
-                print(f"Deleted source MP3: {mp3_file}")
-            except OSError as err:
-                print(f"Warning: Failed to delete MP3 {mp3_file}: {err}")
+
+        resolved_output = output_path.resolve() if output_path and output_path.exists() else None
+
+        for ext in sorted(normalized_exts):
+            for audio_file in folder.rglob(f"*.{ext}"):
+                if resolved_output:
+                    try:
+                        if audio_file.resolve() == resolved_output:
+                            continue
+                    except OSError:
+                        pass
+                try:
+                    audio_file.unlink()
+                    removed_any = True
+                    print(f"Deleted source {ext.upper()} file: {audio_file}")
+                except OSError as err:
+                    print(f"Warning: Failed to delete {audio_file}: {err}")
+
         if not removed_any:
-            print("No MP3 source files found to delete.")
+            print("No source audio files found to delete.")
 
     source_folder = Path(mp3_folder)
     if source_folder.exists():
-        delete_source_mp3_files(source_folder)
+        delete_source_audio_files(source_folder, extensions, final_output_path)
 
     if size_info is not None:
         print("\nConversion complete!")
