@@ -201,7 +201,7 @@ def main():
     )
     parser.add_argument(
         "--preferred-format",
-        choices=["mp3", "m4a"],
+        choices=["mp3", "m4a", "wma"],
         help="Preferred audio format to select when multiple encodings exist",
     )
     parser.add_argument(
@@ -245,7 +245,7 @@ def main():
     if args.extensions:
         extensions = [ext.lstrip('.').lower() for ext in args.extensions]
     else:
-        extensions = ["mp3", "flac", "m4a", "m4b", "aac"]
+        extensions = ["mp3", "flac", "m4a", "m4b", "aac", "wma"]
         if args.preferred_format:
             pref = args.preferred_format.lstrip('.').lower()
             if pref not in extensions:
