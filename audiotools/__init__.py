@@ -19,6 +19,13 @@ import importlib.util
 
 from wit_pytools.sanitizers import sanitize_path
 
+MAX_SANITIZED_NAME_LENGTH = 120
+
+def _truncate_path_component(value: str, max_length: int = MAX_SANITIZED_NAME_LENGTH) -> str:
+    if len(value) <= max_length:
+        return value
+    truncated = value[:max_length].rstrip(" .")
+    return truncated or value[:max_length]
 
 def is_m4b_util_installed() -> bool:
     """Check if m4b-util is installed."""
@@ -397,6 +404,10 @@ def _extract_tags_from_audio(audio_file: Optional[Path], debug: bool = False) ->
 
     if not tags and debug:
         print(f"Debug: No tags found for {audio_file}")
+    elif debug:
+        print("Debug: Extracted tags:")
+        for key in sorted(tags):
+            print(f"  {key}: {tags[key]}")
 
     return tags
 
@@ -627,7 +638,7 @@ def convert_to_m4b(
     if not input_folder_path.exists() and not specific_files:
         raise ValueError(f"Input folder does not exist: {input_folder_path}")
 
-    final_base_name = None
+    final_base_name = input_folder_path.name
 
     usesource_mode = (
         specific_files is None
@@ -638,29 +649,75 @@ def convert_to_m4b(
     if preferred_format:
         preferred_normalized = preferred_format.lstrip('.').lower()
 
-    # ... (rest of the code remains the same)
+    if usesource_mode:
+        if debug:
+            print("Debug: USESOURCE mode enabled - deriving names from embedded metadata")
+        fallback_raw = input_folder_path.name.replace("$USESOURCE", "")
+        fallback_name = sanitize_path(fallback_raw) or "Audiobook"
+        fallback_name = _truncate_path_component(fallback_name)
+
+        search_extensions = extensions or ['mp3', 'flac', 'm4a', 'm4b', 'aac', 'mp4']
+        normalized_search_ext = [ext.lstrip('.').lower() for ext in search_extensions]
+        first_audio = _find_first_audio_file(input_folder_path, normalized_search_ext)
+        if debug:
+            print(f"Debug: USESOURCE first audio for tag extraction: {first_audio}")
+        tags = _extract_tags_from_audio(first_audio, debug=debug)
+        if debug:
+            if not tags:
+                print("Debug: No metadata tags extracted from first audio file; fallback naming will be used if required.")
+            else:
+                print("Debug: USESOURCE metadata candidates:")
+                for key in sorted(tags):
+                    print(f"  {key}: {tags[key]}")
 
         metadata_from_source = _build_usesource_metadata(tags, fallback_name)
 
         if not metadata_from_source.get("author"):
             raise ValueError(f"USESOURCE mode requires an author tag in {input_folder_path}")
 
-        new_folder_base = metadata_from_source.get('base_name') or fallback_name
-        new_folder_base = sanitize_path(new_folder_base) or fallback_name
-        final_base_name = new_folder_base
+        base_candidate = metadata_from_source.get('base_name') or fallback_name
+        base_candidate = sanitize_path(base_candidate) or fallback_name
+        base_candidate = _truncate_path_component(base_candidate)
+
+        new_folder_base = base_candidate
 
         original_folder_path = input_folder_path
         target_path = input_folder_path.parent / new_folder_base
 
         suffix = 1
-        # ... (rest of the code remains the same)
+        while target_path.exists() and target_path != input_folder_path:
+            target_path = input_folder_path.parent / f"{new_folder_base}_{suffix}"
+            suffix += 1
+
+        if target_path != input_folder_path:
+            if debug:
+                print(f"Debug: Renaming USESOURCE folder '{input_folder_path}' -> '{target_path}'")
+            input_folder_path.rename(target_path)
+            input_folder_path = target_path
+
+        final_base_name = input_folder_path.name
+
+        if debug:
+            print("Debug: USESOURCE metadata resolved:")
+            for key in ["author", "date", "title", "narrator", "base_name"]:
+                print(f"  {key}: {metadata_from_source.get(key)}")
+
+        if metadata_from_source.get('author'):
+            author = metadata_from_source['author']
+        if metadata_from_source.get('title'):
+            title = metadata_from_source['title']
         if metadata_from_source.get('narrator'):
             narrator = metadata_from_source['narrator']
         if metadata_from_source.get('date'):
             date = metadata_from_source['date']
 
+        if debug:
+            print("Debug: Exiting USESOURCE mode")
+
     # Convert paths to strings for downstream processing
     input_folder = str(input_folder_path)
+
+    final_base_name = input_folder_path.name
 
     if extensions:
         extensions = list(extensions)
@@ -835,64 +892,43 @@ def convert_to_m4b(
             final_output_file = None
             
             if output_file:
-                # Extract directory and filename from output_file
                 output_dir_path = os.path.dirname(output_file)
                 output_filename = os.path.basename(output_file)
-                
-                # If output_dir_path is empty, use current directory
-                if output_dir_path:
-                    cmd.extend(['--output-dir', output_dir_path])
-                
-                # If output_filename has an extension, use it as is, otherwise add .m4b
-                if not output_filename.lower().endswith('.m4b'):
-                    output_filename += '.m4b'
-                
-                cmd.extend(['--output-name', output_filename])
-                final_output_file = output_file if output_file.lower().endswith('.m4b') else f"{output_file}.m4b"
-            elif output_dir:
-                cmd.extend(['--output-dir', str(output_dir)])
-                # Use input folder name for output filename
-                folder_name = os.path.basename(os.path.normpath(input_folder))
-                base_name = final_base_name or folder_name
-                output_filename = f"{base_name}.m4b"
-                cmd.extend(['--output-name', output_filename])
-                final_output_file = os.path.join(output_dir, output_filename)
-            else:
-                # Default to input folder name with .m4b extension in the same directory as input
-                folder_name = os.path.basename(os.path.normpath(input_folder))
-                output_dir_path = os.path.dirname(input_folder)
-                base_name = final_base_name or folder_name
-                output_filename = f"{base_name}.m4b"
 
                 if output_dir_path:
                     cmd.extend(['--output-dir', output_dir_path])
+                else:
+                    output_dir_path = input_folder
+                    cmd.extend(['--output-dir', output_dir_path])
+
+                if not output_filename.lower().endswith('.m4b'):
+                    output_filename += '.m4b'
 
                 cmd.extend(['--output-name', output_filename])
                 final_output_file = os.path.join(output_dir_path, output_filename)
-            
-            # Add optional parameters
-            if title:
-                # If narrator is provided, include it in the title
-                if narrator:
-                    modified_title = f"{title} (Narrator: {narrator})"
-                    cmd.extend(['--title', modified_title])
-                else:
-                    cmd.extend(['--title', title])
-            elif narrator:
-                # If only narrator is provided (no title), create a title with just the narrator info
-                cmd.extend(['--title', f"(Narrator: {narrator})"])
-            
-            if author:
-                cmd.extend(['--author', author])
-            
-            if date:
-                cmd.extend(['--date', date])
-            
-            if cover_image:
-                if os.path.exists(cover_image):
-                    cmd.extend(['--cover', str(cover_image)])
-                else:
-                    print(f"Warning: Cover image not found: {cover_image}")
+            elif output_dir:
+                output_dir_path = str(output_dir)
+                cmd.extend(['--output-dir', output_dir_path])
+
+                folder_name = os.path.basename(os.path.normpath(input_folder))
+                base_name = final_base_name or folder_name
+                output_filename = f"{base_name}.m4b"
+
+                cmd.extend(['--output-name', output_filename])
+                final_output_file = os.path.join(output_dir_path, output_filename)
+            else:
+                output_dir_path = input_folder
+                cmd.extend(['--output-dir', output_dir_path])
+
+                folder_name = os.path.basename(os.path.normpath(input_folder))
+                base_name = final_base_name or folder_name
+                output_filename = f"{base_name}.m4b"
+
+                if not output_filename.lower().endswith('.m4b'):
+                    output_filename += '.m4b'
+
+                cmd.extend(['--output-name', output_filename])
+                final_output_file = os.path.join(output_dir_path, output_filename)
             
             # Add other supported options
             if use_filename_as_chapter:
@@ -910,15 +946,13 @@ def convert_to_m4b(
                 if output_dir_path:
                     print(f"Debug: Output directory exists: {os.path.exists(output_dir_path)}")
                     print(f"Debug: Output directory is writable: {os.access(output_dir_path, os.W_OK)}")
+            else:
+                print("Debug: No output directory supplied; keeping source audio files (default mode)")
             
             # Set environment variables to fix Rich library color output issues
             env = os.environ.copy()
             env["TMPDIR"] = temp_dir
             env["TMP"] = temp_dir
-            env["TEMP"] = temp_dir
-            env["TERM"] = "dumb"  # Disable colored output
-            env["PYTHONIOENCODING"] = "utf-8"  # Force UTF-8 encoding
-            env["FORCE_COLOR"] = "0"  # Disable Rich color output
             
             # Run the command
             try:
@@ -1247,19 +1281,58 @@ if __name__ == "__main__":
 def _build_usesource_metadata(tags: Dict[str, str], fallback_name: str) -> Dict[str, Optional[str]]:
     lowered = {k.lower(): v for k, v in tags.items()}
 
-    comment = lowered.get("comment")
+    def first_tag(*keys: str) -> Optional[str]:
+        for key in keys:
+            value = lowered.get(key)
+            if value:
+                return value
+        return None
+
+    comment = first_tag("comment", "\xa9cmt", "cmt")
     if comment and "read by" in comment.lower():
         comment = re.sub(r"(?i)read by", "", comment).strip()
+    if comment and "narrated by" in comment.lower():
+        comment = re.sub(r"(?i)narrated by", "", comment).strip()
 
-    author = lowered.get("artist") or lowered.get("album_artist") or lowered.get("composer")
-    title = lowered.get("album") or lowered.get("title")
-    narrator = (
-        lowered.get("narrator")
-        or lowered.get("performer")
-        or comment
-        or lowered.get("reader")
+    author = first_tag(
+        "artist",
+        "album_artist",
+        "author",
+        "albumartist",
+        "art",
+        "\xa9art",
+        "art",
+        "aart",
     )
-    date = lowered.get("date") or lowered.get("year") or lowered.get("originaldate")
+    title = first_tag(
+        "album",
+        "title",
+        "alb",
+        "nam",
+        "\xa9nam",
+        "nam",
+        "\xa9alb",
+        "alb",
+    )
+    narrator = first_tag(
+        "narrator",
+        "performer",
+        "reader",
+        "composer",
+        "wrt",
+        "\xa9wrt",
+        "wrt",
+        "\xa9nrt",
+        "nrt",
+    ) or comment
+    date = first_tag(
+        "date",
+        "year",
+        "originaldate",
+        "day",
+        "\xa9day",
+        "day",
+    )
 
     components = [part for part in [author, date, title] if part]
     base = " ".join(components).strip()
@@ -1270,6 +1343,7 @@ def _build_usesource_metadata(tags: Dict[str, str], fallback_name: str) -> Dict[
         base = fallback_name
 
     base = sanitize_path(base)
+    base = _truncate_path_component(base)
 
     return {
         "author": author,

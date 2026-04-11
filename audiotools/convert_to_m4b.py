@@ -9,7 +9,7 @@ import glob
 import shutil
 import subprocess
 import io
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 from pathlib import Path
 
 # Add repository root to path so we can import wit_pytools
@@ -214,11 +214,24 @@ def main():
         default=os.environ.get("AUDIOBOOK_TARGET_BITRATE", "64k"),
         help="Target audio bitrate for size estimation and final re-encode (default: 64k)",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug output",
+    )
     args = parser.parse_args()
 
     # Resolve target folder from argument or environment
     mp3_folder = args.input_folder or os.environ.get('AUDIOBOOK_INPUT_FOLDER', '.')
     mp3_folder = os.path.abspath(mp3_folder)
+    usesource_mode = "$USESOURCE" in Path(mp3_folder).name
+
+    if args.debug:
+        print(f"Debug: CLI input folder -> {mp3_folder}", flush=True)
+        if usesource_mode:
+            print("Debug: CLI USESOURCE flow enabled (output name will be metadata-driven)", flush=True)
+        else:
+            print("Debug: CLI standard flow (directory-derived naming)", flush=True)
     
     # https://github.com/sandreas/m4b-tool
     # Bitrate used for size estimation and optional re-encode
@@ -297,30 +310,31 @@ def main():
     else:
         print("No cover images found in the directory.")
     
-    # Get output path (same directory as source files)
-    output_dir_path = Path(mp3_folder)
-    output_dir_path.mkdir(parents=True, exist_ok=True)
+    if usesource_mode:
+        output_file = None
+    else:
+        output_dir_path = Path(mp3_folder)
+        output_dir_path.mkdir(parents=True, exist_ok=True)
 
-    filename_parts = []
-    if author:
-        filename_parts.append(author)
-    if year:
-        filename_parts.append(year)
-    if title:
-        filename_parts.append(title)
-    filename_base = " ".join(part for part in filename_parts if part).strip()
-    if narrator:
-        filename_base = f"{filename_base}; {narrator}" if filename_base else narrator
-    if not filename_base:
-        filename_base = os.path.basename(mp3_folder)
+        metadata_filename_parts = []
+        if author:
+            metadata_filename_parts.append(author)
+        if year:
+            metadata_filename_parts.append(year)
+        if title:
+            metadata_filename_parts.append(title)
+        filename_base = " ".join(part for part in metadata_filename_parts if part).strip()
+        if narrator:
+            filename_base = f"{filename_base}; {narrator}" if filename_base else narrator
 
-    output_file = str(output_dir_path / f"{filename_base}.m4b")
+        if not filename_base:
+            filename_base = os.path.basename(mp3_folder)
 
-    existing_output = Path(output_file)
+        output_file = str(output_dir_path / f"{filename_base}.m4b")
 
     # Handle directories that already contain a single M4B file
     existing_m4b_files = sorted(Path(mp3_folder).glob("*.m4b"))
-    if len(existing_m4b_files) == 1:
+    if len(existing_m4b_files) == 1 and not usesource_mode:
         source_m4b = existing_m4b_files[0]
         print("\nSingle M4B detected in source directory. Normalizing bitrate...")
 
@@ -403,7 +417,7 @@ def main():
         return
     
     # Enable debug mode
-    debug = True
+    debug = args.debug
     
     # Additional options
     use_filename_as_chapter = False
@@ -492,22 +506,15 @@ def main():
     try:
         final_output_path_str, size_info = attempt_conversion(force_transcode=False)
     except RuntimeError as initial_error:
-        error_text = str(initial_error).lower()
-        mp3_error_hints = (
-            "codec mp3",
-            "not currently supported in container",
-            "could not write header",
-            "invalid argument",
-        )
-        if any(hint in error_text for hint in mp3_error_hints):
-            print("Conversion failed! Retrying with re-encoding.")
-            print("Initial bind failed because the sources are MP3. Re-encoding to AAC and retrying...")
+        print("Conversion failed! Retrying with re-encoding.")
+        print("Initial bind failed; transcodable sources will be converted to AAC and retried...")
+        try:
             final_output_path_str, size_info = attempt_conversion(force_transcode=True)
-        else:
-            print(f"\n Error during conversion: {initial_error}")
+        except RuntimeError as second_error:
+            print(f"\n Error during conversion: {second_error}")
             print("\nTroubleshooting tips:")
             print("1. Make sure FFmpeg is installed and in your PATH")
-            print("2. Check that the input folder contains MP3 files")
+            print("2. Check that the input folder contains supported audio files")
             print("3. Verify you have write permissions to the output location")
             print("4. Try running the command directly: m4b-util bind --help")
             return
@@ -580,9 +587,22 @@ def main():
         if not removed_any:
             print("No source audio files found to delete.")
 
-    source_folder = Path(mp3_folder)
-    if source_folder.exists():
-        delete_source_audio_files(source_folder, extensions, final_output_path)
+    source_folder_candidate = final_output_path.parent if final_output_path.exists() else Path(mp3_folder)
+    if not source_folder_candidate.exists():
+        source_folder_candidate = Path(mp3_folder)
+
+    if source_folder_candidate.exists():
+        delete_source_audio_files(source_folder_candidate, extensions, final_output_path)
+
+    source_m4b_files = sorted(Path(mp3_folder).glob("*.m4b"))
+    if len(source_m4b_files) > 1:
+        original_matches = [f for f in source_m4b_files if f.name != final_output_path.name]
+        for original_m4b in original_matches:
+            try:
+                original_m4b.unlink()
+                print(f"Deleted original M4B: {original_m4b}")
+            except OSError as err:
+                print(f"Warning: Failed to delete original M4B {original_m4b}: {err}")
 
     if size_info is not None:
         print("\nConversion complete!")
