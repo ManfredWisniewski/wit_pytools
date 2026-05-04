@@ -781,6 +781,8 @@ def convert_to_m4b(
     
     # Build command
     cmd = ['bind']
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
     
     # If we have specific files, use them directly
     if specific_files:
@@ -827,7 +829,11 @@ def convert_to_m4b(
                 current = selected_files.get(rel_key)
                 if current is None:
                     selected_files[rel_key] = audio_file
-                elif preferred_normalized and current.suffix.lstrip('.').lower() != preferred_normalized and suffix == preferred_normalized:
+                elif (
+                    preferred_normalized
+                    and current.suffix.lstrip('.').lower() != preferred_normalized
+                    and suffix == preferred_normalized
+                ):
                     if debug:
                         print(f"Debug: Preferring {audio_file} over {current}")
                     selected_files[rel_key] = audio_file
@@ -842,7 +848,9 @@ def convert_to_m4b(
                 candidate = base_path
                 counter = 1
                 while candidate.exists():
-                    candidate = candidate.with_name(f"{base_path.stem}_{counter}{base_path.suffix}")
+                    candidate = candidate.with_name(
+                        f"{base_path.stem}_{counter}{base_path.suffix}"
+                    )
                     counter += 1
                 return candidate
 
@@ -874,23 +882,24 @@ def convert_to_m4b(
                             shutil.copy2(audio_file, dest_path)
                         else:
                             os.symlink(audio_file, dest_path)
+
                     audio_file_count += 1
                 except (OSError, shutil.Error, RuntimeError) as e:
                     if debug:
                         print(f"Debug: Error preparing {audio_file}: {e}")
 
             if debug:
-                print(f"Debug: Prepared {audio_file_count} audio files (force_transcode={force_transcode})")
+                print(
+                    f"Debug: Prepared {audio_file_count} audio files (force_transcode={force_transcode})"
+                )
 
             if audio_file_count == 0:
                 raise ValueError(f"No valid audio files found in {input_folder}")
-            
-            # Use the temporary directory as input
+
+            # Use the staged directory as the source for m4b-util
             cmd.append(temp_dir)
-            
+
             # Determine output file path and directory
-            final_output_file = None
-            
             if output_file:
                 output_dir_path = os.path.dirname(output_file)
                 output_filename = os.path.basename(output_file)
@@ -903,58 +912,43 @@ def convert_to_m4b(
 
                 if not output_filename.lower().endswith('.m4b'):
                     output_filename += '.m4b'
-
-                cmd.extend(['--output-name', output_filename])
-                final_output_file = os.path.join(output_dir_path, output_filename)
-            elif output_dir:
-                output_dir_path = str(output_dir)
-                cmd.extend(['--output-dir', output_dir_path])
-
-                folder_name = os.path.basename(os.path.normpath(input_folder))
-                base_name = final_base_name or folder_name
-                output_filename = f"{base_name}.m4b"
-
-                cmd.extend(['--output-name', output_filename])
-                final_output_file = os.path.join(output_dir_path, output_filename)
             else:
-                output_dir_path = input_folder
+                if output_dir:
+                    output_dir_path = str(output_dir)
+                else:
+                    output_dir_path = input_folder
+
                 cmd.extend(['--output-dir', output_dir_path])
 
                 folder_name = os.path.basename(os.path.normpath(input_folder))
                 base_name = final_base_name or folder_name
+                base_name = sanitize_path(base_name) or "Audiobook"
+                base_name = _truncate_path_component(base_name)
                 output_filename = f"{base_name}.m4b"
 
-                if not output_filename.lower().endswith('.m4b'):
-                    output_filename += '.m4b'
+            cmd.extend(['--output-name', output_filename])
+            final_output_file = os.path.join(output_dir_path, output_filename)
 
-                cmd.extend(['--output-name', output_filename])
-                final_output_file = os.path.join(output_dir_path, output_filename)
-            
             # Add other supported options
             if use_filename_as_chapter:
                 cmd.append('--use-filename')
-            
+
             if decode_durations:
                 cmd.append('--decode-durations')
-
 
             if debug:
                 print(f"Debug: Full command: m4b-util {' '.join(str(arg) for arg in cmd)}")
                 print(f"Debug: Final output file: {final_output_file}")
-                # Check if output directory exists
-                output_dir_path = os.path.dirname(final_output_file)
-                if output_dir_path:
-                    print(f"Debug: Output directory exists: {os.path.exists(output_dir_path)}")
-                    print(f"Debug: Output directory is writable: {os.access(output_dir_path, os.W_OK)}")
-            else:
+                output_dir_path_check = os.path.dirname(final_output_file)
+                if output_dir_path_check:
+                    print(f"Debug: Output directory exists: {os.path.exists(output_dir_path_check)}")
+                    print(f"Debug: Output directory is writable: {os.access(output_dir_path_check, os.W_OK)}")
+            elif not output_dir and not output_file:
                 print("Debug: No output directory supplied; keeping source audio files (default mode)")
-            
-            # Set environment variables to fix Rich library color output issues
-            env = os.environ.copy()
+
             env["TMPDIR"] = temp_dir
             env["TMP"] = temp_dir
-            
-            # Run the command
+
             try:
                 result = run_m4b_util_command(
                     cmd,
@@ -963,25 +957,27 @@ def convert_to_m4b(
                     text=True,
                     env=env
                 )
-                
+
                 if debug:
                     print(result.stdout)
-                
+
                 # Update size info with actual file size if available
                 if estimate_size and os.path.exists(final_output_file):
                     actual_size = os.path.getsize(final_output_file)
                     size_info['actual_m4b_size'] = actual_size
-                    size_info['actual_compression_ratio'] = size_info['original_size'] / actual_size if actual_size > 0 else 0
-                    
+                    size_info['actual_compression_ratio'] = (
+                        size_info['original_size'] / actual_size if actual_size > 0 else 0
+                    )
+
                     if verbose or debug:
                         print(f"Actual M4B size: {actual_size / (1024*1024):.2f} MB")
                         print(f"Actual compression ratio: {size_info['actual_compression_ratio']:.2f}x")
-                
+
                 if estimate_size:
                     return final_output_file, size_info
                 else:
                     return final_output_file
-            
+
             except (subprocess.CalledProcessError, RuntimeError) as e:
                 error_msg = f"Error converting to M4B: {e}"
                 stderr_output = getattr(e, 'stderr', None)
@@ -990,30 +986,71 @@ def convert_to_m4b(
                     error_msg += f"\nStdout: {stdout_output.strip()}"
                 if stderr_output:
                     error_msg += f"\nStderr: {stderr_output.strip()}"
-                
+
                 if debug:
                     print(f"Debug: Error occurred: {error_msg}")
                     print(f"Debug: Checking if m4b-util is properly installed...")
                     try:
-                        version_result = subprocess.run(['m4b-util', '--version'], capture_output=True, text=True, encoding="utf-8", errors="replace")
+                        version_result = subprocess.run(
+                            ['m4b-util', '--version'],
+                            capture_output=True,
+                            text=True,
+                            encoding='utf-8',
+                            errors='replace'
+                        )
                         print(f"Debug: m4b-util version: {version_result.stdout.strip()}")
                     except:
                         print("Debug: Could not get m4b-util version using command line")
                         try:
-                            module_check = subprocess.run([sys.executable, '-m', 'm4b_util', '--version'], capture_output=True, text=True, encoding="utf-8", errors="replace")
+                            module_check = subprocess.run(
+                                [sys.executable, '-m', 'm4b_util', '--version'],
+                                capture_output=True,
+                                text=True,
+                                encoding='utf-8',
+                                errors='replace'
+                            )
                             print(f"Debug: m4b_util module version: {module_check.stdout.strip()}")
                         except:
                             print("Debug: Could not get m4b_util module version")
-                    
-                    # Check if ffmpeg is installed
+
                     try:
-                        ffmpeg_result = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, encoding="utf-8", errors="replace")
-                        print(f"Debug: ffmpeg is installed")
+                        ffmpeg_result = subprocess.run(
+                            ['ffmpeg', '-version'],
+                            capture_output=True,
+                            text=True,
+                            encoding='utf-8',
+                            errors='replace'
+                        )
+                        print("Debug: ffmpeg is installed")
                     except:
                         print("Debug: ffmpeg is NOT installed or not in PATH - this is required by m4b-util")
-                
-                raise RuntimeError(error_msg)
 
+                if not force_transcode:
+                    if debug:
+                        print("Debug: Retrying conversion with force_transcode enabled after failure")
+                    return convert_to_m4b(
+                        input_folder,
+                        output_file=output_file,
+                        output_dir=output_dir,
+                        title=title,
+                        author=author,
+                        cover_image=cover_image,
+                        extensions=extensions,
+                        preferred_format=preferred_format,
+                        chapter_pattern=chapter_pattern,
+                        bitrate=bitrate,
+                        verbose=verbose,
+                        estimate_size=estimate_size,
+                        debug=debug,
+                        use_filename_as_chapter=use_filename_as_chapter,
+                        specific_files=specific_files,
+                        decode_durations=decode_durations,
+                        date=date,
+                        narrator=narrator,
+                        force_transcode=True,
+                    )
+
+                raise RuntimeError(error_msg)
 
 def add_cover_to_m4b(
     m4b_file: Union[str, Path],

@@ -28,8 +28,10 @@ from wit_pytools.audiotools import (
     estimate_m4b_size,
     probe_audio_bitrate,
     reencode_audio,
+    _truncate_path_component,
 )
 from wit_pytools.datatools import bps_to_bitrate, bitrate_to_bps
+from wit_pytools.sanitizers import sanitize_path
 
 
 def extract_title_from_directory(directory_path):
@@ -329,6 +331,9 @@ def main():
 
         if not filename_base:
             filename_base = os.path.basename(mp3_folder)
+
+        filename_base = sanitize_path(filename_base) or "Audiobook"
+        filename_base = _truncate_path_component(filename_base)
 
         output_file = str(output_dir_path / f"{filename_base}.m4b")
 
