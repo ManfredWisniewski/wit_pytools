@@ -78,6 +78,19 @@ def run_m4b_util_command(
             "m4b-util is not installed. Install it with 'pip install m4b-util'"
         )
     
+    # Prepare environment ensuring UTF-8 friendly defaults for downstream Python tooling
+    if env is None:
+        env_to_use: Dict[str, str] = os.environ.copy()
+    else:
+        env_to_use = env.copy()
+
+    env_to_use["PYTHONIOENCODING"] = "utf-8"
+    env_to_use["PYTHONUTF8"] = "1"
+    if os.name == "nt":
+        env_to_use.setdefault("LC_ALL", "C.UTF-8")
+        env_to_use.setdefault("LANG", "C.UTF-8")
+    env_to_use.setdefault("NO_COLOR", "1")
+
     # First try to run as command line tool
     try:
         return subprocess.run(
@@ -85,7 +98,7 @@ def run_m4b_util_command(
             check=check,
             capture_output=capture_output,
             text=text,
-            env=env,
+            env=env_to_use,
             encoding="utf-8",
             errors="replace",
         )
@@ -98,7 +111,7 @@ def run_m4b_util_command(
                     check=check,
                     capture_output=capture_output,
                     text=text,
-                    env=env,
+                    env=env_to_use,
                     encoding="utf-8",
                     errors="replace",
                 )
