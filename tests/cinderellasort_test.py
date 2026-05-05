@@ -11,7 +11,7 @@ from configparser import ConfigParser
 # Add parent directory to path so we can import wit_pytools
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from wit_pytools.cinderellasort import cleanfilename, bowldir_gps
+from wit_pytools.cinderellasort import cleanfilename, bowldir_gps, handlefile
 from wit_pytools.imgtools import img_getgps
 
 def test_basic_cleaning():
@@ -48,6 +48,51 @@ def test_clean_with_invalid_chars():
     # Test cleaning invalid filename characters
     result = cleanfilename("test<>:\"/\\|?*.txt", "", "", {})
     assert result == "test.txt"
+
+
+def test_directory_name_cleaning_collapses_whitespace(tmp_path, monkeypatch):
+    config = ConfigParser()
+    config.optionxform = str
+    config.add_section("BOWLS")
+    config.set("BOWLS", "Destination", "!DEFAULT")
+    config.add_section("SETTINGS")
+    config.set("SETTINGS", "usedirectoryname", "true")
+
+    captured = {}
+
+    def fake_movefile(sourcedir, file, destdir, nfile, filemode, overwrite=False, dryrun=False):
+        captured["nfile"] = nfile
+        captured["destdir"] = destdir
+
+    monkeypatch.setattr("wit_pytools.cinderellasort.movefile", fake_movefile)
+
+    source_dir = tmp_path / "Foo Bar Baz"
+    source_dir.mkdir()
+    file_path = source_dir / "sample.txt"
+    file_path.write_text("data")
+
+    handlefile(
+        file_path,
+        str(source_dir),
+        str(tmp_path / "dest"),
+        ".txt",
+        "Bar",
+        "NOTdefined",
+        config,
+        "win",
+        {},
+        dryrun=False,
+        overwrite=False,
+        jpg_quality=85,
+        gps_moved_unmatched=False,
+        gps_compress=False,
+        use_directory_name=True,
+        dir_file_count=1,
+        dirname="Foo Bar Baz",
+        skip_unmatched=True,
+    )
+
+    assert captured["nfile"] == "Foo Baz.txt"
 
 def test_clean_with_subdirectory():
     # Test with subdirectory

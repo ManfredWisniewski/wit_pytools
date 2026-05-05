@@ -689,6 +689,8 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
             if replacements:
                 for rstring, nstring in replacements.items():
                     cleaned_dirname = cleaned_dirname.replace(rstring, nstring)
+            # Re-clean to collapse whitespace introduced by removals/replacements
+            cleaned_dirname = cleanfilestring(cleaned_dirname)
             # Strip trailing whitespace
             cleaned_dirname = cleaned_dirname.strip()
             print(f"  Using directory name: {cleaned_dirname} (count={dir_file_count})")
