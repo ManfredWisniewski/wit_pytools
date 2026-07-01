@@ -798,13 +798,29 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
         print("Running cinderellasort in all-files mode")
         print("Sourcedir: " + sourcedir)
         print("\n## First pass: deleting unwanted files")
+        valid_sort_dirs = set()
         for root, dirs, files in os.walk(sourcedir):
-            if isvalidsort(root, ftype_sort):
+            root_path = Path(root).resolve()
+            current_valid = isvalidsort(root, ftype_sort)
+            if current_valid:
                 print(f'   Valid sort dir: {root}')
+                valid_sort_dirs.add(root_path)
+
+            should_delete = current_valid
+            if not should_delete:
+                for valid_dir in valid_sort_dirs:
+                    try:
+                        root_path.relative_to(valid_dir)
+                        should_delete = True
+                        break
+                    except ValueError:
+                        continue
+
+            if should_delete:
                 for file in files:
                     for ftype in ftype_delete.split(','):
-                        ftype_clean = ftype.strip()
-                        if file.casefold().endswith(ftype_clean):
+                        ftype_clean = ftype.strip().casefold()
+                        if ftype_clean and file.casefold().endswith(ftype_clean):
                             print(f'   -> deleting {file} (matches {ftype_clean})')
                             delfile(root, file, dryrun)
         
@@ -869,8 +885,8 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
                 for file in files:
                     # print('# remove unwanted filetypes')
                     for ftype in ftype_delete.split(','):
-                        ftype_clean = ftype.strip()
-                        if file.casefold().endswith(ftype_clean):
+                        ftype_clean = ftype.strip().casefold()
+                        if ftype_clean and file.casefold().endswith(ftype_clean):
                             print(f'   -> deleting {file} (matches {ftype_clean})')
                             delfile(subdir, file, dryrun)
                     # print('# removing files that match trash')

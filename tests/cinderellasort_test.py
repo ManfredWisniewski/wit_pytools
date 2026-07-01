@@ -11,7 +11,7 @@ from configparser import ConfigParser
 # Add parent directory to path so we can import wit_pytools
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from wit_pytools.cinderellasort import cleanfilename, bowldir_gps, handlefile
+from wit_pytools.cinderellasort import cleanfilename, bowldir_gps, handlefile, cinderellasort
 from wit_pytools.imgtools import img_getgps
 
 def test_basic_cleaning():
@@ -103,6 +103,69 @@ def test_clean_with_empty_input():
     # Test with empty input
     result = cleanfilename("", "", "", {})
     assert result == ""
+
+
+def test_ftype_delete_applies_in_nested_directories(tmp_path):
+    sourcedir = tmp_path / "source"
+    sourcedir.mkdir()
+    nested = sourcedir / "nested"
+    nested.mkdir()
+    targetdir = tmp_path / "target"
+    targetdir.mkdir()
+
+    (sourcedir / "valid.keep").write_text("keep")
+    delete_path = nested / "remove.tmp"
+    delete_path.write_text("delete")
+
+    config = ConfigParser()
+    config.optionxform = str
+    config["TABLE"] = {
+        "sourcedir": str(sourcedir),
+        "targetdir": str(targetdir),
+        "ftype_sort": ".keep",
+        "ftype_delete": ".tmp",
+    }
+    config["SETTINGS"] = {}
+
+    config_path = tmp_path / "config.ini"
+    with config_path.open("w", encoding="utf-8") as fp:
+        config.write(fp)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not delete_path.exists()
+
+
+def test_ftype_delete_is_case_insensitive(tmp_path):
+    sourcedir = tmp_path / "source"
+    sourcedir.mkdir()
+    nested = sourcedir / "nested"
+    nested.mkdir()
+    targetdir = tmp_path / "target"
+    targetdir.mkdir()
+
+    (sourcedir / "valid.keep").write_text("keep")
+    delete_path = nested / "example.PNG"
+    delete_path.write_text("delete")
+
+    config = ConfigParser()
+    config.optionxform = str
+    config["TABLE"] = {
+        "sourcedir": str(sourcedir),
+        "targetdir": str(targetdir),
+        "ftype_sort": ".keep",
+        "ftype_delete": ".png",
+    }
+    config["SETTINGS"] = {}
+
+    config_path = tmp_path / "config.ini"
+    with config_path.open("w", encoding="utf-8") as fp:
+        config.write(fp)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not delete_path.exists()
+
 
 def test_clean_with_multiple_extensions():
     # Test with multiple extensions
