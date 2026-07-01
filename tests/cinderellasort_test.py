@@ -11,7 +11,7 @@ from configparser import ConfigParser
 # Add parent directory to path so we can import wit_pytools
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from wit_pytools.cinderellasort import cleanfilename, bowldir_gps, handlefile, cinderellasort
+from wit_pytools.cinderellasort import cleanfilename, bowldir_gps, handlefile, cinderellasort, bowldir
 from wit_pytools.imgtools import img_getgps
 
 def test_basic_cleaning():

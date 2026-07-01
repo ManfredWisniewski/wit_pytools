@@ -8,6 +8,7 @@ from wit_pytools.witpytools import dryprint
 from wit_pytools.sanitizers import prepregex, cleanfilestring, convert_numerals_arabic_western, normalize_spaces
 from wit_pytools.validators import valid_email_address
 from wit_pytools.systools import walklevel, rmemptydir, movefile, copyfile, delfile
+from wit_pytools.documenttools import document_find_regex
 from eliot import log_message
 import gettext
 
@@ -98,28 +99,44 @@ def bowllist_email(config_object=''):
     return bowls
 
 # check if file matches a criteria for a bowl and return the corresponding bowl
-def bowldir(file, config_object=''):
-    if config_object and len(config_object) > 0:
-        if config_object.has_section("BOWLS"):
-            found = False
-            default_bowl = ''
-            
-            # First pass: look for matches and find default bowl if it exists
-            for (bowl, critlist) in config_object.items("BOWLS"):
+def bowldir(file, config_object='', file_path=None, check_content=False):
+    if not (config_object and len(config_object) > 0 and config_object.has_section("BOWLS")):
+        return ''
+
+    default_bowl = ''
+    bowls = list(config_object.items("BOWLS"))
+
+    # First pass: filename-based matching
+    for (bowl, critlist) in bowls:
+        if "!DEFAULT" in critlist:
+            default_bowl = bowl
+            continue
+
+        for crit in critlist.split(','):
+            crit = crit.strip()
+            if crit and crit in file:
+                return '/' + bowl
+
+    # Second pass: optional content search when filename did not match
+    if check_content and file_path:
+        file_path_obj = Path(file_path)
+        if file_path_obj.suffix.lower() == '.pdf':
+            for (bowl, critlist) in bowls:
                 if "!DEFAULT" in critlist:
-                    default_bowl = bowl
                     continue
-                    
                 for crit in critlist.split(','):
                     crit = crit.strip()
-                    if crit and crit in file and not found:
+                    if not crit:
+                        continue
+                    try:
+                        content_matches = document_find_regex(file_path_obj, crit)
+                    except RuntimeError:
+                        content_matches = []
+                    if content_matches:
                         return '/' + bowl
-            
-            # If no match was found but we have a default bowl, use it
-            if default_bowl and not found:
-                return '/' + default_bowl
-                
-            return ''
+
+    if default_bowl:
+        return '/' + default_bowl
     return ''
 
 # check if gps tag bowls are configured
@@ -592,21 +609,22 @@ def handle_oldfiles(file_path, time_diff):
         print(f"Error deleting old file {file.name}: {e}")
         return
 
-def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
+def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, check_content=False):
     # Check if this is a PDF file
     if file.name.lower().endswith('.pdf'):
         try:
             log_message(_('Handling PDF: {}').format(os.path.join(sourcedir, file)))
             nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
             nfile = normalize_spaces(nfile)
-            bowl = bowldir(nfile, config_object)
+            file_path = file if isinstance(file, Path) else Path(os.path.join(sourcedir, str(file)))
+            bowl = bowldir(nfile, config_object, file_path=file_path, check_content=check_content)
             if not dryrun:
                 movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
         except Exception as e:
             log_message(f"Error handling PDF file {file.name}: {e}", level="ERROR")
     return
 
-def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None, skip_unmatched=True):
+def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None, skip_unmatched=True, check_content=False):
     # First check if the file matches any of the specified file types
     file_matches_type = False
     file_ext = ''
@@ -624,7 +642,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
     ## Handle PDF Bowls ##
     if file.name.lower().endswith('.pdf'):
         print("Handle PDF Bowls")
-        handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+        handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, check_content=check_content)
         return
     
     ## Handle E-Mail Bowls ##
@@ -698,7 +716,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         else:
             nfile = cleanfilename(file.name, clean, clean_nocase, replacements)
         
-        bowl = bowldir(nfile, config_object)
+        bowl = bowldir(nfile, config_object, file_path=file, check_content=check_content)
         # Only move if a bowl was found and it's not empty
         if bowl:
             # Make sure we're not moving to the root target directory
@@ -747,6 +765,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     set_tags = settings.get('set_tags', 'false').strip().lower() == 'true'
     use_directory_name = settings.get('usedirectoryname', 'false').strip().lower() == 'true'
     skip_unmatched = settings.get('skipunmatched', 'true').strip().lower() == 'true'
+    check_content = settings.get('check_content', 'false').strip().lower() == 'true'
 
     # Fetch replacements from the REPLACEMENTS section
     replacements = {}
@@ -792,7 +811,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
         file_path = Path(os.path.join(file_dir, file_name))
         
         if file_path.is_file():
-            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, skip_unmatched=skip_unmatched)
+            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, skip_unmatched=skip_unmatched, check_content=check_content)
     else:
         # First pass: delete unwanted files in directories with valid sorts
         print("Running cinderellasort in all-files mode")
@@ -868,7 +887,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
                 # Get directory name and file count for this file
                 dirname = os.path.basename(root) if use_directory_name else None
                 dir_count = dir_file_counts.get(root, 0) if use_directory_name else None
-                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname, skip_unmatched)
+                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname, skip_unmatched, check_content=check_content)
                 processed_files += 1
         log_message(f"Processed {processed_files} files in {sourcedir} and subdirectories")
         
