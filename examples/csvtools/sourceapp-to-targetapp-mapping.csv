@@ -1,0 +1,7 @@
+Source: SourceApp, Version: 1.2.3
+Target: TargetApp, Version: 2.3.4
+
+source_column,source_type,target_column,target_type,target_default,transform
+Name,string,label,string,,
+Benutzer,string,username,string,,
+Passwort,string,password,string,,
