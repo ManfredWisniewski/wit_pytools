@@ -757,7 +757,7 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     
     filemode = (table['filemode'].casefold()) if "filemode" in table else "win"
 
-    settings = config_object["SETTINGS"]
+    settings = config_object["SETTINGS"] if "SETTINGS" in config_object else {}
     overwrite = settings.get('overwrite', 'false').strip().lower() == 'true'
     jpg_quality = int(settings.get('jpg_quality', '85').strip())
     gps_moved_unmatched = settings.get('gps_moved_unmatched', 'false').strip().lower() == 'true'
