@@ -54,7 +54,7 @@ def matchstring(file, matchtable=''):
             return True
     return False
 
-def merge_common_bowls(config_object, common_configfile):
+def merge_common_rules(config_object, common_configfile):
     """Merge common BOWLS rules into a project configuration."""
     if not common_configfile or not os.path.isfile(common_configfile):
         return
@@ -62,30 +62,38 @@ def merge_common_bowls(config_object, common_configfile):
     common_config = ConfigParser()
     common_config.optionxform = str
     common_config.read(common_configfile, encoding='utf-8')
-    if not common_config.has_section('BOWLS'):
-        return
 
-    merged_bowls = {}
-    for source_config in (common_config, config_object):
-        if not source_config.has_section('BOWLS'):
+    for section in ('BOWLS', 'BOWLS_EMAIL'):
+        if not common_config.has_section(section):
             continue
-        for bowl, criteria in source_config.items('BOWLS', raw=True):
-            values = [value.strip() for value in criteria.split(',') if value.strip()]
-            if bowl in merged_bowls:
-                existing = merged_bowls[bowl].split(',')
-                values = existing + [value for value in values if value not in existing]
-            merged_bowls[bowl] = ','.join(values)
 
-    if config_object.has_section('BOWLS'):
-        config_object.remove_section('BOWLS')
-    config_object.add_section('BOWLS')
-    for bowl, criteria in merged_bowls.items():
-        config_object.set('BOWLS', bowl, criteria)
+        merged_rules = {}
+        for source_config in (common_config, config_object):
+            if not source_config.has_section(section):
+                continue
+            for bowl, criteria in source_config.items(section, raw=True):
+                values = [
+                    value.strip()
+                    for value in criteria.split(',')
+                    if value.strip()
+                ]
+                if bowl in merged_rules:
+                    existing = merged_rules[bowl].split(',')
+                    values = existing + [
+                        value for value in values if value not in existing
+                    ]
+                merged_rules[bowl] = ','.join(values)
 
-    log_message(
-        f'Merged common BOWLS rules from {common_configfile}',
-        level='INFO',
-    )
+        if config_object.has_section(section):
+            config_object.remove_section(section)
+        config_object.add_section(section)
+        for bowl, criteria in merged_rules.items():
+            config_object.set(section, bowl, criteria)
+
+        log_message(
+            f'Merged common {section} rules from {common_configfile}',
+            level='INFO',
+        )
 
 
 def parse_bowl_tags(tags_str):
@@ -785,7 +793,7 @@ def cinderellasort(
     configured_filemode = table.get('filemode', filemode).casefold()
     if common_configfile is None and configured_filemode == 'nc':
         common_configfile = '/etc/nctools/nctools.ini'
-    merge_common_bowls(config_object, common_configfile)
+    merge_common_rules(config_object, common_configfile)
     table = config_object["TABLE"]
     # Normalize path separators in source and target directories
     sourcedir = str(table["sourcedir"]).replace('\\', '/').replace('//', '/')
