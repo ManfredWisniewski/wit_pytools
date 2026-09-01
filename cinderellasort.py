@@ -54,6 +54,40 @@ def matchstring(file, matchtable=''):
             return True
     return False
 
+def merge_common_bowls(config_object, common_configfile):
+    """Merge common BOWLS rules into a project configuration."""
+    if not common_configfile or not os.path.isfile(common_configfile):
+        return
+
+    common_config = ConfigParser()
+    common_config.optionxform = str
+    common_config.read(common_configfile, encoding='utf-8')
+    if not common_config.has_section('BOWLS'):
+        return
+
+    merged_bowls = {}
+    for source_config in (common_config, config_object):
+        if not source_config.has_section('BOWLS'):
+            continue
+        for bowl, criteria in source_config.items('BOWLS', raw=True):
+            values = [value.strip() for value in criteria.split(',') if value.strip()]
+            if bowl in merged_bowls:
+                existing = merged_bowls[bowl].split(',')
+                values = existing + [value for value in values if value not in existing]
+            merged_bowls[bowl] = ','.join(values)
+
+    if config_object.has_section('BOWLS'):
+        config_object.remove_section('BOWLS')
+    config_object.add_section('BOWLS')
+    for bowl, criteria in merged_bowls.items():
+        config_object.set('BOWLS', bowl, criteria)
+
+    log_message(
+        f'Merged common BOWLS rules from {common_configfile}',
+        level='INFO',
+    )
+
+
 def parse_bowl_tags(tags_str):
     """Parse a string containing tags with access levels in format 'tag1[level1] tag2[level2]'
     Returns a dictionary mapping tag names to their access levels.
@@ -733,7 +767,12 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                 movefile(sourcedir, file, targetdir, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
 
 ## MAIN cinderellasort execution ##
-def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
+def cinderellasort(
+        configfile,
+        single=None,
+        filemode='win',
+        dryrun=False,
+        common_configfile=None):
     #TODO check configfile for valid ini file
     files = ""
     time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -742,6 +781,11 @@ def cinderellasort(configfile, single=None, filemode='win', dryrun=False):
     config_object = ConfigParser()
     config_object.optionxform = str  # preserves case for keys and values
     config_object.read(configfile, encoding='utf-8')
+    table = config_object["TABLE"]
+    configured_filemode = table.get('filemode', filemode).casefold()
+    if common_configfile is None and configured_filemode == 'nc':
+        common_configfile = '/etc/nctools/nctools.ini'
+    merge_common_bowls(config_object, common_configfile)
     table = config_object["TABLE"]
     # Normalize path separators in source and target directories
     sourcedir = str(table["sourcedir"]).replace('\\', '/').replace('//', '/')
