@@ -1,0 +1,3 @@
+- move the cinderellasort script to the package directory
+- finish the intent definition.
+- make the cinderella sort function case-insensitive like the cleanup

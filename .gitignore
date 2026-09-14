@@ -132,6 +132,7 @@ celerybeat.pid
 
 # Environments
 .env
+runners/set_ENV.bat
 .venv
 env/
 venv/
