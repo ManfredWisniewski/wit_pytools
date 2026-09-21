@@ -1,6 +1,6 @@
 # documenttools
 
-`documenttools` provides Python functions for handling document files. The current XLSX functionality identifies, reviews, and applies anonymization mappings while preserving workbook formulas and structure.
+`documenttools` provides Python functions for handling document files. The XLSX functionality identifies, reviews, and applies anonymization mappings while preserving workbook formulas and structure. The PDF functionality converts PDF documents to Markdown.
 
 ## XLSX workflow
 
@@ -119,11 +119,11 @@ Person-54b,Lia Barfuss;Barfuss;Doreen Barfuss,name
 For example, with containment grouping enabled, values such as these can share one replacement:
 
 ```text
-Lia
-Barfuss
-Lia Barfuss
-Herr Barfuss
-Frau Barfuss
+Anna
+Musterpeter
+Anna Musterpeter
+Herr Musterpeter
+Frau Musterpeter
 ```
 
 This supports formulas that search for a short value inside a longer transaction description. Grouping is based on the reviewed candidates and is not tied to a particular worksheet name or position.
@@ -193,10 +193,134 @@ The anonymization process:
 
 The mapping CSV is reversible by default. Destroying the mapping file makes the anonymization practically irreversible.
 
+## PDF to Markdown
+
+`pdf_to_markdown` converts a PDF into one Markdown file. The approach mirrors the concept of [MarkPDFDown](https://github.com/MarkPDFdown/markpdfdown) (Apache-2.0): each page is rendered to an image and transcribed by a multimodal model. No code from that project is used; rendering relies on `pdfplumber` and the model is reached through `wit_pytools.aitools` (OpenRouter).
+
+```text
+document.pdf
+    |
+    +-- document.md
+    +-- document_pdf2md.json      (sidecar: model, pages, cost, per-page status)
+    +-- document_pages/           (only with keep_pages: page_0001.png, page_0001.md, ...)
+```
+
+### Modes
+
+| Mode     | What it does                                                    | API cost |
+| -------- | --------------------------------------------------------------- | -------- |
+| `vision` | Renders each page at `dpi` and sends the image to the model.    | yes      |
+| `text`   | Uses the PDF text layer via `pdfplumber` (no layout, no tables). | no       |
+
+Image-only PDFs (scans) work in `vision` mode. In `text` mode a page without a text layer produces a marker instead of content.
+
+### Environment variables
+
+| Variable               | Required           | Purpose                                                    |
+| ---------------------- | ------------------ | ---------------------------------------------------------- |
+| `OPENROUTER_API_KEY`   | vision             | API key.                                                    |
+| `OPENROUTER_PDF_MODEL` | vision             | Vision model id; falls back to `OPENROUTER_MODEL`.          |
+| `OPENROUTER_MAX_COST`  | no                 | Confirmation threshold in USD (default `0.50`).             |
+| `PDF2MD_LANGUAGE`      | no                 | Marker language `en` (default) or `de`.                     |
+
+### Choosing a model
+
+Any OpenRouter model with `image` in its input modalities works. Inexpensive candidates (USD per million tokens, in/out, as of September 2026):
+
+| Model                            | in   | out  | Notes                                                   |
+| -------------------------------- | ---- | ---- | ------------------------------------------------------- |
+| `google/gemini-2.5-flash-lite`   | 0.10 | 0.40 | Gemini Flash family is strong at document transcription |
+| `qwen/qwen3-vl-8b-instruct`      | 0.12 | 0.46 | Vision-specialised model, good on tables and scans      |
+| `openai/gpt-4.1-nano`            | 0.10 | 0.40 | Reliable formatting, weaker on dense scans              |
+| `openai/gpt-4o-mini`             | 0.15 | 0.60 | Well-known baseline                                     |
+
+A page rendered at 150 DPI costs roughly 1–2k input tokens, so a 50-page document costs a few cents with any of these. Test one representative document and compare models if tables or numbers come out wrong. Avoid `:batch` model variants: they are asynchronous and do not work with the synchronous `chat()` call.
+
+These models publish no per-image price, so the cost estimate is reported as unknown and the confirmation prompt appears on every run unless `yes=True` / `--yes` / `SKIP_COST_CONFIRM=1` is used. The actual cost is recorded in the sidecar. Current prices: `python -c "from wit_pytools.aitools import list_models; [print(m['id'], m['pricing']) for m in list_models() if 'image' in m['input_modalities']]"`.
+
+### Python
+
+```python
+from wit_pytools.documenttools import pdf_to_markdown, pdf_to_markdown_text
+
+path = pdf_to_markdown("invoice.pdf", model="openai/gpt-4o", language="de", yes=True)
+text = pdf_to_markdown_text("invoice.pdf", mode="text")
+```
+
+```python
+pdf_to_markdown(
+    pdf_path,
+    *,
+    mode="vision",
+    model=None,
+    start_page=1,
+    end_page=None,
+    output_path=None,
+    overwrite=False,
+    keep_pages=False,
+    prompt_file=None,
+    dpi=150,
+    retry_times=3,
+    continue_on_error=False,
+    max_cost=None,
+    yes=False,
+    language=None,
+    api_key=None,
+)
+```
+
+- `output_path`: defaults to `<stem>.md` beside the PDF. Existing outputs raise `FileExistsError` unless `overwrite=True`. The source PDF is never modified.
+- `end_page=None` means the last page.
+- `keep_pages`: keeps page images and per-page Markdown in `<stem>_pages/`.
+- `prompt_file`: UTF-8 file replacing the built-in prompt (`documenttools/pdf2md_prompt.txt`). The placeholder `{illegible}` is replaced by the language-specific token (`[illegible]` / `[unleserlich]`).
+- `retry_times`: failed or empty model responses are retried with a `2 × attempt` second pause. After the last attempt the page gets a failure marker; the run raises `RuntimeError` unless `continue_on_error=True`.
+- `max_cost` / `yes`: before any API call the cost is estimated as pages × per-image price of the model. Above the limit, or if the price is unknown, you are asked to confirm; `yes=True` skips the prompt.
+- `language`: `en` or `de`; controls the markers below and the illegibility token in the prompt.
+- Returns the output `Path`. `pdf_to_markdown_text` has the same parameters without `output_path`, `overwrite`, `keep_pages` and returns the Markdown string without writing files.
+
+### Output format
+
+Pages are separated by a Markdown horizontal rule:
+
+```markdown
+# Page one content
+
+---
+
+Page two content
+```
+
+Failed pages and pages without a text layer are marked with a blockquote:
+
+```markdown
+> **Page 3: conversion failed** — OpenRouter 502: ...
+> **Seite 3: keine Textebene** — für diese Seite den Modus vision verwenden
+```
+
+### CLI
+
+```bat
+python -m wit_pytools.documenttools.pdf2md document.pdf --model openai/gpt-4o --language de
+python -m wit_pytools.documenttools.pdf2md document.pdf --mode text --start 2 --end 5 --output notes.md
+```
+
+Options: `--mode`, `--model`, `--start`, `--end`, `--output`, `--overwrite`, `--keep-pages`, `--prompt-file`, `--dpi`, `--retry-times`, `--continue-on-error`, `--max-cost`, `--yes`, `--language`, `--log`.
+
+### Runner
+
+`runners/pdf2md_runner.bat` wraps the CLI. Drag a PDF onto it or pass the path as the first argument; otherwise `INPUT_PDF` from the CONFIGURATION block is used. It loads `set_ENV.bat` (copy `set_ENV_template.bat`, which now contains `OPENROUTER_PDF_MODEL`) and appends console output to `pdf2md_runner.log`.
+
+### Not covered (yet)
+
+Direct image input (PNG/JPG), a `hybrid` mode that passes the text layer to the model as a hint, table extraction in `text` mode, and a Nextcloud Flow wrapper.
+
 ## Requirements
 
-Install the project dependencies, including `openpyxl`:
+Install the project dependencies:
 
 ```text
 openpyxl>=3.1.5
+pdfplumber>=0.11
 ```
+
+`pdfplumber` is required for `document_find_regex` and the PDF to Markdown functions; `openpyxl` for the XLSX functions. Both imports are optional so that either group can be used without the other installed.

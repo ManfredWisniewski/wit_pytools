@@ -19,6 +19,17 @@ try:  # Optional dependency that is only needed for PDF operations
 except ImportError:  # pragma: no cover - exercised in environments without pdfplumber
     pdfplumber = None
 
+_LAZY_EXPORTS = {"pdf_to_markdown", "pdf_to_markdown_text"}
+
+
+def __getattr__(name: str):
+    # Lazy re-export keeps `python -m wit_pytools.documenttools.pdf2md` free of double imports
+    if name in _LAZY_EXPORTS:
+        import importlib
+
+        return getattr(importlib.import_module(f"{__name__}.pdf2md"), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 def document_find_regex(
     file_path: Path | str,

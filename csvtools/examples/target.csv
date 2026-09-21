@@ -1,0 +1,237 @@
+label,description,changed,tags,username,password,url,custom_fields
+Wuttke Mailarchiv UMA,"server: post.witconsult.de
+Verschlüsselung: STARTTLS (IMAP und SMTP)
+Port IMAP: 993
+Port SMTP: 587
+
+",Mon Aug 12 2024 16:51:22 GMT+0200 (Central European Summer Time),e-mail,uma@mailarchiv.wuttke-klimatechnik.de,WUt.20201210,,
+styra.wuttke.gmbh borg passphrase,,Mon Aug 12 2024 16:53:30 GMT+0200 (Central European Summer Time),borg,borg/cloud.wuttke.gmbh,FTdP7d7Ntg6PLf8dkn1K7Z3JLLyUTbR9,,
+ODBC (pds) - Branche,Datenbank: pdserp,Mon Oct 14 2024 11:11:52 GMT+0200 (Central European Summer Time),,abfrage,wuttkeodbc,https://10.224.30.129:5432,
+Samsung KNOX Suite,,Wed Oct 30 2024 16:34:16 GMT+0100 (Central European Standard Time),,mailer@wuttke-klima.de,W3ightM3eting$MovedSm@1ler,https://central.samsungknox.com/login-navigator,"Customer ID, text: 3978897883
+Tenant ID, text: wuttke-klima.de"
+Galaxy X7 EE VF1N Jerome John ,,Wed Jul 09 2025 16:39:35 GMT+0200 (Central European Summer Time),handy,jerome.john,BesteB3schl0!,,"IMEI 1, text: 356298580510741
+IMEI 2, text: 356390200510746
+S/N, text: R5CX81TVF1N
+EID, text: 89033023426120100100021010022078"
+Galaxy X7 EE VF7R Testmonteur Manfred,,Wed Nov 27 2024 13:44:35 GMT+0100 (Central European Standard Time),handy,monteur,hanuka8-hanuka,,"IMEI 1, text: 356298580510808
+IMEI 2, text: 356390200510803
+S/N, text: R5CX81TVF7R
+EID, text: 89033023426120100100021012797830"
+Galaxy X7 EE DBVF Karsten Rohde,,Thu Nov 28 2024 13:06:54 GMT+0100 (Central European Standard Time),handy,karsten.rohde,N!emand3rl@ubtPos17!ve,,"IMEI 1, text: 356298580411890
+IMEI 2, text: 356390200411895
+S/N, text: R5CX81NDBVF
+EID, text: 89033023426120100100021012737593"
+Galaxy X7 EE DBYZ Michael Sengbusch,,Mon Nov 11 2024 16:36:08 GMT+0100 (Central European Standard Time),handy,michael.sengbusch,@1€x4nd3rF1nanzi€rungR€form,,"IMEI 1, text: 356298580411924
+IMEI 2, text: 356390200411929
+S/N, text: R5CX81NDBYZ
+EID, text: 89033023426120100100021010118690
+NC UserID, text: efa521f236244c96a5aa16a3aa7156298dfca7d64941e4b157267a55315e6438
+Talk App Passwort, secret: NojBb-6Z6Ay-7CBeg-fsjzb-pDoi6"
+Galaxy X7 EE VKPJ Gerald Preuss,,Mon Nov 11 2024 15:21:57 GMT+0100 (Central European Standard Time),handy,nutzer,Person€nHaben4,,"IMEI 1, text: 356298580512283
+IMEI 2, text: 356390200512288
+S/N, text: R5CX81TVKPJ
+EID, text: 89033023426120100100021010059811"
+Galaxy X7 EE XDGD Henry Schmuths,,Wed Nov 27 2024 16:03:46 GMT+0100 (Central European Standard Time),handy,henry.schmuths,F3h1erGr0ßer$p@ßJul!,,"IMEI 1, text: 356298580532018
+IMEI 2, text: 356390200532013
+S/N, text: R5CX81TXDGD
+EID, text: 89033023426120100100021011302866"
+Galaxy X7 EE DBWK Dominique Grüttner,,Thu Nov 21 2024 10:52:42 GMT+0100 (Central European Standard Time),handy,dominique.gruettner,!tali3nM@rcoDas5,,"IMEI 1, text: 356298580411908
+IMEI 2, text: 356390200411903
+S/N, text: R5CX81NDBWK
+EID, text: 89033023426120100100021010053894"
+Galaxy X7 EE XG3M Andreas Kolbe,,Mon Nov 11 2024 15:07:00 GMT+0100 (Central European Standard Time),handy,nutzer,Eigene5teu€rnSt3f@n,,"IMEI 1, text: 356298580532877
+IMEI 2, text: 356390200532872
+S/N, text: R5CX81TXG3M
+EID, text: 89033023426120100100021012793174"
+Galaxy X7 EE D6JY Burkhard Schulz,,Thu Nov 21 2024 12:55:29 GMT+0100 (Central European Standard Time),handy,burkhard.schulz,Ge$che1ter7H!erGut,,"IMEI 1, text: 356298580410140
+IMEI 2, text: 356390200410145
+S/N, text: R5CX81ND6JY
+EID, text: 89033023426120100100023098345651"
+Galaxy X7 EE XCHN Michael Simon,,Wed Nov 27 2024 16:18:28 GMT+0100 (Central European Standard Time),handy,michael.simon,AnDasPar!5N@he0ff!ziell3,,"IMEI 1, text: 356298580531697
+IMEI 2, text: 356390200531692
+S/N, text: R5CX81TXCHN
+EID, text: 89033023426120100100021012700345"
+Galaxy X7 EE VTZW Jessica Lösche,,Wed Nov 20 2024 16:25:12 GMT+0100 (Central European Standard Time),handy,jessica.loesche,Häuf1güb3rnomm3nHör3n,,"IMEI 1, text: 356298580515013
+IMEI 2, text: 356390200515018
+S/N, text: R5CX81TVTZW
+EID, text: 89033023426120100100021011240786"
+Galaxy X7 EE VV4E Ahmad Mikari,,Thu Nov 21 2024 12:52:18 GMT+0100 (Central European Standard Time),handy,ahmad.mikari,GründenKle1nen$p3z!ell,,"IMEI 1, text: 356298580515062
+IMEI 2, text: 356390200515067
+S/N, text: R5CX81TVV4E
+EID, text: 89033023426120100100021012701412"
+Galaxy X7 EE VKTW Andreas Dogs,,Mon Nov 11 2024 15:48:42 GMT+0100 (Central European Standard Time),handy,nutzer,EUW3sentlich@n,,"IMEI 1, text: 356298580512325
+IMEI 2, text: 356390200512320
+S/N, text: R5CX81TVKTW
+EID, text: 89033023426120100100021010059617"
+Galaxy X7 EE VEXP Andre Homeier,,Wed Nov 27 2024 16:20:22 GMT+0100 (Central European Standard Time),handy,andre.homeier,We!7er3n$tund3Gle!che,,"IMEI 1, text: 356298580510709
+IMEI 2, text: 356390200510704
+S/N, text: R5CX81TVEXP
+EID, text: 89033023426120100100021009505553"
+Galaxy X7 EE CW5R Torsten Bethge,,Mon Nov 11 2024 16:22:43 GMT+0100 (Central European Standard Time),handy,nutzer,NrJ3r$€7ztZwe!m@1R3chten,,"IMEI 1, text: 356298580406718
+IMEI 2, text: 356390200406713
+S/N, text: R5CX81NCW5R
+EID, text: 89033023426120100100023098341286"
+Galaxy X7 EE DCKA Sven Gäckle,,Wed Nov 27 2024 16:28:27 GMT+0100 (Central European Standard Time),handy,sven.gaeckle,$ozi@1eWulffPo11t!sch,,"IMEI 1, text: 356298580412138
+IMEI 2, text: 356390200412133
+S/N, text: R5CX81NDCKA
+EID, text: 89033023426120100100021012732161"
+Galaxy X7 EE YH5E Ibrahim Khalil,,Wed Nov 27 2024 16:33:22 GMT+0100 (Central European Standard Time),handy,ibrahim.khalil,L4gKl3!nenEnerg!enJam3$,,"IMEI 1, text: 356298580237592
+IMEI 2, text: 356390200237597
+S/N, text: R5CX80BYH5E
+EID, text: 89033023426120100100019659162927"
+Galaxy X7 EE YXCH Helmi Werhani,,Tue Sep 16 2025 16:05:04 GMT+0200 (Central European Summer Time),handy,Helmi.Werhani,Ba1ichRese_rch,,"IMEI 1, text: 356298580241958
+IMEI 2, text: 356390200241953
+S/N, text: R5CX80BYXCH
+EID, text: 89033023426120100100019659157689"
+Galaxy X7 EE YE8W Damian Palej,,Mon Nov 11 2024 16:24:45 GMT+0100 (Central European Standard Time),handy,nutzer,€rz13ltD€5!gnBunde5r€gierung,,"IMEI 1, text: 356298580236636
+IMEI 2, text: 356390200236631
+S/N, text: R5CX80BYE8W
+EID, text: 890330234261201001000020886990285"
+DAVx5 Managed Lizenz,,Tue Nov 05 2024 10:50:45 GMT+0100 (Central European Standard Time),,,PremiereRobertChance,,"Lizenze, text: ---------- MANAGED DAVX⁵ LICENSE ---------- License: ""id"":754,""organization"":""Wuttke-Klimatechnik"",""users"":20,""expires"":1733097600,""domains"":[""wuttke.gmbh""] Signature: MEQCIDv3B6r5k7KJTPEVucOq0HR31KemKe7WAcATyLNqWcFPAiAAqColYGRN4aaqC+qDMU0gN/9qNplhzs68ZPm+0h+/wQ== -------------------------------------------
+Ansprechpartner, email: play@bitfire.at"
+iPhone15 JPJQ (Test Monteur),,Wed Jan 15 2025 14:32:34 GMT+0100 (Central European Standard Time),handy,monteur@wuttke-klimatechnik.appleaccount.com,HeKZyJ8G,,"IMEI 1, text: 351280599736645
+IMEI 2, text: 351280599813980
+S/N, text: FJDXQGJPJQ
+EID, text: 89049032007208882600188189799590
+unlock PIN, secret: 351388
+initial pwd, text: Hanuka5!"
+iPhone15 M2Q4 Eva Wuttke,,Thu Mar 06 2025 18:51:14 GMT+0100 (Central European Standard Time),handy,eva.wuttke@wuttke-klima.appleaccount.com,Fuhr$truk7urH!lf3,,"IMEI 1, text: 351280599168203
+IMEI 2, text: 351280599851774
+S/N, text: CQWR27M2Q4
+EID, text: 89049032007208882600188210441190"
+iPhone15 36RR Elmar Andersson,,Thu Mar 06 2025 18:48:37 GMT+0100 (Central European Standard Time),handy,elmar.andersson@wuttke-klima.appleaccount.com,F@hrb@hnFrühF07o,,"IMEI 1, text: 350872364454841
+IMEI 2, text: 350872364254589
+S/N, text: FCYJWP36RR
+EID, text: 89049032007208882600183374330329
+apple pass, text: F@hrb@hnFrühF07o"
+iPhone15 7CT9 Torsten Wolf,,Thu Mar 06 2025 18:32:38 GMT+0100 (Central European Standard Time),handy,torsten.wolf@wuttke-klima.appleaccount.com,G3hör3$@nkUnterschied,,"IMEI 1, text: 359757428272647
+IMEI 2, text: 359757428479499
+S/N, text: M1VM777CT9
+EID, text: 89049032007208882600188160707835
+appe pass, secret: G3hor3$@nkUnterschied"
+iPhone15 246D Dirk Wuttke,,Wed Feb 05 2025 15:11:50 GMT+0100 (Central European Standard Time),handy,dirk.wuttke@wuttke-klima.appleaccount.com,SoLangeBund35liga,,"IMEI 1, text: 351280599944637
+IMEI 2, text: 351280599806695
+S/N, text: DL99CP246D
+EID, text: 89049032007208882600182688223139
+pwd, text: SoLangeBund35liga!"
+Apple Business Manager,,Wed Jan 15 2025 14:16:22 GMT+0100 (Central European Standard Time),iphones,mailer@wuttke-klima.de,Pr0vid3d$h@reRea5onCmOperat!0n$,https://business.apple.com/,"D-U-N-S Number, text: 330283797
+Organization ID, text: 68308417"
+Hyper-V (Server),Admini-Account mit Vollzugriff    ,Mon Mar 10 2025 14:26:54 GMT+0100 (Central European Standard Time),,m.Wisniewski,Leipzig2050#,https://192.168.141.30,
+WLAN (Wuttke-intern),WLAN WPA3,Mon Jun 16 2025 16:07:46 GMT+0200 (Central European Summer Time),,Wuttke-intern,XnjhYlpTMmULwaqDLDd9h3JMUacmHtrdWQogko7,,
+01754357725 (duplikat) Telekom @MAW,,Sat Aug 23 2025 10:18:30 GMT+0200 (Central European Summer Time),SIM,Manfred Wisniewski,1884,,"PUK, secret: 85958586
+PIN2, secret: 1052
+PUN2, secret: 93408612"
+Google @Wuttke-Klimatechnik,,Wed Sep 10 2025 10:52:16 GMT+0200 (Central European Summer Time),,mailer@wuttke-klima.de,P!ece$H!llNe3dBu$MoreH34l7h,https://google.com,
+Trustpilot @Wuttke Klimatechnik,,Wed Oct 01 2025 14:59:21 GMT+0200 (Central European Summer Time),,hosting@witconsult.de,FJ_DTsPEQV33eAdDvciJq,https://businessapp.b2b.trustpilot.com/,
+Wuttke Netzwerk Scheidebuschstr.,,Thu Oct 02 2025 10:50:37 GMT+0200 (Central European Summer Time),,intern,12341235213521353215,https://lokal,"feste IP Scheidebuschstr., text: 87.128.14.102"
+wuttke.cloud Torsten Bethge,,Wed Oct 08 2025 10:52:10 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",torsten.bethge,ProduziertUmstr17ten3n,https://cloud.wuttke.gmbh,
+wuttke.cloud Burkhard Schulz,,Wed Oct 08 2025 10:52:37 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",burkhard.schulz,WirEntschied3nVo1lH0fft,https://cloud.wuttke.gmbh,
+wuttke.cloud Karsten Rohde,,Wed Oct 08 2025 10:53:02 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",karsten.rohde,B3ratenPass1erenH4mburger,https://cloud.wuttke.gmbh,
+wuttke.cloud Dominique Grüttner,,Mon Oct 13 2025 11:34:00 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",dominique.gruettner,Pol1zistenBotT31lweise,https://cloud.wuttke.gmbh,
+wuttke.cloud Michael Sengbusch,,Wed Oct 08 2025 10:57:06 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",michael.sengbusch,ZahlenAnw3ndung73ams,https://cloud.wuttke.gmbh,
+wuttke.cloud Sven Gäckle,,Wed Oct 08 2025 10:57:42 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",sven.gaeckle,3rwinEngl4ndBruderCE0,https://cloud.wuttke.gmbh,
+wuttke.cloud Andre Homeier,,Wed Oct 08 2025 10:58:28 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",andre.homeier,Zweif3lPa5siertKontro1le,https://cloud.wuttke.gmbh,
+wuttke.cloud Jerome John,,Wed Oct 08 2025 10:58:57 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",jerome.john,Pau1Darst31lungAufgabe,https://cloud.wuttke.gmbh,
+wuttke.cloud Gerald Preuss,,Wed Oct 08 2025 10:59:35 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",gerald.preuss,Gef4hrenMe1s7enWirtschaft,https://cloud.wuttke.gmbh,
+wuttke.cloud Andreas Dogs,,Wed Oct 08 2025 11:00:25 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",andreas.dogs,5ons77eileEntscheidung,https://cloud.wuttke.gmbh,
+wuttke.cloud Jessica Lösche,,Wed Oct 08 2025 11:01:44 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",jessica.loesche,ZuBeginnPress3Inv3stier3n,https://cloud.wuttke.gmbh,
+wuttke.cloud Ahmad Mikari,,Wed Oct 08 2025 11:02:03 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",ahmad.mikari,Micha3lGenau3Landw1rtschaft,https://cloud.wuttke.gmbh,
+wuttke.cloud Michael Simon,,Mon Oct 13 2025 11:40:37 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",michael.simon,Kurzfri5t1gLes3rRegen,https://cloud.wuttke.gmbh,
+wuttke.cloud Henry Schmuths,,Wed Oct 08 2025 11:03:18 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",ahmad.mikari,Schl1eß1ichGe5ehenOhne,https://cloud.wuttke.gmbh,
+wuttke.cloud Andreas Kolbe,,Wed Oct 08 2025 11:04:12 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",andreas.kolbe,Mehrh31tStandZen7ralbank,https://cloud.wuttke.gmbh,
+wuttke.cloud Damian Palej,,Wed Oct 08 2025 11:04:50 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",damian.palej,Ge5e1lschaf7Arbeiten,https://cloud.wuttke.gmbh,
+wuttke.cloud Ibrahim Khalil,,Wed Oct 08 2025 11:05:29 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",ibrahim.khalil,AktivZuVi3l31nrichtung,https://cloud.wuttke.gmbh,
+wuttke.cloud Helmi Werhani,,Wed Oct 08 2025 11:06:18 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",helmi.werhani,54lzburgDau3rnGeschrieben,https://cloud.wuttke.gmbh,
+wuttke.cloud Torsten Wolf,,Wed Oct 08 2025 11:06:58 GMT+0200 (Central European Summer Time),"servicemonteur,cloud",torsten.wolf,F4rbenW0l1teMittlerweile,https://cloud.wuttke.gmbh,
+WLAN (Wuttke-Mobile),Mit VLAN auf der Firewall,Tue Oct 14 2025 16:00:30 GMT+0200 (Central European Summer Time),,WPA2,x><iUqP*!#qhQ9*viY,,
+info@wuttke-klimatechnik.de,,Wed Jan 21 2026 10:59:42 GMT+0100 (Central European Standard Time),e-mail,info@wuttke-klimatechnik.de,M!73!nanderB@uenV3rg@ngenhe!7Erh0lung,https://outlook.office365.com/mail/,
+wuttke.cloud Adnan Al-Hasnawi,,Fri Feb 06 2026 13:19:57 GMT+0100 (Central European Standard Time),cloud,adnan.al-hasnawi,N0chE!nm@1Cloud$!3benFo1gt,https://cloud.wuttke.gmbh,
+Galaxy X7 EE A83J Adnan Al-Hasnawi,,Sun Feb 08 2026 11:03:07 GMT+0100 (Central European Standard Time),handy,adnan.al-hasnawi,Monch3n_gl4dbach,,"IMEI 1, text: 354844943825326
+IMEI 2, text: 358473373825329
+S/N, text: R5CYA2WA83J
+EID, text: 1234
+Model, text: SM-G556B
+MAC, text: E49F7D3996A6"
+Galaxy X7 EE AAA template,,Sun Feb 08 2026 10:53:59 GMT+0100 (Central European Standard Time),handy,tpl,1234,,"IMEI 1, text: 1235
+IMEI 2, text: 12345
+S/N, text: ABC
+EID, text: 1234
+Model, text: SM-ABC
+MAC, text: ASD"
+Galaxy X7Pro DARM Mohammad Abazid,,Sun Feb 08 2026 11:05:49 GMT+0100 (Central European Standard Time),handy,mohammad.abazid,Schrift-Ang3bot3n,,"IMEI 1, text: 352032114683102
+IMEI 2, text: 352033114683100
+S/N, text: R58R75DDARM
+EID, text: 1234
+Model, text: SM-G715FN/DS
+MAC, text: EC7CB6CC9810"
+Galaxy X7Pro G0BR Omar Al-Shebli,,Sun Feb 08 2026 11:04:23 GMT+0100 (Central European Standard Time),handy,omar.al-shebli,Posit1on_Euro,,"IMEI 1, text: 352032114028209
+IMEI 2, text: 352033114028207
+S/N, text: R58R36VG0BR
+EID, text: 1234
+Model, text: SM-G715FN/DS
+MAC, text: E0C37795C806"
+wuttke.cloud Omar Al-Shebli,,Mon Feb 09 2026 11:31:38 GMT+0100 (Central European Standard Time),cloud,omar.al-shebli,B3$ond3rhe!tTrainerGrupp3n,https://cloud.wuttke.gmbh,
+wuttke.cloud Mohammad Abazid,,Mon Feb 09 2026 09:33:09 GMT+0100 (Central European Standard Time),cloud,mohammad.abazid,BesuchFeu3rw3hrPr0f$$5or,https://cloud.wuttke.gmbh,
+piler.wuttke-klimatechnik.de @admin,,Tue Mar 03 2026 15:06:13 GMT+0100 (Central European Standard Time),e-mail,admin@wuttke-klimatechnik.de,No7hingPl4n7JohnCh@nc3$uch@$,https:///piler.wuttke-klimatechnik.de,
+piler.wuttke-klimatechnik.de @tobias,,Thu Mar 05 2026 14:48:21 GMT+0100 (Central European Standard Time),e-mail,tobias.wuttke@wuttke-klimatechnik.de,Amer!k4n!$che1nf0rm1erenKle!ne,https:///piler.wuttke-klimatechnik.de,
+Bechtle Onlineshop,,Thu Mar 12 2026 14:23:42 GMT+0100 (Central European Standard Time),"einkauf,handy",manfred.wisniewski@wuttke-klimatechnik.de,Pr!0r5hesH3@vyMi$$1ngBusy,https://bechtle.com,
+Mobiltelefone Standardeinstellungen (neue Geräte),"1. Sprache: Deutsch (Deutschland)
+2. Endbenutzer-Lizenzvereinbarung zu: ja
+    Diagnosedaten: nein
+3. Manuell einrichten
+4. WLAN: viktoria-musikschule (WIT Büro)
+5. Einrichten Knox Manage: Weiter
+6. Gerät ist nicht privat: Akzeptieren und weiter
+7. Google Dienste
+    Standort: ja
+    WLAN-Suche: ja
+    Bestätigung der Telefonnummer: ja
+    Nutzungs und Diagnosedaten: nein
+    Akzeptieren
+7. Bildschirmsperre: PIN (159357)
+8. Uhr Benachrichtigungen: Zulassen
+9. Gleiche Lautstärke alle Alarme: Jetzt
+10. Knox Remote Support: Benachrichtigungen: Zulassen
+11. Brave: nichts auswählen (keine Daten senden)
+12. Nextcloud: Benachrichtigungen: Zulassen, 
+      Speicherberechtigung: Zugriff auf alle Dateien (Berechtigung erteilen: ja)
+13. Talk Benachrichtigungen: Zulassen
+14. Kamera: Geotagging: an (Immer beim verwenden der App)
+15. 
+
+
+
+Einrichten der Apps (server: wuttke.cloud)",Tue Mar 17 2026 15:02:13 GMT+0100 (Central European Standard Time),"handy,android",Alle frischen Geräte,159357,,"Standard-PIN, secret: 159357"
+Galaxy X7 EE VMRV Florian Pagel,,Tue Mar 17 2026 15:02:00 GMT+0100 (Central European Standard Time),handy,florian.pagel,P@@rZ!3l1n$be5ond3reSturm,,"IMEI 1, text: 354844946704627
+IMEI 2, text: 358473376704620
+S/N, text: R5GL159VMRV
+EID, text: 89033023426120100100057021581896
+Model, text: SM-G556B
+MAC, text: E49F7D3996A6"
+Marina Markowsky,,Mon Mar 30 2026 11:44:12 GMT+0200 (Central European Summer Time),cloud,marina.markowsky,B3k@mKr!t15!ertMed!3nNacht,https://wuttke.cloud,
+wuttke.cloud Dirk Wuttke,,Wed Apr 08 2026 08:54:34 GMT+0200 (Central European Summer Time),,dirk.wuttke@wuttke-klimatechnik.de,E5I$tGeleg3nhe17L@r$Kle!ne,,
+ESET MSP Admin ,"Custom identifier 
+21514 
+
+PIN: 4679
+
+_________________
+
+Backup-Codes: 
+
+8132 7444
+8216 1550
+2883 7737
+4675 6415
+4130 5764
+5861 1705
+8232 3170
+7471 6763
+0518 1433
+2368 1165
+
+",Tue Apr 21 2026 10:56:54 GMT+0200 (Central European Summer Time),,tobias.wuttke@wuttke-klimatechnik.de,"Uy47*G>,:Ea.z,I9LAWVJkGA8uLad;Zd9",https://msp.eset.com/ema/dashboard,
+SIM-PIN Hr. Preuß,,Mon May 18 2026 12:03:07 GMT+0200 (Central European Summer Time),,Hr. Preuß,0582,,
+PIN Hr. Preuß,Bildschirmsperre,Mon May 18 2026 12:03:20 GMT+0200 (Central European Summer Time),,Hr. Preuß,159357,,
+SIM-PIN Hr. Sengbusch,,Thu Aug 13 2026 12:08:49 GMT+0200 (Central European Summer Time),,,2018,,
+PIN Hr. Sengbusch,Bildschirmsperre ,Thu Aug 13 2026 12:09:23 GMT+0200 (Central European Summer Time),,,310364,,

@@ -1,0 +1,237 @@
+"Name","Benutzer","Passwort","Notizen","Webseite","Eigene Felder","Ordner","Tags","Favorit","Bearbeitet am","Id","Version","Ordner Id"
+"Wuttke Mailarchiv UMA","uma@mailarchiv.wuttke-klimatechnik.de","WUt.20201210","server: post.witconsult.de
+Verschlüsselung: STARTTLS (IMAP und SMTP)
+Port IMAP: 993
+Port SMTP: 587
+
+","","","E-Mail","e-mail","nein","Mon Aug 12 2024 16:51:22 GMT+0200 (Central European Summer Time)","fe3b14f8-ecdd-4a31-829d-9b00241af91a","e67d1507-1e1a-4526-85af-226eaefedc8d","e9e70429-2e97-4f69-8e9c-079f33a2dba2"
+"styra.wuttke.gmbh borg passphrase","borg/cloud.wuttke.gmbh","FTdP7d7Ntg6PLf8dkn1K7Z3JLLyUTbR9","","","","Server","borg","nein","Mon Aug 12 2024 16:53:30 GMT+0200 (Central European Summer Time)","356982ae-b460-4e0c-b713-96571abbebae","5dcaf75c-7cb0-4d46-b08e-9a375f0bf1f6","fbcb0468-0517-4c79-877a-82b17337adb0"
+"ODBC (pds) - Branche","abfrage","wuttkeodbc","Datenbank: pdserp","https://10.224.30.129:5432","","Hauptordner","","nein","Mon Oct 14 2024 11:11:52 GMT+0200 (Central European Summer Time)","dbc73265-5778-465c-b296-ea378cf07f51","7f2bcd8d-7ec8-4cd4-af41-4e2ad4aad988","00000000-0000-0000-0000-000000000000"
+"Samsung KNOX Suite","mailer@wuttke-klima.de","W3ightM3eting$MovedSm@1ler","","https://central.samsungknox.com/login-navigator","Customer ID, text: 3978897883
+Tenant ID, text: wuttke-klima.de","Administration","","nein","Wed Oct 30 2024 16:34:16 GMT+0100 (Central European Standard Time)","dedf255b-18f3-4a7b-81a0-2745022df7e9","e8a9c48d-351e-46b6-a30e-47fe74d4ede9","563dd4b6-7243-4f51-a6d5-fe8f8be88cc3"
+"Galaxy X7 EE VF1N Jerome John ","jerome.john","BesteB3schl0!","","","IMEI 1, text: 356298580510741
+IMEI 2, text: 356390200510746
+S/N, text: R5CX81TVF1N
+EID, text: 89033023426120100100021010022078","Mobilgeräte","handy","nein","Wed Jul 09 2025 16:39:35 GMT+0200 (Central European Summer Time)","f42a42d0-446c-4016-a29d-e2b977aff979","abea5b6c-eeba-4fff-99f3-8c3b626e2516","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE VF7R Testmonteur Manfred","monteur","hanuka8-hanuka","","","IMEI 1, text: 356298580510808
+IMEI 2, text: 356390200510803
+S/N, text: R5CX81TVF7R
+EID, text: 89033023426120100100021012797830","Mobilgeräte","handy","nein","Wed Nov 27 2024 13:44:35 GMT+0100 (Central European Standard Time)","a20c6190-abd4-4b27-b5a6-5eed65d7a988","2701eb18-443d-46f4-9b00-2d1388dc23c1","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE DBVF Karsten Rohde","karsten.rohde","N!emand3rl@ubtPos17!ve","","","IMEI 1, text: 356298580411890
+IMEI 2, text: 356390200411895
+S/N, text: R5CX81NDBVF
+EID, text: 89033023426120100100021012737593","Mobilgeräte","handy","nein","Thu Nov 28 2024 13:06:54 GMT+0100 (Central European Standard Time)","2faaf60a-7745-4ef6-b7d8-ee74c1728653","02ca6f4a-6b3f-41a2-8d70-97d1bbd1de8f","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE DBYZ Michael Sengbusch","michael.sengbusch","@1€x4nd3rF1nanzi€rungR€form","","","IMEI 1, text: 356298580411924
+IMEI 2, text: 356390200411929
+S/N, text: R5CX81NDBYZ
+EID, text: 89033023426120100100021010118690
+NC UserID, text: efa521f236244c96a5aa16a3aa7156298dfca7d64941e4b157267a55315e6438
+Talk App Passwort, secret: NojBb-6Z6Ay-7CBeg-fsjzb-pDoi6","Mobilgeräte","handy","nein","Mon Nov 11 2024 16:36:08 GMT+0100 (Central European Standard Time)","9ca04bc4-318f-4cb5-acfa-f657fce73797","ddfc8bf1-3b0d-432d-9f3b-396200ec56ca","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE VKPJ Gerald Preuss","nutzer","Person€nHaben4","","","IMEI 1, text: 356298580512283
+IMEI 2, text: 356390200512288
+S/N, text: R5CX81TVKPJ
+EID, text: 89033023426120100100021010059811","Mobilgeräte","handy","nein","Mon Nov 11 2024 15:21:57 GMT+0100 (Central European Standard Time)","749e84a2-ad2e-4f4b-b2e9-34afb233203e","c151f2e1-a5bd-4f07-97ab-0edf2d207284","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE XDGD Henry Schmuths","henry.schmuths","F3h1erGr0ßer$p@ßJul!","","","IMEI 1, text: 356298580532018
+IMEI 2, text: 356390200532013
+S/N, text: R5CX81TXDGD
+EID, text: 89033023426120100100021011302866","Mobilgeräte","handy","nein","Wed Nov 27 2024 16:03:46 GMT+0100 (Central European Standard Time)","b4699557-21b5-4f0c-93ed-dd8af4f23cc0","2cc1bc28-1d81-44d8-99c1-b76e7da897bc","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE DBWK Dominique Grüttner","dominique.gruettner","!tali3nM@rcoDas5","","","IMEI 1, text: 356298580411908
+IMEI 2, text: 356390200411903
+S/N, text: R5CX81NDBWK
+EID, text: 89033023426120100100021010053894","Mobilgeräte","handy","nein","Thu Nov 21 2024 10:52:42 GMT+0100 (Central European Standard Time)","de01bd00-8694-4f42-8883-d478915195be","47244c18-4a1b-464d-9daf-87ca57b7f6fe","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE XG3M Andreas Kolbe","nutzer","Eigene5teu€rnSt3f@n","","","IMEI 1, text: 356298580532877
+IMEI 2, text: 356390200532872
+S/N, text: R5CX81TXG3M
+EID, text: 89033023426120100100021012793174","Mobilgeräte","handy","nein","Mon Nov 11 2024 15:07:00 GMT+0100 (Central European Standard Time)","cd67ceab-4940-4c46-ba75-3fdcc4f33d57","5815783e-c8f4-4d17-918e-9f2d12c8acb0","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE D6JY Burkhard Schulz","burkhard.schulz","Ge$che1ter7H!erGut","","","IMEI 1, text: 356298580410140
+IMEI 2, text: 356390200410145
+S/N, text: R5CX81ND6JY
+EID, text: 89033023426120100100023098345651","Mobilgeräte","handy","nein","Thu Nov 21 2024 12:55:29 GMT+0100 (Central European Standard Time)","d06664f1-e2d4-4db4-a561-5cb15bcd25ff","1a1df818-29f1-4fc3-86f4-22cef5d026c0","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE XCHN Michael Simon","michael.simon","AnDasPar!5N@he0ff!ziell3","","","IMEI 1, text: 356298580531697
+IMEI 2, text: 356390200531692
+S/N, text: R5CX81TXCHN
+EID, text: 89033023426120100100021012700345","Mobilgeräte","handy","nein","Wed Nov 27 2024 16:18:28 GMT+0100 (Central European Standard Time)","5e0af4fa-5206-4c9a-97db-bcbbf23c4fb7","db0746c4-f8c0-4504-aa77-53117628513c","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE VTZW Jessica Lösche","jessica.loesche","Häuf1güb3rnomm3nHör3n","","","IMEI 1, text: 356298580515013
+IMEI 2, text: 356390200515018
+S/N, text: R5CX81TVTZW
+EID, text: 89033023426120100100021011240786","Mobilgeräte","handy","nein","Wed Nov 20 2024 16:25:12 GMT+0100 (Central European Standard Time)","d403e29f-73d3-408c-a96a-aec9aec79d58","49bc0313-a354-451b-b212-ec42bc569f46","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE VV4E Ahmad Mikari","ahmad.mikari","GründenKle1nen$p3z!ell","","","IMEI 1, text: 356298580515062
+IMEI 2, text: 356390200515067
+S/N, text: R5CX81TVV4E
+EID, text: 89033023426120100100021012701412","Mobilgeräte","handy","nein","Thu Nov 21 2024 12:52:18 GMT+0100 (Central European Standard Time)","ea91c8ec-f85b-4186-b758-9f06fb2832eb","35eb8838-fc8d-4a72-bb79-31a405fef3d6","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE VKTW Andreas Dogs","nutzer","EUW3sentlich@n","","","IMEI 1, text: 356298580512325
+IMEI 2, text: 356390200512320
+S/N, text: R5CX81TVKTW
+EID, text: 89033023426120100100021010059617","Mobilgeräte","handy","nein","Mon Nov 11 2024 15:48:42 GMT+0100 (Central European Standard Time)","6e1ffcb2-caaf-435e-829d-626b7bfc4583","5d16aa0f-3dd5-45ee-9220-57158275ef08","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE VEXP Andre Homeier","andre.homeier","We!7er3n$tund3Gle!che","","","IMEI 1, text: 356298580510709
+IMEI 2, text: 356390200510704
+S/N, text: R5CX81TVEXP
+EID, text: 89033023426120100100021009505553","Mobilgeräte","handy","nein","Wed Nov 27 2024 16:20:22 GMT+0100 (Central European Standard Time)","3b03b488-03b1-4805-a8b7-aad7ab54f905","4b6ce92c-543d-4303-8a9d-8597e46a9cb1","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE CW5R Torsten Bethge","nutzer","NrJ3r$€7ztZwe!m@1R3chten","","","IMEI 1, text: 356298580406718
+IMEI 2, text: 356390200406713
+S/N, text: R5CX81NCW5R
+EID, text: 89033023426120100100023098341286","Mobilgeräte","handy","nein","Mon Nov 11 2024 16:22:43 GMT+0100 (Central European Standard Time)","edc24ca1-a45d-47ba-9410-ddf2310e8158","507aa0dd-00ef-4740-8e0c-c3daa02877b5","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE DCKA Sven Gäckle","sven.gaeckle","$ozi@1eWulffPo11t!sch","","","IMEI 1, text: 356298580412138
+IMEI 2, text: 356390200412133
+S/N, text: R5CX81NDCKA
+EID, text: 89033023426120100100021012732161","Mobilgeräte","handy","nein","Wed Nov 27 2024 16:28:27 GMT+0100 (Central European Standard Time)","44efb095-c310-4db7-a697-706d7d03f18d","e8604f73-9924-4590-b89a-9944cd4d33a1","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE YH5E Ibrahim Khalil","ibrahim.khalil","L4gKl3!nenEnerg!enJam3$","","","IMEI 1, text: 356298580237592
+IMEI 2, text: 356390200237597
+S/N, text: R5CX80BYH5E
+EID, text: 89033023426120100100019659162927","Mobilgeräte","handy","nein","Wed Nov 27 2024 16:33:22 GMT+0100 (Central European Standard Time)","9f5231cc-e3a4-43fc-90a6-5ac4864cba96","81dd75cd-fb53-48bc-a5f1-2db77e08c035","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE YXCH Helmi Werhani","Helmi.Werhani","Ba1ichRese_rch","","","IMEI 1, text: 356298580241958
+IMEI 2, text: 356390200241953
+S/N, text: R5CX80BYXCH
+EID, text: 89033023426120100100019659157689","Mobilgeräte","handy","nein","Tue Sep 16 2025 16:05:04 GMT+0200 (Central European Summer Time)","ce6b8960-a8ac-4e9d-9f9f-bb9b3234d18a","c7babdcc-29a2-41c6-8908-20a792d0c6d0","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE YE8W Damian Palej","nutzer","€rz13ltD€5!gnBunde5r€gierung","","","IMEI 1, text: 356298580236636
+IMEI 2, text: 356390200236631
+S/N, text: R5CX80BYE8W
+EID, text: 890330234261201001000020886990285","Mobilgeräte","handy","nein","Mon Nov 11 2024 16:24:45 GMT+0100 (Central European Standard Time)","191f66f0-d1d5-49ed-b635-46d1621a87e7","5a0d50e0-97ce-4bec-acf5-d686354a3d9e","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"DAVx5 Managed Lizenz","","PremiereRobertChance","","","Lizenze, text: ---------- MANAGED DAVX⁵ LICENSE ---------- License: ""id"":754,""organization"":""Wuttke-Klimatechnik"",""users"":20,""expires"":1733097600,""domains"":[""wuttke.gmbh""] Signature: MEQCIDv3B6r5k7KJTPEVucOq0HR31KemKe7WAcATyLNqWcFPAiAAqColYGRN4aaqC+qDMU0gN/9qNplhzs68ZPm+0h+/wQ== -------------------------------------------
+Ansprechpartner, email: play@bitfire.at","Lizenzen","","nein","Tue Nov 05 2024 10:50:45 GMT+0100 (Central European Standard Time)","30e09ef2-12ec-41b4-9541-6992ef9a6984","e5a95b2f-2b76-4d24-8c78-d0cfa8514237","c980cf73-968e-4c87-b7d6-447c55f8d984"
+"iPhone15 JPJQ (Test Monteur)","monteur@wuttke-klimatechnik.appleaccount.com","HeKZyJ8G","","","IMEI 1, text: 351280599736645
+IMEI 2, text: 351280599813980
+S/N, text: FJDXQGJPJQ
+EID, text: 89049032007208882600188189799590
+unlock PIN, secret: 351388
+initial pwd, text: Hanuka5!","Mobilgeräte","handy","nein","Wed Jan 15 2025 14:32:34 GMT+0100 (Central European Standard Time)","27cb5840-a468-4508-8c98-0590b343c86b","f5c74272-2365-4ef0-915d-5aefe86bd643","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"iPhone15 M2Q4 Eva Wuttke","eva.wuttke@wuttke-klima.appleaccount.com","Fuhr$truk7urH!lf3","","","IMEI 1, text: 351280599168203
+IMEI 2, text: 351280599851774
+S/N, text: CQWR27M2Q4
+EID, text: 89049032007208882600188210441190","Mobilgeräte","handy","nein","Thu Mar 06 2025 18:51:14 GMT+0100 (Central European Standard Time)","a55aa18b-b756-41af-8bf1-027a2138d124","8191133b-5e25-48ba-aec2-298b71346564","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"iPhone15 36RR Elmar Andersson","elmar.andersson@wuttke-klima.appleaccount.com","F@hrb@hnFrühF07o","","","IMEI 1, text: 350872364454841
+IMEI 2, text: 350872364254589
+S/N, text: FCYJWP36RR
+EID, text: 89049032007208882600183374330329
+apple pass, text: F@hrb@hnFrühF07o","Mobilgeräte","handy","nein","Thu Mar 06 2025 18:48:37 GMT+0100 (Central European Standard Time)","3b83534b-848a-45a8-a6bb-b0a7657c2743","539f3aca-aa6d-4a31-afe9-0c58b7c1f949","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"iPhone15 7CT9 Torsten Wolf","torsten.wolf@wuttke-klima.appleaccount.com","G3hör3$@nkUnterschied","","","IMEI 1, text: 359757428272647
+IMEI 2, text: 359757428479499
+S/N, text: M1VM777CT9
+EID, text: 89049032007208882600188160707835
+appe pass, secret: G3hor3$@nkUnterschied","Mobilgeräte","handy","nein","Thu Mar 06 2025 18:32:38 GMT+0100 (Central European Standard Time)","7819168e-ff09-432f-8618-a7132e913704","bd56b469-82f3-4b67-b2fa-f3af7cf4599b","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"iPhone15 246D Dirk Wuttke","dirk.wuttke@wuttke-klima.appleaccount.com","SoLangeBund35liga","","","IMEI 1, text: 351280599944637
+IMEI 2, text: 351280599806695
+S/N, text: DL99CP246D
+EID, text: 89049032007208882600182688223139
+pwd, text: SoLangeBund35liga!","Mobilgeräte","handy","nein","Wed Feb 05 2025 15:11:50 GMT+0100 (Central European Standard Time)","5f0469ea-f5d4-4b78-8564-ec50f5cc42a4","0a50ee80-aa49-4f03-af47-9af05c89643c","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Apple Business Manager","mailer@wuttke-klima.de","Pr0vid3d$h@reRea5onCmOperat!0n$","","https://business.apple.com/","D-U-N-S Number, text: 330283797
+Organization ID, text: 68308417","Administration","iphones","nein","Wed Jan 15 2025 14:16:22 GMT+0100 (Central European Standard Time)","7d86f457-5b5b-4593-bdbf-fba83e92614b","05ecdd2f-2d67-4821-ada2-aac868511000","563dd4b6-7243-4f51-a6d5-fe8f8be88cc3"
+"Hyper-V (Server)","m.Wisniewski","Leipzig2050#","Admini-Account mit Vollzugriff    ","https://192.168.141.30","","Hauptordner","","nein","Mon Mar 10 2025 14:26:54 GMT+0100 (Central European Standard Time)","1a3e5d11-fda2-4e98-997f-352559b9955c","f8f7f856-5308-468c-9988-7b60de0c6b9c","00000000-0000-0000-0000-000000000000"
+"WLAN (Wuttke-intern)","Wuttke-intern","XnjhYlpTMmULwaqDLDd9h3JMUacmHtrdWQogko7","WLAN WPA3","","","Hauptordner","","nein","Mon Jun 16 2025 16:07:46 GMT+0200 (Central European Summer Time)","6b40dd61-19a2-4abd-99cf-748ca8ed55a5","2e8f2e39-6c14-44a8-8dff-8cae809d7851","00000000-0000-0000-0000-000000000000"
+"01754357725 (duplikat) Telekom @MAW","Manfred Wisniewski","1884","","","PUK, secret: 85958586
+PIN2, secret: 1052
+PUN2, secret: 93408612","SIM Karten","SIM","nein","Sat Aug 23 2025 10:18:30 GMT+0200 (Central European Summer Time)","59dbc55a-c6f5-48e5-8549-397a08e372d1","9ab779a0-203d-4e28-93b1-720a63180c35","150c75d8-1863-4cac-a306-1040a04390dc"
+"Google @Wuttke-Klimatechnik","mailer@wuttke-klima.de","P!ece$H!llNe3dBu$MoreH34l7h","","https://google.com","","Administration","","nein","Wed Sep 10 2025 10:52:16 GMT+0200 (Central European Summer Time)","f64e2e8c-5905-4730-a345-eca6d05947fe","7990faeb-2dbc-48bf-b197-936160510a9b","563dd4b6-7243-4f51-a6d5-fe8f8be88cc3"
+"Trustpilot @Wuttke Klimatechnik","hosting@witconsult.de","FJ_DTsPEQV33eAdDvciJq","","https://businessapp.b2b.trustpilot.com/","","Accounts","","nein","Wed Oct 01 2025 14:59:21 GMT+0200 (Central European Summer Time)","353d351f-a21e-472d-a171-2abd18f5b175","2e8fdb57-9b6b-4638-8209-a6c0a8a2dd3e","54de8d30-e291-4338-b2fa-b4b33dc8277e"
+"Wuttke Netzwerk Scheidebuschstr.","intern","12341235213521353215","","https://lokal","feste IP Scheidebuschstr., text: 87.128.14.102","Administration","","nein","Thu Oct 02 2025 10:50:37 GMT+0200 (Central European Summer Time)","d3c6e4a0-b90d-4048-b5f5-965c3fc9f6bb","51c8374a-5924-45b2-a588-78f1e4488905","563dd4b6-7243-4f51-a6d5-fe8f8be88cc3"
+"wuttke.cloud Torsten Bethge","torsten.bethge","ProduziertUmstr17ten3n","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 10:52:10 GMT+0200 (Central European Summer Time)","4affce04-bdb0-4c4a-9168-bd39f4328bb6","3cf22d6d-1263-4e52-a877-0cdbffa39bd7","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Burkhard Schulz","burkhard.schulz","WirEntschied3nVo1lH0fft","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 10:52:37 GMT+0200 (Central European Summer Time)","2d6613c9-1df2-4faf-b54e-d3d71bf41fc5","ebd7c57d-c70a-4d62-91af-1ec575c956bd","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Karsten Rohde","karsten.rohde","B3ratenPass1erenH4mburger","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 10:53:02 GMT+0200 (Central European Summer Time)","23e092a3-e40e-47a5-8443-4a0db8dd9c6c","654bfb4a-7698-4bef-b168-20c535091070","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Dominique Grüttner","dominique.gruettner","Pol1zistenBotT31lweise","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Mon Oct 13 2025 11:34:00 GMT+0200 (Central European Summer Time)","734c6ed6-cc45-4984-9e95-f7b13b9592a9","433e46e8-e0d2-4bdc-9c29-35b3a24b21d6","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Michael Sengbusch","michael.sengbusch","ZahlenAnw3ndung73ams","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 10:57:06 GMT+0200 (Central European Summer Time)","790fa924-ca1f-4b6f-8e85-01ef8a8ca9e1","df00d186-6f4d-4f9e-be15-b145e5e5eadd","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Sven Gäckle","sven.gaeckle","3rwinEngl4ndBruderCE0","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 10:57:42 GMT+0200 (Central European Summer Time)","8222ea2a-9741-4eb0-b4c7-7ab8b4950e91","21907cf8-f6ae-45d7-8bab-82e3d9320827","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Andre Homeier","andre.homeier","Zweif3lPa5siertKontro1le","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 10:58:28 GMT+0200 (Central European Summer Time)","d4cc2331-9a3f-4ccf-a656-60576b973d7c","21d881dd-0e36-4cc1-ba9c-425f4fc0b53a","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Jerome John","jerome.john","Pau1Darst31lungAufgabe","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 10:58:57 GMT+0200 (Central European Summer Time)","25828075-6d96-4bbd-a017-5c8fa599ec8a","4f1c049b-8f8c-4699-afc8-e125bd57c9d1","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Gerald Preuss","gerald.preuss","Gef4hrenMe1s7enWirtschaft","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 10:59:35 GMT+0200 (Central European Summer Time)","ea7051a3-4827-4c3e-893e-f83924f37446","d1248345-d811-4646-a9d0-096e79ee5770","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Andreas Dogs","andreas.dogs","5ons77eileEntscheidung","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 11:00:25 GMT+0200 (Central European Summer Time)","f2bb7453-8de7-44c3-b65b-0080339dc906","c09ef45b-5cc9-4b34-accd-3b3ac4fe0ac7","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Jessica Lösche","jessica.loesche","ZuBeginnPress3Inv3stier3n","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 11:01:44 GMT+0200 (Central European Summer Time)","e8fe2bc4-0882-4389-b8f7-6e7335a86a8d","315dae1c-ee1f-4696-8fa1-0e2cece60e60","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Ahmad Mikari","ahmad.mikari","Micha3lGenau3Landw1rtschaft","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 11:02:03 GMT+0200 (Central European Summer Time)","875bb122-3f40-45cf-b5e1-60abeef21207","fc33f14c-978e-48d6-8f88-5a64a664729b","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Michael Simon","michael.simon","Kurzfri5t1gLes3rRegen","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Mon Oct 13 2025 11:40:37 GMT+0200 (Central European Summer Time)","f6d5bc74-17fa-404b-aa3f-cb3f55cf2ad7","f63c39ff-42ba-4430-ba98-a8ddb3a6c616","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Henry Schmuths","ahmad.mikari","Schl1eß1ichGe5ehenOhne","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 11:03:18 GMT+0200 (Central European Summer Time)","dd4f843a-13e7-4c29-b007-c3aa89863473","da4e6ad5-c8b6-4b1f-a572-611ed966cd51","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Andreas Kolbe","andreas.kolbe","Mehrh31tStandZen7ralbank","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 11:04:12 GMT+0200 (Central European Summer Time)","b881e152-c089-4752-b247-78f9e58ef1b6","8edbb475-990f-4628-98be-d2f8aee12613","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Damian Palej","damian.palej","Ge5e1lschaf7Arbeiten","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 11:04:50 GMT+0200 (Central European Summer Time)","2538a3be-633f-4522-8386-d1f167e38b69","c307b7c3-a9d8-4ede-8ad2-4a6830b965f1","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Ibrahim Khalil","ibrahim.khalil","AktivZuVi3l31nrichtung","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 11:05:29 GMT+0200 (Central European Summer Time)","c2fd0468-6920-4074-b903-d14509c0b876","fa74d4c6-01fa-4edf-b145-4729d93a2304","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Helmi Werhani","helmi.werhani","54lzburgDau3rnGeschrieben","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 11:06:18 GMT+0200 (Central European Summer Time)","7307e105-70c1-4548-90f5-020c3a230bda","16b0aaf2-a9e2-48ee-a4cc-582ad9775165","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Torsten Wolf","torsten.wolf","F4rbenW0l1teMittlerweile","","https://cloud.wuttke.gmbh","","wuttke.cloud","servicemonteur,cloud","nein","Wed Oct 08 2025 11:06:58 GMT+0200 (Central European Summer Time)","0b77a937-c76b-4ed1-b736-f553cdcd712c","46b28c75-72b6-44d2-ba78-c978864c9601","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"WLAN (Wuttke-Mobile)","WPA2","x><iUqP*!#qhQ9*viY","Mit VLAN auf der Firewall","","","Hauptordner","","nein","Tue Oct 14 2025 16:00:30 GMT+0200 (Central European Summer Time)","a3b221d1-6bdd-4d8a-86ff-89d4090925b2","7fc97b9c-26b9-4ead-a0eb-6d846b62768e","00000000-0000-0000-0000-000000000000"
+"info@wuttke-klimatechnik.de","info@wuttke-klimatechnik.de","M!73!nanderB@uenV3rg@ngenhe!7Erh0lung","","https://outlook.office365.com/mail/","","E-Mail","e-mail","nein","Wed Jan 21 2026 10:59:42 GMT+0100 (Central European Standard Time)","090c3dfc-18f1-4146-a3ec-665829bbdd92","ae2ef2c6-2b9f-4070-93ad-81d485b85afc","e9e70429-2e97-4f69-8e9c-079f33a2dba2"
+"wuttke.cloud Adnan Al-Hasnawi","adnan.al-hasnawi","N0chE!nm@1Cloud$!3benFo1gt","","https://cloud.wuttke.gmbh","","wuttke.cloud","cloud","nein","Fri Feb 06 2026 13:19:57 GMT+0100 (Central European Standard Time)","bc072df0-3f6e-4208-a1e3-e1264db835ba","18abb677-521f-42dd-90f9-6d626dec0b9b","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"Galaxy X7 EE A83J Adnan Al-Hasnawi","adnan.al-hasnawi","Monch3n_gl4dbach","","","IMEI 1, text: 354844943825326
+IMEI 2, text: 358473373825329
+S/N, text: R5CYA2WA83J
+EID, text: 1234
+Model, text: SM-G556B
+MAC, text: E49F7D3996A6","Mobilgeräte","handy","nein","Sun Feb 08 2026 11:03:07 GMT+0100 (Central European Standard Time)","d2812a21-840c-4096-8cbb-64739f8b901b","026db68e-5c12-4776-a9c4-8bb574a6f73b","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE AAA template","tpl","1234","","","IMEI 1, text: 1235
+IMEI 2, text: 12345
+S/N, text: ABC
+EID, text: 1234
+Model, text: SM-ABC
+MAC, text: ASD","Mobilgeräte","handy","nein","Sun Feb 08 2026 10:53:59 GMT+0100 (Central European Standard Time)","334c00a9-0213-4708-903b-be5d6eb0293a","7d75d3d3-d1c2-462a-99e1-9a81be7f2ab3","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7Pro DARM Mohammad Abazid","mohammad.abazid","Schrift-Ang3bot3n","","","IMEI 1, text: 352032114683102
+IMEI 2, text: 352033114683100
+S/N, text: R58R75DDARM
+EID, text: 1234
+Model, text: SM-G715FN/DS
+MAC, text: EC7CB6CC9810","Mobilgeräte","handy","nein","Sun Feb 08 2026 11:05:49 GMT+0100 (Central European Standard Time)","6f6d3ec4-a739-46b8-a5b1-680539d95201","4c011b17-6141-4c9a-a32b-2d91f354d463","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7Pro G0BR Omar Al-Shebli","omar.al-shebli","Posit1on_Euro","","","IMEI 1, text: 352032114028209
+IMEI 2, text: 352033114028207
+S/N, text: R58R36VG0BR
+EID, text: 1234
+Model, text: SM-G715FN/DS
+MAC, text: E0C37795C806","Mobilgeräte","handy","nein","Sun Feb 08 2026 11:04:23 GMT+0100 (Central European Standard Time)","85e8f92f-be58-4377-aca6-1d42b4ed776f","47f4dec8-0d0e-42fe-962a-cda289429ab4","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"wuttke.cloud Omar Al-Shebli","omar.al-shebli","B3$ond3rhe!tTrainerGrupp3n","","https://cloud.wuttke.gmbh","","wuttke.cloud","cloud","nein","Mon Feb 09 2026 11:31:38 GMT+0100 (Central European Standard Time)","522c7594-eda2-4dee-b887-9f3235b3cf75","b0dfaebe-ba0c-4cf4-82d0-c088979f7080","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"wuttke.cloud Mohammad Abazid","mohammad.abazid","BesuchFeu3rw3hrPr0f$$5or","","https://cloud.wuttke.gmbh","","wuttke.cloud","cloud","nein","Mon Feb 09 2026 09:33:09 GMT+0100 (Central European Standard Time)","938bf56c-6ebe-4e83-91d9-c4f866b4ef65","5c3560fd-64f4-4b7a-9043-5a493c60d3ef","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"piler.wuttke-klimatechnik.de @admin","admin@wuttke-klimatechnik.de","No7hingPl4n7JohnCh@nc3$uch@$","","https:///piler.wuttke-klimatechnik.de","","E-Mail","e-mail","nein","Tue Mar 03 2026 15:06:13 GMT+0100 (Central European Standard Time)","d953dc32-2660-4bea-99e7-f1be19bb0c2f","029bdb64-9bd0-4c3b-b1ab-7f56097ab964","e9e70429-2e97-4f69-8e9c-079f33a2dba2"
+"piler.wuttke-klimatechnik.de @tobias","tobias.wuttke@wuttke-klimatechnik.de","Amer!k4n!$che1nf0rm1erenKle!ne","","https:///piler.wuttke-klimatechnik.de","","E-Mail","e-mail","nein","Thu Mar 05 2026 14:48:21 GMT+0100 (Central European Standard Time)","92c63493-d6e5-421d-b8fc-2eb0d0916317","a63ed028-5f6c-466c-a9be-75d4501e7b6a","e9e70429-2e97-4f69-8e9c-079f33a2dba2"
+"Bechtle Onlineshop","manfred.wisniewski@wuttke-klimatechnik.de","Pr!0r5hesH3@vyMi$$1ngBusy","","https://bechtle.com","","Accounts","einkauf,handy","nein","Thu Mar 12 2026 14:23:42 GMT+0100 (Central European Standard Time)","ffa54875-7e4c-4d90-a0d7-2205e5acd073","42b550bb-dcb4-4efd-b18c-f0b18c82b469","54de8d30-e291-4338-b2fa-b4b33dc8277e"
+"Mobiltelefone Standardeinstellungen (neue Geräte)","Alle frischen Geräte","159357","1. Sprache: Deutsch (Deutschland)
+2. Endbenutzer-Lizenzvereinbarung zu: ja
+    Diagnosedaten: nein
+3. Manuell einrichten
+4. WLAN: viktoria-musikschule (WIT Büro)
+5. Einrichten Knox Manage: Weiter
+6. Gerät ist nicht privat: Akzeptieren und weiter
+7. Google Dienste
+    Standort: ja
+    WLAN-Suche: ja
+    Bestätigung der Telefonnummer: ja
+    Nutzungs und Diagnosedaten: nein
+    Akzeptieren
+7. Bildschirmsperre: PIN (159357)
+8. Uhr Benachrichtigungen: Zulassen
+9. Gleiche Lautstärke alle Alarme: Jetzt
+10. Knox Remote Support: Benachrichtigungen: Zulassen
+11. Brave: nichts auswählen (keine Daten senden)
+12. Nextcloud: Benachrichtigungen: Zulassen, 
+      Speicherberechtigung: Zugriff auf alle Dateien (Berechtigung erteilen: ja)
+13. Talk Benachrichtigungen: Zulassen
+14. Kamera: Geotagging: an (Immer beim verwenden der App)
+15. 
+
+
+
+Einrichten der Apps (server: wuttke.cloud)","","Standard-PIN, secret: 159357","Mobilgeräte","handy,android","nein","Tue Mar 17 2026 15:02:13 GMT+0100 (Central European Standard Time)","2381aa6d-af39-442a-b991-88d019dfeb0d","725dcb2e-24b0-41d5-ad4c-ebc8067e642f","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Galaxy X7 EE VMRV Florian Pagel","florian.pagel","P@@rZ!3l1n$be5ond3reSturm","","","IMEI 1, text: 354844946704627
+IMEI 2, text: 358473376704620
+S/N, text: R5GL159VMRV
+EID, text: 89033023426120100100057021581896
+Model, text: SM-G556B
+MAC, text: E49F7D3996A6","Mobilgeräte","handy","nein","Tue Mar 17 2026 15:02:00 GMT+0100 (Central European Standard Time)","1dfb5b25-f9ef-4f21-bfbe-77e287865b50","dc7f0afd-301c-4c4f-baad-b739689c7012","ba2713dc-d7fb-4df8-9071-334e495942bf"
+"Marina Markowsky","marina.markowsky","B3k@mKr!t15!ertMed!3nNacht","","https://wuttke.cloud","","Mitarbeiter","cloud","nein","Mon Mar 30 2026 11:44:12 GMT+0200 (Central European Summer Time)","7e0b355d-5542-4302-9bd1-d80768365773","a1797f31-f0b1-468f-8e47-fbec27fc6031","70bff37a-9ba8-4a06-af03-aaa6100f0e53"
+"wuttke.cloud Dirk Wuttke","dirk.wuttke@wuttke-klimatechnik.de","E5I$tGeleg3nhe17L@r$Kle!ne","","","","wuttke.cloud","","nein","Wed Apr 08 2026 08:54:34 GMT+0200 (Central European Summer Time)","f43c55a5-ec0c-4508-bc43-511c5dce829b","90ebb36c-e5d4-4037-9cde-ae21d576f022","ef391061-cf86-40fb-b5fc-32d5d744193f"
+"ESET MSP Admin ","tobias.wuttke@wuttke-klimatechnik.de","Uy47*G>,:Ea.z,I9LAWVJkGA8uLad;Zd9","Custom identifier 
+21514 
+
+PIN: 4679
+
+_________________
+
+Backup-Codes: 
+
+8132 7444
+8216 1550
+2883 7737
+4675 6415
+4130 5764
+5861 1705
+8232 3170
+7471 6763
+0518 1433
+2368 1165
+
+","https://msp.eset.com/ema/dashboard","","Hauptordner","","nein","Tue Apr 21 2026 10:56:54 GMT+0200 (Central European Summer Time)","3c1b809c-eeea-4dce-9317-f0885c32e631","a9062f18-b42b-4da0-a350-cf6a22d71051","00000000-0000-0000-0000-000000000000"
+"SIM-PIN Hr. Preuß","Hr. Preuß","0582","","","","Hauptordner","","nein","Mon May 18 2026 12:03:07 GMT+0200 (Central European Summer Time)","cd35ff42-032f-4e40-a5a0-db1499a14bef","f855e023-c9a2-4581-a493-1ccd611e6ed5","00000000-0000-0000-0000-000000000000"
+"PIN Hr. Preuß","Hr. Preuß","159357","Bildschirmsperre","","","Hauptordner","","nein","Mon May 18 2026 12:03:20 GMT+0200 (Central European Summer Time)","79145c03-0aca-4b66-b52a-5ced8fcf80d0","af3c2e0f-ca87-4457-b106-68a81623f469","00000000-0000-0000-0000-000000000000"
+"SIM-PIN Hr. Sengbusch","","2018","","","","Hauptordner","","nein","Thu Aug 13 2026 12:08:49 GMT+0200 (Central European Summer Time)","d7cb32a9-b59b-49d2-b954-e16a5aa250a0","42212a33-64d4-459c-b079-de658f02a756","00000000-0000-0000-0000-000000000000"
+"PIN Hr. Sengbusch","","310364","Bildschirmsperre ","","","Hauptordner","","nein","Thu Aug 13 2026 12:09:23 GMT+0200 (Central European Summer Time)","a88a7006-2617-493d-95ed-cced57cb6487","574a9827-a6a6-4b33-8dc5-6ecd83409984","00000000-0000-0000-0000-000000000000"

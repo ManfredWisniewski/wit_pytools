@@ -4,7 +4,7 @@
 
 `documenttools` provides modular Python functions for handling document files such as Word, Excel, and PDF documents.
 
-The first concrete capability is the anonymization of string cell values in `.xlsx` workbooks while preserving workbook calculations and structure.
+The first concrete capability is the anonymization of string cell values in `.xlsx` workbooks while preserving workbook calculations and structure. The second is the conversion of PDF documents to Markdown.
 
 ## XLSX anonymization workflow
 
@@ -114,7 +114,7 @@ The initial implementation supports `.xlsx` files only. Macro-enabled `.xlsm` fi
 
 Candidate, mapping, and anonymized output files are saved alongside the source workbook. Existing output files must not be overwritten unless an explicit overwrite option is supplied. The source workbook must never be overwritten implicitly.
 
-## Non-goals
+## XLSX non-goals
 
 The initial implementation does not anonymize:
 
@@ -129,3 +129,64 @@ The initial implementation does not anonymize:
 - external links;
 - VBA or other macro content;
 - `.xlsm` files.
+
+## PDF to Markdown
+
+### Purpose
+
+Convert a PDF document into a single Markdown file that reflects the document's text and structure. The concept mirrors MarkPDFDown (Apache-2.0): render each page to an image and let a multimodal model transcribe it. No code from that project is used. Rendering uses `pdfplumber`, already required by `document_find_regex`; the model is reached through `wit_pytools.aitools`. No additional dependencies are introduced.
+
+### Workflow
+
+1. Validate the input (`.pdf` only), the mode, the language, and the page range.
+2. In `vision` mode: resolve the model (`model=` → `OPENROUTER_PDF_MODEL` → `OPENROUTER_MODEL`), load the prompt, estimate the cost as pages × per-image price, and ask for confirmation above the limit or when the price is unknown (`yes` skips).
+3. For each page in the range:
+   - `vision`: render at `dpi` to a temporary PNG, send prompt and image to the model, strip a surrounding Markdown fence, retry on errors or empty responses with a `2 × attempt` second pause.
+   - `text`: use the text layer via `pdfplumber`; a page without text yields a marker.
+4. Join pages with a Markdown horizontal rule (`---`, surrounded by blank lines, only between pages).
+5. Write `<stem>.md` and the sidecar `<stem>_pdf2md.json`; optionally keep page images and per-page Markdown in `<stem>_pages/`.
+
+### Public functions
+
+- `pdf_to_markdown_text(...) -> str`: convert and return the Markdown without touching disk.
+- `pdf_to_markdown(...) -> Path`: convert, write the output beside the source (or to `output_path`), write the sidecar, return the output path.
+
+Parameters: `mode`, `model`, `start_page`, `end_page`, `output_path`, `overwrite`, `keep_pages`, `prompt_file`, `dpi`, `retry_times`, `continue_on_error`, `max_cost`, `yes`, `language`, `api_key`.
+
+### Modes
+
+- `vision` (default): multimodal transcription of page images. Handles image-only PDFs.
+- `text`: text layer only, no API call, no layout or table reconstruction.
+
+### Prompt
+
+One built-in English prompt (`pdf2md_prompt.txt`): transcribe faithfully in the document's language, keep headings, lists, tables as Markdown tables, formulas as LaTeX, describe images briefly in brackets, mark unreadable passages with the illegibility token, never invent content, output Markdown only. `prompt_file` replaces it; the `{illegible}` placeholder is filled per language in both cases.
+
+### Language
+
+`language` (parameter, `PDF2MD_LANGUAGE`, `--language`, runner `LANGUAGE`) selects the marker texts and the illegibility token. Supported: `en` (default), `de`. Unknown codes raise `ValueError`. The prompt itself stays English; the transcription is always in the document's own language.
+
+### Failure handling
+
+After the retries are exhausted, the page receives a visible blockquote marker (`> **Page N: conversion failed** — reason`) and conversion continues. At the end the run raises `RuntimeError` listing the failed pages unless `continue_on_error` is set. Pages without a text layer in `text` mode receive an analogous marker and a warning log entry; they never fall back to the model automatically.
+
+### Output handling
+
+Outputs are written beside the source PDF. Existing outputs are not overwritten unless `overwrite` is set. The source PDF is never modified. The sidecar records source, mode, model, page range, dpi, language, prompt file, estimated cost, per-page status, and creation time.
+
+### Entry points
+
+- Python functions above.
+- CLI: `python -m wit_pytools.documenttools.pdf2md INPUT [options]` with a `--log` tee like `aitools.generate_image`.
+- Runner: `runners/pdf2md_runner.bat`, drag-and-drop capable, loads `set_ENV.bat`.
+
+### PDF non-goals
+
+The initial implementation does not provide:
+
+- direct image input (PNG/JPG) — handled by a separate future function;
+- a `hybrid` mode passing the text layer to the model as a hint;
+- table extraction in `text` mode;
+- OCR without a model;
+- a Nextcloud Flow wrapper (planned follow-up in `witnctools`);
+- automatic fallback from `text` to `vision`.

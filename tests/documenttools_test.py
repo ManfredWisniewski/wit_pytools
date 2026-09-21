@@ -1,5 +1,8 @@
 import csv
+import importlib
+import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -14,6 +17,8 @@ from wit_pytools.documenttools import (
     create_xlsx_mapping,
     document_find_regex,
     identify_xlsx_strings,
+    pdf_to_markdown,
+    pdf_to_markdown_text,
 )
 
 TEST_DOC = Path(__file__).parent / "documenttools" / "testdocument.pdf"
@@ -217,3 +222,142 @@ def test_anonymize_xlsx_preserves_personenkonten_substring_matches(tmp_path):
     assert anonymized["Personenkonten"]["AM3"].value == "Prüfung:"
     assert anonymized["Kontoauszüge"]["F1"].value == "value-48a"
     anonymized.close()
+
+
+# --- PDF to Markdown -------------------------------------------------------
+
+pdf2md = importlib.import_module("wit_pytools.documenttools.pdf2md")
+
+
+@pytest.fixture
+def pdf_copy(tmp_path):
+    target = tmp_path / "testdocument.pdf"
+    shutil.copy(TEST_DOC, target)
+    return target
+
+
+@pytest.fixture
+def no_cost_prompt(monkeypatch):
+    monkeypatch.setattr(pdf2md, "estimate_cost", lambda model, pages, api_key=None: 0.0)
+    monkeypatch.setattr(pdf2md.time, "sleep", lambda seconds: None)
+
+
+def _fake_chat(responses):
+    calls = []
+
+    def chat(messages, model, *, system=None, api_key=None):
+        calls.append({"messages": messages, "model": model, "system": system})
+        response = responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    chat.calls = calls
+    return chat
+
+
+def test_pdf_to_markdown_vision_writes_output_and_sidecar(pdf_copy, monkeypatch, no_cost_prompt):
+    fake = _fake_chat(["```markdown\n# Seite 1\n```", "Seite 2 Text"])
+    monkeypatch.setattr(pdf2md, "chat", fake)
+
+    output = pdf_to_markdown(pdf_copy, model="test/vision", language="de")
+
+    assert output == pdf_copy.with_suffix(".md")
+    assert output.read_text(encoding="utf-8") == "# Seite 1\n\n---\n\nSeite 2 Text\n"
+    assert len(fake.calls) == 2
+    assert fake.calls[0]["model"] == "test/vision"
+    prompt_text = fake.calls[0]["messages"][0]["content"][0]["text"]
+    assert "[unleserlich]" in prompt_text and "{illegible}" not in prompt_text
+    assert fake.calls[0]["messages"][0]["content"][1]["type"] == "image_url"
+
+    sidecar = json.loads(pdf_copy.with_name("testdocument_pdf2md.json").read_text(encoding="utf-8"))
+    assert sidecar["mode"] == "vision"
+    assert sidecar["pages"] == [1, 2]
+    assert [entry["status"] for entry in sidecar["page_status"]] == ["ok", "ok"]
+    assert not list(pdf_copy.parent.glob("page_*.png"))
+
+
+def test_pdf_to_markdown_refuses_overwrite(pdf_copy, monkeypatch, no_cost_prompt):
+    monkeypatch.setattr(pdf2md, "chat", _fake_chat(["a", "b", "c", "d"]))
+    pdf_to_markdown(pdf_copy, model="m")
+
+    with pytest.raises(FileExistsError):
+        pdf_to_markdown(pdf_copy, model="m")
+    pdf_to_markdown(pdf_copy, model="m", overwrite=True)
+
+
+def test_pdf_to_markdown_retries_then_marks_failed_page(pdf_copy, monkeypatch, no_cost_prompt):
+    fake = _fake_chat(["", RuntimeError("OpenRouter 502: bad gateway"), "second try", "page two"])
+    monkeypatch.setattr(pdf2md, "chat", fake)
+
+    text = pdf_to_markdown_text(pdf_copy, model="m", retry_times=3)
+
+    assert text == "second try\n\n---\n\npage two"
+    assert len(fake.calls) == 4
+
+
+def test_pdf_to_markdown_failed_page_raises_unless_continue(pdf_copy, monkeypatch, no_cost_prompt):
+    errors = [RuntimeError("boom")] * 2
+    monkeypatch.setattr(pdf2md, "chat", _fake_chat(errors + ["ok"]))
+    with pytest.raises(RuntimeError, match="page\\(s\\): 1"):
+        pdf_to_markdown_text(pdf_copy, model="m", retry_times=2)
+
+    monkeypatch.setattr(pdf2md, "chat", _fake_chat([RuntimeError("boom")] * 2 + ["ok"]))
+    text = pdf_to_markdown_text(pdf_copy, model="m", retry_times=2, continue_on_error=True)
+    assert text.startswith("> **Page 1: conversion failed** — boom")
+    assert text.endswith("ok")
+
+
+def test_pdf_to_markdown_text_mode_uses_text_layer_without_api(pdf_copy, monkeypatch):
+    monkeypatch.setattr(pdf2md, "chat", _fake_chat([]))
+
+    text = pdf_to_markdown_text(pdf_copy, mode="text", end_page=1)
+
+    assert "Unternehmensanmeldung" in text
+    assert "---" not in text
+
+
+def test_pdf_to_markdown_keep_pages_and_page_range(pdf_copy, monkeypatch, no_cost_prompt):
+    monkeypatch.setattr(pdf2md, "chat", _fake_chat(["only page two"]))
+
+    pdf_to_markdown(pdf_copy, model="m", start_page=2, end_page=2, keep_pages=True)
+
+    pages_dir = pdf_copy.with_name("testdocument_pages")
+    assert (pages_dir / "page_0002.png").is_file()
+    assert (pages_dir / "page_0002.md").read_text(encoding="utf-8") == "only page two"
+    assert not (pages_dir / "page_0001.png").exists()
+
+
+def test_pdf_to_markdown_validation(pdf_copy, monkeypatch):
+    with pytest.raises(ValueError):
+        pdf_to_markdown_text(pdf_copy, mode="text", start_page=3)
+    with pytest.raises(ValueError):
+        pdf_to_markdown_text(pdf_copy, mode="ocr")
+    with pytest.raises(ValueError, match="Unsupported language"):
+        pdf_to_markdown_text(pdf_copy, mode="text", language="fr")
+    monkeypatch.delenv("OPENROUTER_PDF_MODEL", raising=False)
+    monkeypatch.delenv("OPENROUTER_MODEL", raising=False)
+    with pytest.raises(RuntimeError, match="OPENROUTER_PDF_MODEL"):
+        pdf_to_markdown_text(pdf_copy)
+
+
+def test_pdf_to_markdown_image_only_pdf(tmp_path, monkeypatch, no_cost_prompt):
+    from PIL import Image
+
+    scan = tmp_path / "scan.pdf"
+    Image.new("RGB", (200, 300), "white").save(scan, "PDF")
+
+    text = pdf_to_markdown_text(scan, mode="text", language="de")
+    assert text == "> **Seite 1: keine Textebene** — für diese Seite den Modus vision verwenden"
+
+    monkeypatch.setattr(pdf2md, "chat", _fake_chat(["transcribed scan"]))
+    assert pdf_to_markdown_text(scan, model="m") == "transcribed scan"
+
+
+def test_pdf_to_markdown_cost_confirmation_aborts(pdf_copy, monkeypatch):
+    monkeypatch.setattr(pdf2md, "estimate_cost", lambda model, pages, api_key=None: 5.0)
+    monkeypatch.setattr("builtins.input", lambda prompt: "n")
+    monkeypatch.setattr(pdf2md, "chat", _fake_chat([]))
+
+    with pytest.raises(RuntimeError, match="Aborted"):
+        pdf_to_markdown_text(pdf_copy, model="m", max_cost=1.0)
