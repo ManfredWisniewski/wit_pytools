@@ -277,6 +277,20 @@ def test_pdf_to_markdown_vision_writes_output_and_sidecar(pdf_copy, monkeypatch,
     assert not list(pdf_copy.parent.glob("page_*.png"))
 
 
+def test_pdf_to_markdown_supports_separate_sidecar(pdf_copy, tmp_path):
+    sidecar = tmp_path / "originals" / "testdocument_pdf2md.json"
+
+    output = pdf_to_markdown(
+        pdf_copy,
+        mode="text",
+        sidecar_path=sidecar,
+    )
+
+    assert output == pdf_copy.with_suffix(".md")
+    assert sidecar.is_file()
+    assert not pdf_copy.with_name("testdocument_pdf2md.json").exists()
+
+
 def test_pdf_to_markdown_refuses_overwrite(pdf_copy, monkeypatch, no_cost_prompt):
     monkeypatch.setattr(pdf2md, "chat", _fake_chat(["a", "b", "c", "d"]))
     pdf_to_markdown(pdf_copy, model="m")

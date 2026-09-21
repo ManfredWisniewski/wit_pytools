@@ -2,4 +2,178 @@
 
 ## Package purpose
 
-`cinderellasort` provides modular Python functions for sorting files based on multiple factors and moving sorting them to target directories.
+`cinderellasort` provides modular Python functions for sorting files based on multiple factors and moving them to target directories ("bowls"). It is the shared sorting engine behind Mail-Sort, GPS-Sort, and other `witnctools` scripts.
+
+The implementation currently lives in `wit_pytools/cinderellasort.py`; this directory holds only the intent. Moving the code into the package directory is an open item (see `todo.md`).
+
+## Concepts
+
+- **Source directory** (`sourcedir`): files are read from here and its subdirectories.
+- **Target directory** (`targetdir`): normally the root below which bowls are created; for Doc_prep it is the separate root for moved originals.
+- **Bowl**: a target subdirectory plus the criteria that route files into it. Bowl name = key, criteria = comma-separated values. Bowl names may contain `/` to address nested directories.
+- **Bowl type**: a configuration section that defines how criteria are evaluated (`BOWLS`, `BOWLS_EMAIL`, `BOWLS_GPS`, `BOWLS_GPS_TAGS`, `BOWLS_DOCPREP`).
+- **Special tokens** in criteria: `!DEFAULT` marks the fallback bowl of a section; `!MALFORMED` (`BOWLS_EMAIL` only) receives files whose generated name has no valid e-mail address.
+- **File modes**: `win` moves with `os.rename`; `nc` moves through Nextcloud (`occ files:move`) and rescans directories so Nextcloud indexes the changes.
+- **Run modes**: all-files mode walks `sourcedir`; `single` mode handles one file passed by a Nextcloud Flow.
+
+## Configuration
+
+One INI file per project. Keys and bowl names are case-preserving.
+
+### `[TABLE]`
+
+- `sourcedir`, `targetdir` — paths; separators are normalized.
+- `ftype_sort` — extensions to sort, e.g. `.pdf,.msg`.
+- `ftype_delete` — extensions deleted inside valid sort directories.
+- `clean` / `clean_nocase` — strings removed from filenames (case-sensitive / case-insensitive).
+- `trash` / `trash_nocase` — files whose names contain these strings are deleted.
+- `filemode` — `win` (default) or `nc`.
+
+### `[SETTINGS]`
+
+- `overwrite` — overwrite existing targets; otherwise `#2`, `#3`, ... is appended.
+- `jpg_quality`, `gps_compress`, `gps_moved_unmatched`, `set_tags` — GPS/image options.
+- `usedirectoryname` — name a file after its directory when it is the only sortable file there.
+- `skipunmatched` (default `true`) — leave files without a matching bowl in place instead of moving them to `targetdir`.
+- `check_content` — for PDFs, also search the document text for `[BOWLS]` criteria (`document_find_regex`).
+
+### `[REPLACEMENTS]`
+
+`old=new` pairs applied to filenames after cleaning.
+
+### `[BOWLS]`
+
+Filename criteria; optionally content criteria for PDFs. Supports `!DEFAULT`.
+
+### `[BOWLS_EMAIL]`
+
+Criteria are matched against the generated mail filename `YYYY-MM-DD_sender_project_subject.msg`. Supports `!DEFAULT` and `!MALFORMED`.
+
+### `[BOWLS_GPS]` and `[BOWLS_GPS_TAGS]`
+
+Key format `Bowl name;distance_km`, value `lat,lon[;lat,lon...]`. Images whose EXIF position lies within the distance are routed to the bowl (`BOWLS_GPS`) or tagged in Nextcloud (`BOWLS_GPS_TAGS`, tags with access levels `Tag[p]`). Default distance from `[ITEMS] gps_default_distancekm` (fallback 2 km). Supports `!DEFAULT`.
+
+### `[BOWLS_DOCPREP]` and `[DOCPREP]`
+
+See "Doc_prep bowls" below.
+
+### Common rules
+
+In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, and `BOWLS_DOCPREP` of the central `/etc/nctools/nctools.ini` are merged into the project configuration at runtime (`merge_common_rules`). Criteria of bowls present in both files are combined and deduplicated; the project file is never modified. `[DOCPREP]` is project-specific and not merged.
+
+## Processing order
+
+`cinderellasort(configfile, single=None, filemode='win', dryrun=False, common_configfile=None)`:
+
+1. Read the configuration, merge common rules, read settings.
+2. `prepsort`: create bowl directories for `BOWLS`, `BOWLS_EMAIL`, `BOWLS_DOCPREP`.
+3. Single mode: `handlefile` for the given file. All-files mode:
+   - first pass: delete `ftype_delete` files in directories that contain sortable files;
+   - second pass: delete `trash`/`trash_nocase` matches, then `handlefile` for every remaining file;
+   - legacy pass over subdirectories (to be replaced by `handlefile`).
+4. Remove empty source directories.
+
+`handlefile` evaluates bowl types in this fixed priority and stops at the first that handles the file:
+
+1. File extension not in `ftype_sort` → skip.
+2. **Doc_prep**: extension has a registered converter and the cleaned filename matches a `[BOWLS_DOCPREP]` criterion → `handle_docprep`.
+3. `.pdf` → `handle_pdf` (uses `[BOWLS]`, optional content check).
+4. `[BOWLS_EMAIL]` configured → `handle_emails`.
+5. `[BOWLS_GPS_TAGS]` configured and `set_tags=true` → `handle_gps_tags` (does not stop processing).
+6. `[BOWLS_GPS]` configured → `handle_gps`; files without GPS data are renamed `*_nogps`.
+7. `[BOWLS]` → `bowldir`; unmatched files are skipped (`skipunmatched`) or moved to `targetdir`.
+
+## Doc_prep bowls
+
+Doc_prep is a bowl type that **transforms** documents before sorting them. Its purpose is to turn documents into Markdown (or, later, CSV) so that their content becomes searchable, diffable, and usable by other tools, while keeping the original.
+
+### Configuration
+
+```ini
+[BOWLS_DOCPREP]
+Rechnungen=Rechnung,Invoice
+
+[DOCPREP]
+mode=vision            ; vision | text   (pdf_to_markdown mode)
+model=                 ; empty: OPENROUTER_PDF_MODEL, then OPENROUTER_MODEL
+language=de            ; en | de: markers and illegibility token
+dpi=150
+max_pages=50           ; larger documents are skipped
+retry_times=3
+continue_on_error=false
+sidecar=true           ; keep <stem>_pdf2md.json beside the original
+```
+
+### Behavior per file
+
+1. Clean the filename as for every bowl; the Markdown gets the cleaned stem.
+2. Mirror the source file's relative path below `targetdir`.
+3. Page count above `max_pages` → warning, file stays in the source directory.
+4. An existing Markdown in the mirrored target skips conversion, no API cost.
+5. Otherwise convert to the mirrored target (`documenttools.pdf_to_markdown` with `yes=True`, no interactive cost prompt).
+6. The original PDF stays in the source directory. Its `_pdf2md.json` sidecar is written beside the original. Conversion errors leave the PDF untouched; in `nc` mode the mirrored target directory is rescanned.
+
+Example:
+
+```text
+source/Project/Document.pdf
+source/Project/Document_pdf2md.json
+originals/Project/Document.md
+```
+
+### Converters
+
+`DOCPREP_CONVERTERS` maps an extension to `(page_counter, converter)`. Only `.pdf` is registered. Additional formats (for example `docx` → Markdown, `xlsx` → CSV) are added by registering an entry; the dispatch and move logic stay unchanged.
+
+### Non-goals
+
+- No conversion of files that match no `[BOWLS_DOCPREP]` criterion; such PDFs take the standard `[BOWLS]` path.
+- No re-conversion of existing Markdown (use `overwrite` handling outside cinderellasort if needed).
+- No interactive cost confirmation; `max_pages` is the only cost guard.
+
+## Functions
+
+Configuration and rules:
+
+- `merge_common_rules(config_object, common_configfile)` — merge central bowl sections.
+- `parse_bowl_tags(tags_str)` — parse `Tag[level]` lists for GPS tags.
+- `gps_fetch_default_distance(config_object)` — default GPS distance.
+- `docprep_settings(config_object)` — `[DOCPREP]` with defaults.
+
+Bowl listing:
+
+- `bowllist`, `bowllist_email`, `bowllist_gps`, `bowllist_gps_tags`, `bowllist_docprep`.
+
+Bowl matching (return `'/<bowl>'` or `''`):
+
+- `bowldir(file, config_object, file_path=None, check_content=False)`
+- `bowldir_email(file, config_object)`
+- `bowldir_gps(file, config_object, image_coords)`
+- `bowldir_gps_tags(file, config_object, image_coords)`
+- `bowldir_docprep(file, config_object)`
+
+Filenames:
+
+- `cleanfilename(file, clean, clean_nocase, replacements, subdir='', convert_numbers=True)` — apply clean lists, replacements, sanitizing, Arabic numeral conversion.
+- `matchstring(file, matchtable)` — comma-list containment test.
+- `isvalidsort(sourcedir, ftype_sort)` — directory contains sortable files.
+
+Preparation and handlers:
+
+- `prepsort(config_object, targetdir, prepfilter=False)` — create bowl directories; optionally write `filter-examples.txt`.
+- `handle_docprep`, `handle_pdf`, `handle_emails`, `handle_gps`, `handle_gps_tags`, `handle_oldfiles` (unfinished).
+- `handlefile(...)` — dispatcher described above.
+- `cinderellasort(...)` — main entry point.
+
+The `wit_pytools.filetools` package provides general file helpers, including
+`compare_file(first, second)` for size-based file comparisons.
+
+Translations are loaded from `locale/` via `gettext` (`setup_translations`).
+
+## Open items
+
+From `todo.md`:
+
+- move the script into the package directory;
+- make sorting case-insensitive like the cleanup;
+- replace the legacy subdirectory pass with `handlefile`.

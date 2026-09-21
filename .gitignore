@@ -228,3 +228,6 @@ Thumbs.db
 # E-Mail Files
 *.msg
 *.eml
+
+# Windows files
+*.lnk

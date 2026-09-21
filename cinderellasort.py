@@ -63,7 +63,7 @@ def merge_common_rules(config_object, common_configfile):
     common_config.optionxform = str
     common_config.read(common_configfile, encoding='utf-8')
 
-    for section in ('BOWLS', 'BOWLS_EMAIL'):
+    for section in ('BOWLS', 'BOWLS_EMAIL', 'BOWLS_DOCPREP'):
         if not common_config.has_section(section):
             continue
 
@@ -139,6 +139,25 @@ def bowllist_email(config_object=''):
         for bowl, _ in config_object.items("BOWLS_EMAIL", raw=True):
             bowls.append(bowl)
     return bowls
+
+# list all document preparation bowls
+def bowllist_docprep(config_object=''):
+    bowls = []
+    if config_object and len(config_object) > 0 and config_object.has_section("BOWLS_DOCPREP"):
+        for bowl, _ in config_object.items("BOWLS_DOCPREP", raw=True):
+            bowls.append(bowl)
+    return bowls
+
+# check if file matches a criteria for a document preparation bowl and return the corresponding bowl
+def bowldir_docprep(file, config_object=''):
+    if not (config_object and len(config_object) > 0 and config_object.has_section("BOWLS_DOCPREP")):
+        return ''
+    for (bowl, critlist) in config_object.items("BOWLS_DOCPREP", raw=True):
+        for crit in critlist.split(','):
+            crit = crit.strip()
+            if crit and crit in file:
+                return '/' + bowl
+    return ''
 
 # check if file matches a criteria for a bowl and return the corresponding bowl
 def bowldir(file, config_object='', file_path=None, check_content=False):
@@ -495,7 +514,7 @@ def prepsort(config_object, targetdir, prepfilter = False):
                 log_message(f"Error creating directory {directory}: {e}", level="ERROR")
         else:
             log_message(f"Directory already exists: {directory}", level="INFO")
-            
+
     if prepfilter:
         print(f"(Scan for all existing directories in the target directory: {targetdir})")
         dirnames = []
@@ -651,6 +670,100 @@ def handle_oldfiles(file_path, time_diff):
         print(f"Error deleting old file {file.name}: {e}")
         return
 
+def _pdf_page_count(file_path):
+    import pdfplumber
+    with pdfplumber.open(str(file_path)) as pdf:
+        return len(pdf.pages)
+
+
+def _docprep_pdf(source, output_path, settings):
+    from wit_pytools.documenttools import pdf_to_markdown
+    output = pdf_to_markdown(
+        source,
+        output_path=output_path,
+        sidecar_path=settings.get('sidecar_path'),
+        write_sidecar=settings['sidecar'],
+        mode=settings['mode'],
+        model=settings['model'],
+        language=settings['language'],
+        dpi=settings['dpi'],
+        retry_times=settings['retry_times'],
+        continue_on_error=settings['continue_on_error'],
+        yes=True,
+    )
+    if not settings['sidecar']:
+        sidecar = output.with_name(f"{output.stem}_pdf2md.json")
+        if sidecar.exists():
+            sidecar.unlink()
+    return output
+
+
+# Converter registry: extension -> (page counter, converter). Only PDF for now.
+DOCPREP_CONVERTERS = {
+    '.pdf': (_pdf_page_count, _docprep_pdf),
+}
+
+
+def docprep_settings(config_object):
+    """Read the [DOCPREP] section with defaults."""
+    section = config_object['DOCPREP'] if config_object.has_section('DOCPREP') else {}
+    language = (section.get('language', 'en') or 'en').strip().lower()
+    return {
+        'mode': (section.get('mode', 'vision') or 'vision').strip().lower(),
+        'model': (section.get('model', '') or '').strip() or None,
+        'language': language,
+        'dpi': int(section.get('dpi', '150')),
+        'max_pages': int(section.get('max_pages', '50')),
+        'retry_times': int(section.get('retry_times', '3')),
+        'continue_on_error': (section.get('continue_on_error', 'false') or 'false').strip().lower() == 'true',
+        'sidecar': (section.get('sidecar', 'true') or 'true').strip().lower() == 'true',
+    }
+
+
+def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
+    """Create Markdown in targetdir while preserving source documents."""
+    settings = docprep_settings(config_object)
+    source = file if isinstance(file, Path) else Path(os.path.join(sourcedir, str(file)))
+    page_count, convert = DOCPREP_CONVERTERS[source.suffix.lower()]
+    source_root = Path(config_object['TABLE']['sourcedir']).resolve()
+    source = source.resolve()
+    relative_path = source.relative_to(source_root)
+    cleaned_name = normalize_spaces(cleanfilename(source.name, clean, clean_nocase, replacements))
+    target_root = Path(targetdir)
+    output_path = target_root / relative_path.parent / f"{Path(cleaned_name).stem}.md"
+    sidecar_path = source.parent / f"{Path(cleaned_name).stem}_pdf2md.json"
+    log_message(_('Handling Doc_prep: {}').format(source), level="INFO")
+
+    if dryrun:
+        print(f"  Doc_prep (dryrun): {source} -> {output_path}")
+        return True
+
+    try:
+        pages = page_count(source)
+        if pages > settings['max_pages']:
+            log_message(
+                f"Doc_prep: skipping {source.name}: {pages} pages exceed max_pages={settings['max_pages']}",
+                level="WARNING",
+            )
+            return False
+        if output_path.exists():
+            log_message(f"Doc_prep: {output_path.name} exists, skipping conversion", level="INFO")
+        else:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            conversion_settings = dict(settings)
+            conversion_settings['sidecar_path'] = str(sidecar_path)
+            convert(source, output_path, conversion_settings)
+            log_message(f"Doc_prep: created {output_path}", level="INFO")
+    except Exception as e:
+        log_message(f"Doc_prep: conversion failed for {source.name}: {e}", level="ERROR")
+        return False
+
+    if filemode == 'nc':
+        from wit_pytools import nctools
+        nctools.ncscandir(nctools.getncpath(str(output_path.parent)))
+    return True
+
+
 def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, check_content=False):
     # Check if this is a PDF file
     if file.name.lower().endswith('.pdf'):
@@ -680,6 +793,15 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
     if not file_matches_type:
         print(f" - Skipping file {file.name}: not a specified type ({ftype_sort})")
         return
+
+    ## Handle Doc_prep Bowls (conversion before sorting) ##
+    if file_ext in DOCPREP_CONVERTERS and bowllist_docprep(config_object):
+        nfile = normalize_spaces(cleanfilename(file.name, clean, clean_nocase, replacements))
+        docprep_bowl = bowldir_docprep(nfile, config_object)
+        if docprep_bowl:
+            print("Handle Doc_prep Bowls")
+            handle_docprep(file, sourcedir, targetdir, docprep_bowl, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+            return
 
     ## Handle PDF Bowls ##
     if file.name.lower().endswith('.pdf'):
@@ -917,8 +1039,14 @@ def cinderellasort(
         
         for root, dirs, files in os.walk(sourcedir):
             for filename in files:
-                print("Filename: " + filename)
                 lower_name = filename.casefold()
+                if not any(
+                    lower_name.endswith(ftype.strip().casefold())
+                    for ftype in ftype_sort.split(',')
+                    if ftype.strip()
+                ):
+                    continue
+                print("Filename: " + filename)
                 delete_candidate = False
                 for ftype in ftype_sort.split(','):
                     ftype_clean = ftype.strip().casefold()

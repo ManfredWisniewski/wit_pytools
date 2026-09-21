@@ -316,5 +316,157 @@ def test_trash_nocase_removes_sample_files(tmp_path):
 
     assert (source_dir / keep_file).exists(), "Non-matching files should remain"
 
+
+# --- Doc_prep bowls --------------------------------------------------------
+
+import wit_pytools.cinderellasort as cs
+
+TEST_PDF = os.path.join(os.path.dirname(__file__), "documenttools", "testdocument.pdf")
+
+
+def _docprep_setup(tmp_path, *, docprep_section=None, bowls=None, pdf_name="Rechnung 2026.pdf"):
+    source_dir = tmp_path / "source"
+    target_dir = tmp_path / "target"
+    source_dir.mkdir()
+    target_dir.mkdir()
+    source_file = source_dir / pdf_name
+    source_file.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(TEST_PDF, source_file)
+
+    config = ConfigParser()
+    config.optionxform = str
+    config["TABLE"] = {
+        "sourcedir": str(source_dir),
+        "targetdir": str(target_dir),
+        "ftype_sort": ".pdf",
+        "filemode": "win",
+    }
+    config["SETTINGS"] = {"overwrite": "false"}
+    config["BOWLS_DOCPREP"] = {"Rechnungen": "Rechnung,Invoice"}
+    if bowls:
+        config["BOWLS"] = bowls
+    if docprep_section is not None:
+        config["DOCPREP"] = docprep_section
+    config_path = tmp_path / "docprep.ini"
+    with config_path.open("w", encoding="utf-8") as fp:
+        config.write(fp)
+    return source_dir, target_dir, config_path
+
+
+def _fake_converter(calls, fail=False):
+    def convert(source, output_path, settings):
+        calls.append({"source": source, "output": output_path, "settings": settings})
+        if fail:
+            raise RuntimeError("model unavailable")
+        output_path.write_text("# converted", encoding="utf-8")
+        return output_path
+    return convert
+
+
+def test_docprep_converts_and_moves_original_to_originals(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path, docprep_section={"language": "de", "model": "test/model"}
+    )
+    calls = []
+    monkeypatch.setitem(cs.DOCPREP_CONVERTERS, ".pdf", (cs._pdf_page_count, _fake_converter(calls)))
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (source_dir / "Rechnung 2026.pdf").is_file()
+    assert (target_dir / "Rechnung 2026.md").read_text(encoding="utf-8") == "# converted"
+    assert not (source_dir / "Rechnung 2026.md").exists()
+    assert calls[0]["settings"]["model"] == "test/model"
+    assert calls[0]["settings"]["language"] == "de"
+    assert calls[0]["settings"]["max_pages"] == 50
+
+
+def test_docprep_failure_leaves_pdf_in_source(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(tmp_path)
+    monkeypatch.setitem(cs.DOCPREP_CONVERTERS, ".pdf", (cs._pdf_page_count, _fake_converter([], fail=True)))
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (source_dir / "Rechnung 2026.pdf").is_file()
+    assert not (target_dir / "Rechnung 2026.pdf").exists()
+    assert not list(source_dir.glob("*.md"))
+
+
+def test_docprep_existing_markdown_skips_conversion_but_moves(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(tmp_path)
+    (target_dir / "Rechnung 2026.md").write_text("existing", encoding="utf-8")
+    calls = []
+    monkeypatch.setitem(cs.DOCPREP_CONVERTERS, ".pdf", (cs._pdf_page_count, _fake_converter(calls)))
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert calls == []
+    assert (target_dir / "Rechnung 2026.md").read_text(encoding="utf-8") == "existing"
+    assert (source_dir / "Rechnung 2026.pdf").is_file()
+
+
+def test_docprep_max_pages_skips_large_documents(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(tmp_path, docprep_section={"max_pages": "1"})
+    calls = []
+    monkeypatch.setitem(cs.DOCPREP_CONVERTERS, ".pdf", (cs._pdf_page_count, _fake_converter(calls)))
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert calls == []
+    assert (source_dir / "Rechnung 2026.pdf").is_file()
+
+
+def test_docprep_non_matching_pdf_uses_standard_bowls(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path, bowls={"Sonstiges": "Bericht"}, pdf_name="Bericht.pdf"
+    )
+    calls = []
+    monkeypatch.setitem(cs.DOCPREP_CONVERTERS, ".pdf", (cs._pdf_page_count, _fake_converter(calls)))
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert calls == []
+    assert (target_dir / "Sonstiges" / "Bericht.pdf").is_file()
+
+
+def test_docprep_keeps_original_and_skips_existing_target_markdown(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(tmp_path)
+    target_file = target_dir / "Rechnung 2026.md"
+    target_file.write_text("existing", encoding="utf-8")
+    calls = []
+    monkeypatch.setitem(cs.DOCPREP_CONVERTERS, ".pdf", (cs._pdf_page_count, _fake_converter(calls)))
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert calls == []
+    assert target_file.read_text(encoding="utf-8") == "existing"
+    assert (source_dir / "Rechnung 2026.pdf").is_file()
+
+
+def test_docprep_mirrors_subdir_and_keeps_original(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path, pdf_name="nested/Invoice.pdf"
+    )
+    calls = []
+    monkeypatch.setitem(cs.DOCPREP_CONVERTERS, ".pdf", (cs._pdf_page_count, _fake_converter(calls)))
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (source_dir / "nested" / "Invoice.pdf").is_file()
+    assert (target_dir / "nested" / "Invoice.md").is_file()
+    assert calls[0]["output"] == target_dir / "nested" / "Invoice.md"
+
+
+def test_docprep_settings_defaults():
+    config = ConfigParser()
+    config.optionxform = str
+    settings = cs.docprep_settings(config)
+    assert settings["language"] == "en"
+    assert settings["sidecar"] is True
+    config["DOCPREP"] = {"language": "de", "sidecar": "false"}
+    settings = cs.docprep_settings(config)
+    assert settings["language"] == "de"
+    assert settings["sidecar"] is False
+
+
 if __name__ == '__main__':
     pytest.main()

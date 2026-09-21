@@ -292,6 +292,8 @@ def pdf_to_markdown(
     start_page: int = 1,
     end_page: Optional[int] = None,
     output_path: Optional[Union[str, Path]] = None,
+    sidecar_path: Optional[Union[str, Path]] = None,
+    write_sidecar: bool = True,
     overwrite: bool = False,
     keep_pages: bool = False,
     prompt_file: Optional[Union[str, Path]] = None,
@@ -306,9 +308,16 @@ def pdf_to_markdown(
     """Convert a PDF to Markdown, write ``<stem>.md`` plus a JSON sidecar, return the path."""
     source = Path(pdf_path)
     target = Path(output_path) if output_path is not None else source.with_suffix(".md")
-    sidecar = target.with_name(f"{target.stem}_pdf2md.json")
+    sidecar = (
+        Path(sidecar_path)
+        if sidecar_path is not None
+        else target.with_name(f"{target.stem}_pdf2md.json")
+    )
     pages_dir = target.with_name(f"{target.stem}_pages") if keep_pages else None
-    for path in (target, sidecar):
+    output_paths = [target]
+    if write_sidecar:
+        output_paths.append(sidecar)
+    for path in output_paths:
         if path.resolve() == source.resolve():
             raise ValueError("The output path must differ from the source path")
         if path.exists() and not overwrite:
@@ -337,7 +346,9 @@ def pdf_to_markdown(
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(result["markdown"] + "\n", encoding="utf-8")
     metadata = dict(result["metadata"], output=target.name, pages_dir=pages_dir.name if pages_dir else None)
-    sidecar.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
+    if write_sidecar:
+        sidecar.parent.mkdir(parents=True, exist_ok=True)
+        sidecar.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
     log_message(f"Wrote {target} ({metadata['mode']}, pages {metadata['pages']})", level="INFO")
     return target
 

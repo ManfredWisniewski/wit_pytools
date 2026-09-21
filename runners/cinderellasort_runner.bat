@@ -18,7 +18,7 @@ set "WORK_DIR=P:\sort"
 
 REM List of config INI files to process (space-separated, leave empty to use cinderellasort.ini in work dir)
 REM Example: set "CONFIG_FILES=P:\sort\downloads.ini P:\sort\emails.ini"
-set "CONFIG_FILES=.\cinderellasort_config.ini"
+set "CONFIG_FILES=%WORK_DIR%\cinderellasort_docprep.ini"
 
 REM Additional options to pass to cinderellasort
 REM Options: --dryrun, --verbose, etc.
@@ -27,6 +27,22 @@ REM set "EXTRA_OPTS=--dryrun"
 
 REM Example: move all files between directories (requires Python call)
 python -c "import sys; sys.path.insert(0, r'P:\git\witnctools'); from wit_pytools.systools import moveallfiles; moveallfiles(r'Disk:\source', r'Disk:\target', False)"
+
+REM ==============================================================================
+REM ENVIRONMENT
+REM ==============================================================================
+
+if not exist "%~dp0set_ENV.bat" (
+    echo Error: set_ENV.bat not found: %~dp0set_ENV.bat
+    pause
+    exit /b 1
+)
+call "%~dp0set_ENV.bat"
+if errorlevel 1 (
+    echo Error: set_ENV.bat failed.
+    pause
+    exit /b 1
+)
 
 REM ==============================================================================
 REM SCRIPT LOGIC - Do not edit below this line unless necessary
