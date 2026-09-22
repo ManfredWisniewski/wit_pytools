@@ -106,6 +106,33 @@ def test_clean_with_empty_input():
     assert result == ""
 
 
+def test_recursive_false_processes_only_source_root(tmp_path):
+    source_dir = tmp_path / "source"
+    target_dir = tmp_path / "target"
+    nested = source_dir / "nested"
+    nested.mkdir(parents=True)
+    target_dir.mkdir()
+    (source_dir / "root.txt").write_text("root")
+    (nested / "nested.txt").write_text("nested")
+
+    config = ConfigParser()
+    config.optionxform = str
+    config["TABLE"] = {
+        "sourcedir": str(source_dir), "targetdir": str(target_dir),
+        "ftype_sort": ".txt", "filemode": "win",
+    }
+    config["SETTINGS"] = {"recursive": "false", "skipunmatched": "false"}
+    config["BOWLS"] = {".": "."}
+    config_path = tmp_path / "nonrecursive.ini"
+    with config_path.open("w", encoding="utf-8") as fp:
+        config.write(fp)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "root.txt").is_file()
+    assert (nested / "nested.txt").is_file()
+
+
 def test_ftype_delete_applies_in_nested_directories(tmp_path):
     sourcedir = tmp_path / "source"
     sourcedir.mkdir()
@@ -469,6 +496,13 @@ def test_docprep_settings_defaults():
     assert settings["sidecar"] is False
 
 
+def test_gen_img_ignore_max_cost_setting():
+    config = ConfigParser()
+    config.optionxform = str
+    config["GEN_IMG"] = {"max_cost": "ignore"}
+    assert cs.gen_img_settings(config)["max_cost"] == "ignore"
+
+
 # --- GEN_IMG bowls ---------------------------------------------------------
 
 
@@ -549,7 +583,7 @@ def test_gen_img_generates_with_negative_and_reference(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("sidecar_name", ["villa.json", "villa_1.json", "villa_7.json"])
-def test_gen_img_skips_when_sidecar_exists(tmp_path, monkeypatch, sidecar_name):
+def test_gen_img_enumerates_when_sidecar_exists(tmp_path, monkeypatch, sidecar_name):
     source_dir, target_dir, config_path = _gen_img_setup(tmp_path, {"villa_prompt.txt": "prompt"})
     (target_dir / "Renderings").mkdir()
     (target_dir / "Renderings" / sidecar_name).write_text("{}", encoding="utf-8")
@@ -558,17 +592,7 @@ def test_gen_img_skips_when_sidecar_exists(tmp_path, monkeypatch, sidecar_name):
 
     cinderellasort(str(config_path), dryrun=False)
 
-    assert calls == []
-
-
-def test_gen_img_done_marker_ignores_other_slugs():
-    with tempfile.TemporaryDirectory() as d:
-        bowl = Path(d)
-        (bowl / "villa_garden.json").write_text("{}")   # different slug, not numeric suffix
-        (bowl / "villager.json").write_text("{}")
-        assert cs.gen_img_done_marker(bowl, "villa") is None
-        (bowl / "villa_2.json").write_text("{}")
-        assert cs.gen_img_done_marker(bowl, "villa") == bowl / "villa_2.json"
+    assert len(calls) == 1
 
 
 def test_gen_img_failure_continues_and_empty_prompt_skipped(tmp_path, monkeypatch):
@@ -598,7 +622,7 @@ def test_gen_img_max_jobs_limits_run(tmp_path, monkeypatch):
 
     calls.clear()
     cinderellasort(str(config_path), dryrun=False)
-    assert len(calls) == 1, "remaining job is picked up on the next run; done ones are skipped"
+    assert len(calls) == 2, "existing sidecars do not suppress later runs"
 
 
 def test_gen_img_general_reference_fallback(tmp_path):

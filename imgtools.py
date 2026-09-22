@@ -1,8 +1,12 @@
 import os
-from wit_pytools.systools import checkfile
-from PIL import Image
 import shutil
+import textwrap
 from io import BytesIO
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFont, ImageOps
+
+from wit_pytools.systools import checkfile
 
 # Use absolute paths based on the script location
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -354,6 +358,142 @@ def img_getexif(sourcedir, image):
         raise e
     except Exception as e:
         raise ValueError(f"Error getting EXIF data: {str(e)}")
+
+def _watermark_font(font_path, font_size):
+    if font_path:
+        return ImageFont.truetype(font_path, font_size)
+    return ImageFont.load_default()
+
+
+def _watermark_text_lines(draw, text, font, max_width):
+    lines = []
+    for paragraph in text.splitlines() or ['']:
+        words = paragraph.split()
+        if not words:
+            lines.append('')
+            continue
+        current = words[0]
+        for word in words[1:]:
+            candidate = f'{current} {word}'
+            if draw.textlength(candidate, font=font) <= max_width:
+                current = candidate
+            else:
+                lines.append(current)
+                current = word
+        lines.append(current)
+    return lines
+
+
+def add_watermark(
+    input_path,
+    output_path=None,
+    *,
+    text=None,
+    watermark_image=None,
+    position='bottom-right',
+    font_path=None,
+    font_size=None,
+    text_color=(255, 255, 255),
+    text_opacity=128,
+    logo_max_size=None,
+    logo_opacity=128,
+    margin=20,
+    outline_color=(0, 0, 0),
+    outline_width=2,
+    max_text_width_ratio=0.40,
+    background_color=(255, 255, 255),
+    overwrite=False,
+):
+    """Add a literal text and/or logo watermark without overwriting the source."""
+    source = Path(input_path)
+    if not source.is_file():
+        raise FileNotFoundError(source)
+    if text is None and watermark_image is None:
+        raise ValueError('text or watermark_image is required')
+    if position not in {'top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'}:
+        raise ValueError('Unsupported watermark position')
+    if not 0 <= text_opacity <= 255 or not 0 <= logo_opacity <= 255:
+        raise ValueError('Opacity must be between 0 and 255')
+    if not 0 < max_text_width_ratio <= 1 or margin < 0:
+        raise ValueError('Invalid text width ratio or margin')
+
+    target = Path(output_path) if output_path is not None else source.with_name(
+        f'{source.stem}_watermarked{source.suffix}'
+    )
+    if target.resolve() == source.resolve():
+        raise ValueError('The output path must differ from the source path')
+    if target.exists() and not overwrite:
+        raise FileExistsError(target)
+
+    image = ImageOps.exif_transpose(Image.open(source))
+    exif = image.info.get('exif')
+    icc_profile = image.info.get('icc_profile')
+    base = image.convert('RGBA')
+    overlay = Image.new('RGBA', base.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+    elements = []
+    padding = max(8, margin // 2)
+
+    if watermark_image is not None:
+        logo = ImageOps.exif_transpose(Image.open(watermark_image)).convert('RGBA')
+        max_size = logo_max_size or (max(1, int(base.width * 0.25)), max(1, int(base.height * 0.25)))
+        logo.thumbnail(max_size, Image.Resampling.LANCZOS)
+        alpha = logo.getchannel('A').point(lambda value: value * logo_opacity // 255)
+        logo.putalpha(alpha)
+        elements.append(('logo', logo))
+
+    if text is not None:
+        size = font_size or max(12, int(base.width * 0.04))
+        font = _watermark_font(font_path, size)
+        lines = _watermark_text_lines(draw, str(text), font, base.width * max_text_width_ratio)
+        bbox = draw.multiline_textbbox((0, 0), '\n'.join(lines), font=font, stroke_width=outline_width)
+        text_layer = Image.new('RGBA', (bbox[2] - bbox[0], bbox[3] - bbox[1]), (0, 0, 0, 0))
+        text_draw = ImageDraw.Draw(text_layer)
+        fill = (*text_color[:3], text_opacity)
+        stroke = (*outline_color[:3], text_opacity)
+        text_draw.multiline_text((-bbox[0], -bbox[1]), '\n'.join(lines), font=font, fill=fill, stroke_width=outline_width, stroke_fill=stroke)
+        elements.append(('text', text_layer))
+
+    block_width = max(element.width for _, element in elements) + padding * 2
+    block_height = sum(element.height for _, element in elements) + padding * 2 + max(0, len(elements) - 1) * padding
+    block = Image.new('RGBA', (block_width, block_height), (0, 0, 0, 0))
+    y = padding
+    for _, element in elements:
+        block.alpha_composite(element, ((block_width - element.width) // 2, y))
+        y += element.height + padding
+
+    if position in {'top-left', 'bottom-left'}:
+        x = margin
+    elif position in {'top-right', 'bottom-right'}:
+        x = base.width - block.width - margin
+    else:
+        x = (base.width - block.width) // 2
+    if position in {'top-left', 'top-right'}:
+        y = margin
+    elif position in {'bottom-left', 'bottom-right'}:
+        y = base.height - block.height - margin
+    else:
+        y = (base.height - block.height) // 2
+    overlay.alpha_composite(block, (max(0, x), max(0, y)))
+    result = Image.alpha_composite(base, overlay)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    format_name = Image.registered_extensions().get(target.suffix.lower())
+    if not format_name:
+        raise ValueError(f'Unsupported output image extension: {target.suffix}')
+    save_kwargs = {}
+    if exif and format_name not in {'PNG', 'WEBP'}:
+        save_kwargs['exif'] = exif
+    if icc_profile:
+        save_kwargs['icc_profile'] = icc_profile
+    if format_name in {'JPEG', 'JPG'}:
+        result = result.convert('RGB')
+    result.save(target, format=format_name, **save_kwargs)
+    image.close()
+    if watermark_image is not None:
+        logo.close()
+    return str(target)
+
 
 def img_getgps(sourcedir, image):
     """

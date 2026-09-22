@@ -2,6 +2,8 @@
 
 ## General
 
+- Add a user-facing runner/config example for the `recursive=false` option.
+
 - move the cinderellasort script to the package directory
 - make the cinderella sort function case-insensitive like the cleanup
 - replace the legacy subdirectory pass in `cinderellasort()` with `handlefile()`

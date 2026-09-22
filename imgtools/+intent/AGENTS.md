@@ -1,0 +1,1 @@
+Before making changes, read the shared WIT development guidance in `+wit-dev/` in this repository. Start with `+wit-dev/README.md` and `+wit-dev/AGENTS.md`, then read the relevant convention or best-practice files. These shared definitions apply independently of which skill or AI agent is performing the work.

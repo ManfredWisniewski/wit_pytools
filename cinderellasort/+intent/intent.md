@@ -36,6 +36,7 @@ One INI file per project. Keys and bowl names are case-preserving.
 - `usedirectoryname` — name a file after its directory when it is the only sortable file there.
 - `skipunmatched` (default `true`) — leave files without a matching bowl in place instead of moving them to `targetdir`.
 - `check_content` — for PDFs, also search the document text for `[BOWLS]` criteria (`document_find_regex`).
+- `recursive` (default `true`) — process subdirectories; set `false` to process only files directly in `sourcedir`.
 
 ### `[REPLACEMENTS]`
 
@@ -153,7 +154,7 @@ aspect_ratio=           ; optional pass-through parameters
 resolution=
 quality=
 output_format=
-max_cost=               ; per job; empty: OPENROUTER_MAX_COST / 0.50
+max_cost=               ; per job; empty: OPENROUTER_MAX_COST / 0.50; ignore: bypass guard
 max_jobs=20             ; per run
 ```
 
@@ -169,9 +170,9 @@ For a prompt `<slug>_prompt.txt` in `sourcedir` (recursive); `<slug>` is the job
 
 ### Behavior per job
 
-1. `<bowl>/<slug>.json` or `<bowl>/<slug>_<k>.json` exists → job finished, skip (`gen_img_done_marker`).
+1. Existing images and sidecars do not skip a job; `generate_image` advances to the next free `_k` enumeration.
 2. `max_jobs` reached in this run → leave for the next run (warning).
-3. `generate_image(prompt, model, negative_prompt, out_dir=<bowl>, n, ..., input_references=[ref], basename=<slug>, interactive=False, max_cost)`.
+3. `generate_image(prompt, model, negative_prompt, out_dir=<bowl>, n, ..., input_references=[ref], basename=<slug>, interactive=False, max_cost).
 4. Output `<slug>.png` (or `<slug>_1..n.png`); an existing image or sidecar name advances to the next free `_k`. Every image gets its own sidecar with the identical name (`<slug>.json`, `<slug>_k.json`).
 5. Cost above `max_cost` or unknown price → `RuntimeError` from `generate_image`, logged, job skipped. API errors likewise; the run continues.
 6. `nc` mode → rescan the bowl directory.
@@ -180,7 +181,7 @@ For a prompt `<slug>_prompt.txt` in `sourcedir` (recursive); `<slug>` is the job
 
 - No per-prompt parameters; all jobs of a run share `[GEN_IMG]` (see `todo.md`).
 - No moving or deleting of prompt files.
-- No regeneration of finished jobs; delete the `<slug>*.json` sidecar(s) to regenerate.
+- Existing sidecars do not prevent regeneration; each run uses the next free enumeration.
 
 ## Functions
 

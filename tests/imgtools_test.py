@@ -7,7 +7,7 @@ from PIL import Image
 
 # Add the parent directory to the path so we can import modules from wit_pytools
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from wit_pytools.imgtools import jpg_compress, png2jpg, img_getexif, png_compress, avif_compress, save_img
+from wit_pytools.imgtools import add_watermark, jpg_compress, png2jpg, img_getexif, png_compress, avif_compress, save_img
 
 def create_test_image(path, size=(100, 100), color=(255, 0, 0)):
     """Create a test image for testing"""
@@ -156,6 +156,54 @@ def test_save_img_choose_format():
         assert out2.endswith('.jpg') or out2.endswith('.png')
     finally:
         shutil.rmtree(temp_dir)
+
+def test_add_watermark_text_default_output_and_no_overwrite(tmp_path):
+    source = tmp_path / "source.png"
+    Image.new("RGBA", (200, 100), (0, 0, 255, 255)).save(source)
+
+    output = add_watermark(source, text="Demo")
+    output_path = os.path.abspath(output)
+    assert output_path.endswith("source_watermarked.png")
+    assert os.path.exists(output_path)
+    with pytest.raises(FileExistsError):
+        add_watermark(source, text="Demo")
+
+
+def test_add_watermark_logo_and_combined(tmp_path):
+    source = tmp_path / "source.jpg"
+    logo = tmp_path / "logo.png"
+    output = tmp_path / "out.jpg"
+    Image.new("RGB", (240, 120), (20, 40, 60)).save(source)
+    Image.new("RGBA", (40, 20), (255, 0, 0, 180)).save(logo)
+
+    result = add_watermark(
+        source,
+        output,
+        text="Example",
+        watermark_image=logo,
+        position="center",
+        text_opacity=200,
+        logo_opacity=200,
+    )
+
+    assert result == str(output)
+    with Image.open(output) as image:
+        assert image.size == (240, 120)
+        assert image.mode == "RGB"
+        assert image.getpixel((120, 60)) != (20, 40, 60)
+
+
+def test_add_watermark_validation(tmp_path):
+    source = tmp_path / "source.png"
+    Image.new("RGB", (20, 20), "white").save(source)
+
+    with pytest.raises(ValueError):
+        add_watermark(source)
+    with pytest.raises(ValueError):
+        add_watermark(source, text="x", position="diagonal")
+    with pytest.raises(ValueError):
+        add_watermark(source, text="x", text_opacity=256)
+
 
 # Run the tests using pytest
 if __name__ == "__main__":
