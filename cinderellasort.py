@@ -63,7 +63,7 @@ def merge_common_rules(config_object, common_configfile):
     common_config.optionxform = str
     common_config.read(common_configfile, encoding='utf-8')
 
-    for section in ('BOWLS', 'BOWLS_EMAIL', 'BOWLS_DOCPREP'):
+    for section in ('BOWLS', 'BOWLS_EMAIL', 'BOWLS_DOCPREP', 'BOWLS_GEN_IMG'):
         if not common_config.has_section(section):
             continue
 
@@ -153,6 +153,25 @@ def bowldir_docprep(file, config_object=''):
     if not (config_object and len(config_object) > 0 and config_object.has_section("BOWLS_DOCPREP")):
         return ''
     for (bowl, critlist) in config_object.items("BOWLS_DOCPREP", raw=True):
+        for crit in critlist.split(','):
+            crit = crit.strip()
+            if crit and crit in file:
+                return '/' + bowl
+    return ''
+
+# list all image generation bowls
+def bowllist_gen_img(config_object=''):
+    bowls = []
+    if config_object and len(config_object) > 0 and config_object.has_section("BOWLS_GEN_IMG"):
+        for bowl, _ in config_object.items("BOWLS_GEN_IMG", raw=True):
+            bowls.append(bowl)
+    return bowls
+
+# check if a prompt file matches a criteria for an image generation bowl
+def bowldir_gen_img(file, config_object=''):
+    if not (config_object and len(config_object) > 0 and config_object.has_section("BOWLS_GEN_IMG")):
+        return ''
+    for (bowl, critlist) in config_object.items("BOWLS_GEN_IMG", raw=True):
         for crit in critlist.split(','):
             crit = crit.strip()
             if crit and crit in file:
@@ -515,6 +534,16 @@ def prepsort(config_object, targetdir, prepfilter = False):
         else:
             log_message(f"Directory already exists: {directory}", level="INFO")
 
+    # Create directories from BOWLS_GEN_IMG section
+    for bowl in bowllist_gen_img(config_object):
+        directory = targetdir / str(bowl).replace('\\', '/').replace('//', '/')
+        if not directory.exists():
+            log_message(f"Creating directory: {directory}", level="INFO")
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                log_message(f"Error creating directory {directory}: {e}", level="ERROR")
+
     if prepfilter:
         print(f"(Scan for all existing directories in the target directory: {targetdir})")
         dirnames = []
@@ -764,6 +793,140 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
     return True
 
 
+GEN_IMG_REFERENCE_SUFFIXES = ('.png', '.jpg', '.jpeg', '.webp')
+GEN_IMG_GENERAL_REFERENCE = 'reference'
+GEN_IMG_PROMPT_SUFFIX = '_prompt'
+GEN_IMG_NEGATIVE_SUFFIX = '_negative-prompt'
+
+
+def gen_img_settings(config_object):
+    """Read the [GEN_IMG] section with defaults."""
+    section = config_object['GEN_IMG'] if config_object.has_section('GEN_IMG') else {}
+
+    def optional(key):
+        value = (section.get(key, '') or '').strip()
+        return value or None
+
+    max_cost = optional('max_cost')
+    if max_cost and max_cost.lower() == 'ignore':
+        max_cost_value = 'ignore'
+    else:
+        max_cost_value = float(max_cost) if max_cost else None
+    return {
+        'model': optional('model'),
+        'n': int(section.get('n', '1') or '1'),
+        'aspect_ratio': optional('aspect_ratio'),
+        'resolution': optional('resolution'),
+        'quality': optional('quality'),
+        'output_format': optional('output_format'),
+        'max_cost': max_cost_value,
+        'max_jobs': int(section.get('max_jobs', '20') or '20'),
+    }
+
+
+def _gen_img_call(prompt, settings, out_dir, basename, negative_prompt, reference):
+    from wit_pytools.aitools.generate_image import generate_image
+    return generate_image(
+        prompt,
+        settings['model'],
+        negative_prompt=negative_prompt,
+        out_dir=out_dir,
+        n=settings['n'],
+        aspect_ratio=settings['aspect_ratio'],
+        resolution=settings['resolution'],
+        quality=settings['quality'],
+        output_format=settings['output_format'],
+        input_references=[reference] if reference else None,
+        max_cost=None if settings['max_cost'] == 'ignore' else settings['max_cost'],
+        yes=settings['max_cost'] == 'ignore',
+        interactive=False,
+        basename=basename,
+    )
+
+
+# Indirection so tests can replace the generator without touching aitools.
+GEN_IMG_GENERATOR = _gen_img_call
+
+# Jobs already generated in the current run, reset by cinderellasort().
+_gen_img_jobs_done = 0
+
+
+def is_gen_img_prompt(file):
+    """True for ``<slug>_prompt.txt`` files; negative prompt files are not jobs."""
+    path = Path(file)
+    return (
+        path.suffix.lower() == '.txt'
+        and path.stem.endswith(GEN_IMG_PROMPT_SUFFIX)
+        and len(path.stem) > len(GEN_IMG_PROMPT_SUFFIX)
+    )
+
+
+def gen_img_slug(file):
+    """Return the job slug of ``<slug>_prompt.txt``."""
+    return Path(file).stem[:-len(GEN_IMG_PROMPT_SUFFIX)]
+
+
+def gen_img_reference(directory, slug):
+    """Return ``<slug>.<ext>`` in ``directory``, else the general ``reference.<ext>``, else None."""
+    directory = Path(directory)
+    for name in (slug, GEN_IMG_GENERAL_REFERENCE):
+        for suffix in GEN_IMG_REFERENCE_SUFFIXES:
+            candidate = directory / f"{name}{suffix}"
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def handle_gen_img(file, sourcedir, targetdir, bowl, config_object, filemode, dryrun):
+    """Generate images for a prompt file into its bowl; prompt files stay in place."""
+    global _gen_img_jobs_done
+    settings = gen_img_settings(config_object)
+    source = file if isinstance(file, Path) else Path(os.path.join(sourcedir, str(file)))
+    if not is_gen_img_prompt(source):
+        return False
+    stem = gen_img_slug(source)
+    bowl_dir = Path(targetdir + bowl)
+    log_message(_('Handling GEN_IMG: {}').format(source), level="INFO")
+
+    if _gen_img_jobs_done >= settings['max_jobs']:
+        message = f"GEN_IMG: max_jobs={settings['max_jobs']} reached, leaving {source.name} for the next run"
+        log_message(message, level="WARNING")
+        print(message)
+        return False
+
+    prompt = source.read_text(encoding='utf-8').strip()
+    if not prompt:
+        message = f"GEN_IMG: empty prompt file {source}, skipping"
+        log_message(message, level="WARNING")
+        print(message)
+        return False
+    negative_file = source.with_name(f"{stem}{GEN_IMG_NEGATIVE_SUFFIX}.txt")
+    negative_prompt = negative_file.read_text(encoding='utf-8').strip() if negative_file.is_file() else None
+    reference = gen_img_reference(source.parent, stem)
+
+    if dryrun:
+        print(f"  GEN_IMG (dryrun): {source.name} -> {bowl_dir / stem}")
+        return True
+
+    try:
+        bowl_dir.mkdir(parents=True, exist_ok=True)
+        paths = GEN_IMG_GENERATOR(prompt, settings, bowl_dir, stem, negative_prompt or None, reference)
+        _gen_img_jobs_done += 1
+        message = f"GEN_IMG: generated {[p.name for p in paths]} for {source.name}"
+        log_message(message, level="INFO")
+        print(message)
+    except Exception as e:
+        message = f"GEN_IMG: generation failed for {source.name}: {e}"
+        log_message(message, level="ERROR")
+        print(message)
+        return False
+
+    if filemode == 'nc':
+        from wit_pytools import nctools
+        nctools.ncscandir(nctools.getncpath(str(bowl_dir)))
+    return True
+
+
 def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, check_content=False):
     # Check if this is a PDF file
     if file.name.lower().endswith('.pdf'):
@@ -801,6 +964,14 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         if docprep_bowl:
             print("Handle Doc_prep Bowls")
             handle_docprep(file, sourcedir, targetdir, docprep_bowl, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+            return
+
+    ## Handle image generation bowls (prompt files) ##
+    if file_ext == '.txt' and bowllist_gen_img(config_object) and is_gen_img_prompt(file):
+        gen_img_bowl = bowldir_gen_img(file.name, config_object)
+        if gen_img_bowl:
+            print("Handle GEN_IMG Bowls")
+            handle_gen_img(file, sourcedir, targetdir, gen_img_bowl, config_object, filemode, dryrun)
             return
 
     ## Handle PDF Bowls ##
@@ -897,6 +1068,14 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                 movefile(sourcedir, file, targetdir, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
 
 ## MAIN cinderellasort execution ##
+def _walk_source(sourcedir, recursive):
+    """Yield source directory contents recursively or at one level."""
+    if recursive:
+        yield from os.walk(sourcedir)
+        return
+    yield sourcedir, [], os.listdir(sourcedir)
+
+
 def cinderellasort(
         configfile,
         single=None,
@@ -904,6 +1083,8 @@ def cinderellasort(
         dryrun=False,
         common_configfile=None):
     #TODO check configfile for valid ini file
+    global _gen_img_jobs_done
+    _gen_img_jobs_done = 0
     files = ""
     time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
@@ -940,6 +1121,7 @@ def cinderellasort(
     use_directory_name = settings.get('usedirectoryname', 'false').strip().lower() == 'true'
     skip_unmatched = settings.get('skipunmatched', 'true').strip().lower() == 'true'
     check_content = settings.get('check_content', 'false').strip().lower() == 'true'
+    recursive = settings.get('recursive', 'true').strip().lower() == 'true'
 
     # Fetch replacements from the REPLACEMENTS section
     replacements = {}
@@ -992,7 +1174,7 @@ def cinderellasort(
         print("Sourcedir: " + sourcedir)
         print("\n## First pass: deleting unwanted files")
         valid_sort_dirs = set()
-        for root, dirs, files in os.walk(sourcedir):
+        for root, dirs, files in _walk_source(sourcedir, recursive):
             root_path = Path(root).resolve()
             current_valid = isvalidsort(root, ftype_sort)
             if current_valid:
@@ -1025,7 +1207,7 @@ def cinderellasort(
         dir_file_counts = {}
         if use_directory_name:
             print("  Counting valid files per directory...")
-            for root, dirs, files in os.walk(sourcedir):
+            for root, dirs, files in _walk_source(sourcedir, recursive):
                 valid_count = 0
                 for filename in files:
                     for ftype in ftype_sort.split(','):
@@ -1037,7 +1219,7 @@ def cinderellasort(
                     dir_file_counts[root] = valid_count
                     print(f"    {root}: {valid_count} valid files")
         
-        for root, dirs, files in os.walk(sourcedir):
+        for root, dirs, files in _walk_source(sourcedir, recursive):
             for filename in files:
                 lower_name = filename.casefold()
                 if not any(
@@ -1072,7 +1254,9 @@ def cinderellasort(
         log_message(f"Processed {processed_files} files in {sourcedir} and subdirectories")
         
     # Get list of all subdirectories for additional processing if needed
-    dirlist = [f for f in Path(sourcedir).resolve().glob('**/*') if f.is_dir()]
+    dirlist = []
+    if recursive:
+        dirlist = [f for f in Path(sourcedir).resolve().glob('**/*') if f.is_dir()]
     print([str(d) for d in dirlist])
     for maindir in dirlist:
         print(f'Checking dir: {maindir}')

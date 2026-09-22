@@ -50,7 +50,7 @@ def estimate_cost(model: str, n: int = 1, *, api_key: Optional[str] = None) -> O
     return max(prices) * n
 
 
-def _confirm(estimate: Optional[float], max_cost: float, yes: bool) -> None:
+def _confirm(estimate: Optional[float], max_cost: float, yes: bool, interactive: bool = True) -> None:
     if yes:
         return
     if estimate is None:
@@ -59,6 +59,8 @@ def _confirm(estimate: Optional[float], max_cost: float, yes: bool) -> None:
         return
     else:
         question = f"Estimated cost {estimate:.2f} USD exceeds limit {max_cost:.2f} USD."
+    if not interactive:
+        raise RuntimeError(f"{question} Aborted (non-interactive)")
     answer = input(f"{question} Continue? [y/N] ").strip().lower()
     if answer not in ("y", "yes"):
         raise RuntimeError("Aborted by user before generating")
@@ -68,6 +70,28 @@ def _check_targets(paths: Sequence[Path], overwrite: bool) -> None:
     existing = [path for path in paths if path.exists()]
     if existing and not overwrite:
         raise FileExistsError(existing[0])
+
+
+def _taken(directory: Path, stem: str, extension: str) -> bool:
+    image_exists = any(
+        (directory / f"{stem}.{known_extension}").exists()
+        for known_extension in _MEDIA_EXTENSIONS.values()
+    )
+    return image_exists or (directory / f"{stem}.json").exists()
+
+
+def _free_targets(directory: Path, basename: str, extensions: Sequence[str]) -> List[Path]:
+    """Return ``<basename>.<ext>`` (or ``_1.. _n``), advancing ``_k`` past existing images/sidecars."""
+    if len(extensions) == 1 and not _taken(directory, basename, extensions[0]):
+        return [directory / f"{basename}.{extensions[0]}"]
+    targets: List[Path] = []
+    index = 1
+    for extension in extensions:
+        while _taken(directory, f"{basename}_{index}", extension):
+            index += 1
+        targets.append(directory / f"{basename}_{index}.{extension}")
+        index += 1
+    return targets
 
 
 def generate_image(
@@ -86,8 +110,15 @@ def generate_image(
     max_cost: Optional[float] = None,
     yes: bool = False,
     api_key: Optional[str] = None,
+    basename: Optional[str] = None,
+    interactive: bool = True,
 ) -> List[Path]:
-    """Generate ``n`` images and write them plus a JSON sidecar to ``out_dir``."""
+    """Generate ``n`` images and write them plus a JSON sidecar to ``out_dir``.
+
+    ``basename`` replaces the timestamp-slug file name; existing image names then
+    advance to the next free ``_k`` suffix. ``interactive=False`` raises instead of
+    asking when the cost limit is exceeded or the price is unknown.
+    """
     chosen_model = model or os.environ.get("OPENROUTER_IMAGE_MODEL", "")
     if not chosen_model:
         raise RuntimeError("No model given: pass model= or set OPENROUTER_IMAGE_MODEL")
@@ -98,7 +129,7 @@ def generate_image(
         os.environ.get("OPENROUTER_MAX_COST", DEFAULT_MAX_COST)
     )
     estimate = estimate_cost(chosen_model, n, api_key=api_key)
-    _confirm(estimate, limit, yes)
+    _confirm(estimate, limit, yes, interactive)
 
     payload: Dict[str, Any] = {"model": chosen_model, "prompt": prompt}
     optional = {
@@ -118,41 +149,44 @@ def generate_image(
 
     directory = Path(out_dir)
     directory.mkdir(parents=True, exist_ok=True)
-    basename = f"{datetime.now():%Y%m%d-%H%M%S}_{_slugify(prompt)}"
-    sidecar = directory / f"{basename}.json"
+    fixed_name = basename is not None
+    if not fixed_name:
+        basename = f"{datetime.now():%Y%m%d-%H%M%S}_{_slugify(prompt)}"
 
     body = request("images", payload, timeout=IMAGE_TIMEOUT, api_key=api_key)
     images = body.get("data") or []
     if not images:
         raise RuntimeError(f"OpenRouter returned no images: {body}")
 
-    targets = []
-    for index, image in enumerate(images, start=1):
-        suffix = f"_{index}" if len(images) > 1 else ""
-        targets.append(directory / f"{basename}{suffix}.{_extension(image.get('media_type'))}")
-    _check_targets([*targets, sidecar], overwrite)
+    extensions = [_extension(image.get("media_type")) for image in images]
+    if fixed_name:
+        # one sidecar per image, sharing the image's name and enumeration
+        targets = _free_targets(directory, basename, extensions)
+        sidecars = [target.with_suffix(".json") for target in targets]
+    else:
+        targets = []
+        for index, extension in enumerate(extensions, start=1):
+            suffix = f"_{index}" if len(images) > 1 else ""
+            targets.append(directory / f"{basename}{suffix}.{extension}")
+        sidecars = [directory / f"{basename}.json"]
+        _check_targets([*targets, *sidecars], overwrite)
 
     for target, image in zip(targets, images):
         target.write_bytes(base64.b64decode(image["b64_json"]))
 
     usage = body.get("usage") or {}
-    sidecar.write_text(
-        json.dumps(
-            {
-                "prompt": prompt,
-                "model": chosen_model,
-                "parameters": {key: payload[key] for key in payload if key not in ("model", "prompt", "input_references")},
-                "input_references": [str(r) for r in input_references] if input_references else [],
-                "media_types": [image.get("media_type") for image in images],
-                "files": [target.name for target in targets],
-                "usage": usage,
-                "estimated_cost_usd": estimate,
-            },
-            indent=2,
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
+    metadata = {
+        "prompt": prompt,
+        "model": chosen_model,
+        "parameters": {key: payload[key] for key in payload if key not in ("model", "prompt", "input_references")},
+        "input_references": [str(r) for r in input_references] if input_references else [],
+        "media_types": [image.get("media_type") for image in images],
+        "files": [target.name for target in targets],
+        "usage": usage,
+        "estimated_cost_usd": estimate,
+    }
+    for sidecar in sidecars:
+        sidecar.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
     cost = usage.get("cost")
     log_message(
         f"Generated {len(targets)} image(s) with {chosen_model}; cost {cost} USD",

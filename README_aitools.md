@@ -114,6 +114,20 @@ Options:
 
 Unsupported parameter values are rejected by OpenRouter with a 400 error that is shown as-is. Check a model's `supported_parameters` via `list_models("image")` or the OpenRouter models page.
 
+### Fixed file names and unattended use
+
+`generate_image()` accepts two parameters that the CLI does not expose; they exist for batch callers such as cinderellasort's `[BOWLS_GEN_IMG]`:
+
+| Parameter     | Default | Effect                                                                                                                                            |
+| ------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `basename`    | `None`  | Use `<basename>.png` / `<basename>.json` instead of the timestamp-slug name. Each image gets its own sidecar with the same name. With `n>1`, or when an image or sidecar of that name exists, the next free `_k` suffix is used for both (`<basename>_1.png` + `<basename>_1.json`). Nothing is overwritten. |
+| `interactive` | `True`  | `False` raises `RuntimeError` instead of asking on the console when the estimate exceeds `max_cost` or the price is unknown.                       |
+
+```python
+generate_image("a villa by the lake", out_dir="images", basename="villa", interactive=False, max_cost=0.25)
+# -> images/villa.png, images/villa.json
+```
+
 ### Cost control
 
 Before generating, the per-image price is looked up from OpenRouter's endpoint records. The estimate is the highest per-image price among providers, multiplied by `n`. If the estimate exceeds `--max-cost` (or `OPENROUTER_MAX_COST`), or the price cannot be converted (per-megapixel or per-token pricing), you are asked to confirm. `--yes` skips the prompt. The actual `usage.cost` is printed after generation.

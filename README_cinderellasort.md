@@ -130,6 +130,7 @@ subdirectory.
 | `retry_times`       | `3`                              | Retries per page.                                                |
 | `continue_on_error` | `false`                          | Keep going when a page fails after all retries.                  |
 | `sidecar`           | `true`                           | Keep the `_pdf2md.json` sidecar with the original.                |
+| `recursive`         | `true`                           | Process files in subdirectories; set `false` for the source root only. |
 
 Behavior:
 
@@ -151,6 +152,85 @@ Behavior:
 - In `nc` mode the mirrored target directory is rescanned after the move.
 - `[BOWLS_DOCPREP]` is merged from the central configuration like `[BOWLS]`;
   `[DOCPREP]` is project-specific.
+
+## GEN_IMG bowls
+
+GEN_IMG bowls generate images from prompt files with
+`aitools.generate_image`. Prompt files stay in the source tree; images and
+their JSON sidecars are written into the bowl below `targetdir`.
+
+```ini
+[TABLE]
+sourcedir=P:\prompts
+targetdir=P:\images
+ftype_sort=.txt
+
+[BOWLS_GEN_IMG]
+Renderings=.
+
+[GEN_IMG]
+model=
+n=1
+aspect_ratio=
+resolution=
+quality=
+output_format=
+max_cost=
+max_jobs=20
+```
+
+Job files beside each other in the source tree:
+
+| File                        | Role                                                    |
+| --------------------------- | ------------------------------------------------------- |
+| `villa_prompt.txt`          | prompt (UTF-8, whitespace stripped; empty → skipped)   |
+| `villa_negative-prompt.txt` | optional negative prompt; never a job on its own        |
+| `villa.png/.jpg/.webp`      | optional single reference image (image-to-image)        |
+| `reference.png/.jpg/.webp`  | optional general reference for all prompts in the directory that have no own reference image |
+
+The slug (`villa`) is the part before `_prompt.txt`; other `.txt` files are not
+jobs and take the standard `[BOWLS]` path.
+
+Result:
+
+```text
+images/Renderings/villa.png
+images/Renderings/villa.json
+```
+
+Each image has its own sidecar with the same name. With `n=2`, or when
+`villa.png`/`villa.json` already exist, the next free index is used for both:
+
+```text
+images/Renderings/villa_1.png
+images/Renderings/villa_1.json
+images/Renderings/villa_2.png
+images/Renderings/villa_2.json
+```
+
+| Key             | Default                       | Meaning                                                             |
+| --------------- | ----------------------------- | ------------------------------------------------------------------- |
+| `model`         | env `OPENROUTER_IMAGE_MODEL`  | Image model id.                                                     |
+| `n`             | `1`                           | Images per prompt; names become `<stem>_1.png` … `<stem>_n.png`.    |
+| `aspect_ratio`, `resolution`, `quality`, `output_format` | unset | Passed through to the model when set.          |
+| `max_cost`      | env `OPENROUTER_MAX_COST` / `0.50` | Per-job limit; above it, or if the price is unknown, the job is skipped with a warning. Set `ignore` to bypass the cost guard. |
+| `max_jobs`      | `20`                          | Jobs per run; remaining prompts are left for the next run.         |
+
+Behavior:
+
+- Evaluated for `.txt` files after Doc_prep and before the standard bowls;
+  prompts matching no `[BOWLS_GEN_IMG]` criterion take the `[BOWLS]` path.
+- Existing images or sidecars do not skip a job. Each run generates the next
+  free image/sidecar enumeration (`<slug>_1`, `<slug>_2`, ...).
+- Failures log an error and the run continues with the next prompt.
+- No interactive cost prompt; `max_cost` and `max_jobs` are the guards. Set
+  `OPENROUTER_API_KEY` and `OPENROUTER_IMAGE_MODEL` in the runner environment.
+- In `nc` mode the bowl directory is rescanned after generation.
+- `[BOWLS_GEN_IMG]` is merged from the central configuration; `[GEN_IMG]` is
+  project-specific.
+
+Per-prompt parameter files (individual aspect ratio, resolution, quality) are
+planned; see `cinderellasort/+intent/todo.md`.
 
 ## Duplicate keys
 

@@ -11,7 +11,7 @@ The implementation currently lives in `wit_pytools/cinderellasort.py`; this dire
 - **Source directory** (`sourcedir`): files are read from here and its subdirectories.
 - **Target directory** (`targetdir`): normally the root below which bowls are created; for Doc_prep it is the separate root for moved originals.
 - **Bowl**: a target subdirectory plus the criteria that route files into it. Bowl name = key, criteria = comma-separated values. Bowl names may contain `/` to address nested directories.
-- **Bowl type**: a configuration section that defines how criteria are evaluated (`BOWLS`, `BOWLS_EMAIL`, `BOWLS_GPS`, `BOWLS_GPS_TAGS`, `BOWLS_DOCPREP`).
+- **Bowl type**: a configuration section that defines how criteria are evaluated (`BOWLS`, `BOWLS_EMAIL`, `BOWLS_GPS`, `BOWLS_GPS_TAGS`, `BOWLS_DOCPREP`, `BOWLS_GEN_IMG`).
 - **Special tokens** in criteria: `!DEFAULT` marks the fallback bowl of a section; `!MALFORMED` (`BOWLS_EMAIL` only) receives files whose generated name has no valid e-mail address.
 - **File modes**: `win` moves with `os.rename`; `nc` moves through Nextcloud (`occ files:move`) and rescans directories so Nextcloud indexes the changes.
 - **Run modes**: all-files mode walks `sourcedir`; `single` mode handles one file passed by a Nextcloud Flow.
@@ -57,16 +57,20 @@ Key format `Bowl name;distance_km`, value `lat,lon[;lat,lon...]`. Images whose E
 
 See "Doc_prep bowls" below.
 
+### `[BOWLS_GEN_IMG]` and `[GEN_IMG]`
+
+See "GEN_IMG bowls" below.
+
 ### Common rules
 
-In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, and `BOWLS_DOCPREP` of the central `/etc/nctools/nctools.ini` are merged into the project configuration at runtime (`merge_common_rules`). Criteria of bowls present in both files are combined and deduplicated; the project file is never modified. `[DOCPREP]` is project-specific and not merged.
+In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, `BOWLS_DOCPREP`, and `BOWLS_GEN_IMG` of the central `/etc/nctools/nctools.ini` are merged into the project configuration at runtime (`merge_common_rules`). Criteria of bowls present in both files are combined and deduplicated; the project file is never modified. `[DOCPREP]` and `[GEN_IMG]` are project-specific and not merged.
 
 ## Processing order
 
 `cinderellasort(configfile, single=None, filemode='win', dryrun=False, common_configfile=None)`:
 
 1. Read the configuration, merge common rules, read settings.
-2. `prepsort`: create bowl directories for `BOWLS`, `BOWLS_EMAIL`, `BOWLS_DOCPREP`.
+2. `prepsort`: create bowl directories for `BOWLS`, `BOWLS_EMAIL`, `BOWLS_GEN_IMG`.
 3. Single mode: `handlefile` for the given file. All-files mode:
    - first pass: delete `ftype_delete` files in directories that contain sortable files;
    - second pass: delete `trash`/`trash_nocase` matches, then `handlefile` for every remaining file;
@@ -77,11 +81,12 @@ In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, and `BOWLS_DOCPREP` of the cen
 
 1. File extension not in `ftype_sort` → skip.
 2. **Doc_prep**: extension has a registered converter and the cleaned filename matches a `[BOWLS_DOCPREP]` criterion → `handle_docprep`.
-3. `.pdf` → `handle_pdf` (uses `[BOWLS]`, optional content check).
-4. `[BOWLS_EMAIL]` configured → `handle_emails`.
-5. `[BOWLS_GPS_TAGS]` configured and `set_tags=true` → `handle_gps_tags` (does not stop processing).
-6. `[BOWLS_GPS]` configured → `handle_gps`; files without GPS data are renamed `*_nogps`.
-7. `[BOWLS]` → `bowldir`; unmatched files are skipped (`skipunmatched`) or moved to `targetdir`.
+3. **GEN_IMG**: `<slug>_prompt.txt` matching a `[BOWLS_GEN_IMG]` criterion → `handle_gen_img`.
+4. `.pdf` → `handle_pdf` (uses `[BOWLS]`, optional content check).
+5. `[BOWLS_EMAIL]` configured → `handle_emails`.
+6. `[BOWLS_GPS_TAGS]` configured and `set_tags=true` → `handle_gps_tags` (does not stop processing).
+7. `[BOWLS_GPS]` configured → `handle_gps`; files without GPS data are renamed `*_nogps`.
+8. `[BOWLS]` → `bowldir`; unmatched files are skipped (`skipunmatched`) or moved to `targetdir`.
 
 ## Doc_prep bowls
 
@@ -131,6 +136,52 @@ originals/Project/Document.md
 - No re-conversion of existing Markdown (use `overwrite` handling outside cinderellasort if needed).
 - No interactive cost confirmation; `max_pages` is the only cost guard.
 
+## GEN_IMG bowls
+
+GEN_IMG is a bowl type that **generates** content: each prompt file produces one or more images through `aitools.generate_image`. Prompt files are the durable input and stay in `sourcedir`; images and sidecars are the output in the bowl below `targetdir`.
+
+### Configuration
+
+```ini
+[BOWLS_GEN_IMG]
+Renderings=.            ; bowl = output subdirectory; criteria on the prompt filename
+
+[GEN_IMG]
+model=                  ; empty: OPENROUTER_IMAGE_MODEL
+n=1
+aspect_ratio=           ; optional pass-through parameters
+resolution=
+quality=
+output_format=
+max_cost=               ; per job; empty: OPENROUTER_MAX_COST / 0.50
+max_jobs=20             ; per run
+```
+
+### Job definition
+
+For a prompt `<slug>_prompt.txt` in `sourcedir` (recursive); `<slug>` is the job name:
+
+- `<slug>_negative-prompt.txt` — optional negative prompt; never a job itself.
+- `<slug>.png|.jpg|.jpeg|.webp` — optional single reference image.
+- `reference.png|.jpg|.jpeg|.webp` — general reference in the same directory, used when the slug has no own reference image.
+- Other `.txt` files are not jobs.
+- Files are read as UTF-8 and stripped; an empty prompt is skipped with a warning.
+
+### Behavior per job
+
+1. `<bowl>/<slug>.json` or `<bowl>/<slug>_<k>.json` exists → job finished, skip (`gen_img_done_marker`).
+2. `max_jobs` reached in this run → leave for the next run (warning).
+3. `generate_image(prompt, model, negative_prompt, out_dir=<bowl>, n, ..., input_references=[ref], basename=<slug>, interactive=False, max_cost)`.
+4. Output `<slug>.png` (or `<slug>_1..n.png`); an existing image or sidecar name advances to the next free `_k`. Every image gets its own sidecar with the identical name (`<slug>.json`, `<slug>_k.json`).
+5. Cost above `max_cost` or unknown price → `RuntimeError` from `generate_image`, logged, job skipped. API errors likewise; the run continues.
+6. `nc` mode → rescan the bowl directory.
+
+### Non-goals (current)
+
+- No per-prompt parameters; all jobs of a run share `[GEN_IMG]` (see `todo.md`).
+- No moving or deleting of prompt files.
+- No regeneration of finished jobs; delete the `<slug>*.json` sidecar(s) to regenerate.
+
 ## Functions
 
 Configuration and rules:
@@ -139,10 +190,11 @@ Configuration and rules:
 - `parse_bowl_tags(tags_str)` — parse `Tag[level]` lists for GPS tags.
 - `gps_fetch_default_distance(config_object)` — default GPS distance.
 - `docprep_settings(config_object)` — `[DOCPREP]` with defaults.
+- `gen_img_settings(config_object)` — `[GEN_IMG]` with defaults.
 
 Bowl listing:
 
-- `bowllist`, `bowllist_email`, `bowllist_gps`, `bowllist_gps_tags`, `bowllist_docprep`.
+- `bowllist`, `bowllist_email`, `bowllist_gps`, `bowllist_gps_tags`, `bowllist_docprep`, `bowllist_gen_img`.
 
 Bowl matching (return `'/<bowl>'` or `''`):
 
@@ -151,6 +203,7 @@ Bowl matching (return `'/<bowl>'` or `''`):
 - `bowldir_gps(file, config_object, image_coords)`
 - `bowldir_gps_tags(file, config_object, image_coords)`
 - `bowldir_docprep(file, config_object)`
+- `bowldir_gen_img(file, config_object)`; `is_gen_img_prompt(file)` accepts only `<slug>_prompt.txt`; `gen_img_slug(file)` returns `<slug>`; `gen_img_reference(directory, slug)` resolves the slug or general reference image.
 
 Filenames:
 
@@ -161,7 +214,8 @@ Filenames:
 Preparation and handlers:
 
 - `prepsort(config_object, targetdir, prepfilter=False)` — create bowl directories; optionally write `filter-examples.txt`.
-- `handle_docprep`, `handle_pdf`, `handle_emails`, `handle_gps`, `handle_gps_tags`, `handle_oldfiles` (unfinished).
+- `handle_docprep`, `handle_gen_img`, `handle_pdf`, `handle_emails`, `handle_gps`, `handle_gps_tags`, `handle_oldfiles` (unfinished).
+- `GEN_IMG_GENERATOR` — indirection to `aitools.generate_image`, replaceable in tests.
 - `handlefile(...)` — dispatcher described above.
 - `cinderellasort(...)` — main entry point.
 
@@ -172,8 +226,4 @@ Translations are loaded from `locale/` via `gettext` (`setup_translations`).
 
 ## Open items
 
-From `todo.md`:
-
-- move the script into the package directory;
-- make sorting case-insensitive like the cleanup;
-- replace the legacy subdirectory pass with `handlefile`.
+See `todo.md` in this directory.

@@ -228,6 +228,48 @@ def test_generate_image_writes_files_and_sidecar(monkeypatch, api_key, tmp_path)
     assert post["timeout"] == openrouter.IMAGE_TIMEOUT
 
 
+def test_generate_image_basename_and_collision_suffix(monkeypatch, api_key, tmp_path):
+    install_fake_request(monkeypatch, image_api_handler())
+    first = gi.generate_image("p", model="img/model", out_dir=tmp_path, yes=True, basename="villa")
+    assert [p.name for p in first] == ["villa.png"]
+    assert (tmp_path / "villa.json").is_file()
+
+    # villa.png/villa.json taken -> next free _k, sidecar shares the enumeration
+    second = gi.generate_image("p", model="img/model", out_dir=tmp_path, yes=True, basename="villa")
+    assert [p.name for p in second] == ["villa_1.png"]
+    assert (tmp_path / "villa_1.json").is_file()
+
+    (tmp_path / "villa_2.json").write_text("{}")  # orphan sidecar also blocks its index
+    third = gi.generate_image("p", model="img/model", out_dir=tmp_path, yes=True, basename="villa")
+    assert [p.name for p in third] == ["villa_3.png"]
+    assert json.loads((tmp_path / "villa_3.json").read_text(encoding="utf-8"))["files"] == ["villa_3.png"]
+
+
+def test_generate_image_basename_multi_skips_taken_indices(monkeypatch, api_key, tmp_path):
+    install_fake_request(monkeypatch, image_api_handler(n_images=2))
+    (tmp_path / "villa_1.png").write_bytes(b"x")
+    paths = gi.generate_image("p", model="img/model", out_dir=tmp_path, n=2, yes=True, basename="villa")
+    assert [p.name for p in paths] == ["villa_2.png", "villa_3.png"]
+    assert (tmp_path / "villa_2.json").is_file() and (tmp_path / "villa_3.json").is_file()
+    assert not (tmp_path / "villa.json").exists()
+
+
+def test_generate_image_basename_does_not_reuse_stem_with_other_extension(monkeypatch, api_key, tmp_path):
+    install_fake_request(monkeypatch, image_api_handler(media_type="image/png"))
+    (tmp_path / "villa.jpg").write_bytes(b"existing")
+    paths = gi.generate_image("p", model="img/model", out_dir=tmp_path, yes=True, basename="villa")
+    assert [p.name for p in paths] == ["villa_1.png"]
+
+
+def test_confirm_non_interactive_raises_instead_of_asking(monkeypatch):
+    monkeypatch.setattr("builtins.input", lambda prompt: pytest.fail("input() must not be called"))
+    with pytest.raises(RuntimeError, match="non-interactive"):
+        gi._confirm(1.0, 0.5, yes=False, interactive=False)
+    with pytest.raises(RuntimeError, match="non-interactive"):
+        gi._confirm(None, 0.5, yes=False, interactive=False)
+    gi._confirm(0.2, 0.5, yes=False, interactive=False)
+
+
 def test_generate_image_single_has_no_index(monkeypatch, api_key, tmp_path):
     install_fake_request(monkeypatch, image_api_handler())
     paths = gi.generate_image("solo", model="img/model", out_dir=tmp_path, yes=True)

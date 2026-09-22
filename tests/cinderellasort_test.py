@@ -7,6 +7,7 @@ import pytest
 import tempfile
 import shutil
 from configparser import ConfigParser
+from pathlib import Path
 
 # Add parent directory to path so we can import wit_pytools
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
@@ -466,6 +467,168 @@ def test_docprep_settings_defaults():
     settings = cs.docprep_settings(config)
     assert settings["language"] == "de"
     assert settings["sidecar"] is False
+
+
+# --- GEN_IMG bowls ---------------------------------------------------------
+
+
+def _gen_img_setup(tmp_path, prompts, *, gen_img_section=None):
+    source_dir = tmp_path / "prompts"
+    target_dir = tmp_path / "images"
+    source_dir.mkdir()
+    target_dir.mkdir()
+    for name, text in prompts.items():
+        path = source_dir / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(text, bytes):
+            path.write_bytes(text)
+        else:
+            path.write_text(text, encoding="utf-8")
+
+    config = ConfigParser()
+    config.optionxform = str
+    config["TABLE"] = {
+        "sourcedir": str(source_dir),
+        "targetdir": str(target_dir),
+        "ftype_sort": ".txt",
+        "filemode": "win",
+    }
+    config["SETTINGS"] = {"overwrite": "false"}
+    config["BOWLS_GEN_IMG"] = {"Renderings": "."}
+    if gen_img_section is not None:
+        config["GEN_IMG"] = gen_img_section
+    config_path = tmp_path / "gen_img.ini"
+    with config_path.open("w", encoding="utf-8") as fp:
+        config.write(fp)
+    return source_dir, target_dir, config_path
+
+
+def _fake_generator(calls, fail_for=()):
+    def generate(prompt, settings, out_dir, basename, negative_prompt, reference):
+        calls.append({
+            "prompt": prompt, "settings": settings, "out_dir": out_dir,
+            "basename": basename, "negative": negative_prompt, "reference": reference,
+        })
+        if basename in fail_for:
+            raise RuntimeError("OpenRouter 502")
+        image = out_dir / f"{basename}.png"
+        image.write_bytes(b"png")
+        (out_dir / f"{basename}.json").write_text("{}", encoding="utf-8")
+        return [image]
+    return generate
+
+
+def test_gen_img_generates_with_negative_and_reference(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _gen_img_setup(
+        tmp_path,
+        {
+            "villa_prompt.txt": "  Eine Villa am See, Abendlicht  ",
+            "villa_negative-prompt.txt": "Text, Wasserzeichen",
+            "villa.jpg": b"\xff\xd8ref",
+        },
+        gen_img_section={"model": "img/model", "n": "1", "aspect_ratio": "16:9", "max_cost": "0.25"},
+    )
+    calls = []
+    monkeypatch.setattr(cs, "GEN_IMG_GENERATOR", _fake_generator(calls))
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert len(calls) == 1, "negative and reference files must not be jobs"
+    call = calls[0]
+    assert call["prompt"] == "Eine Villa am See, Abendlicht"
+    assert call["negative"] == "Text, Wasserzeichen"
+    assert call["reference"] == source_dir / "villa.jpg"
+    assert call["basename"] == "villa"
+    assert call["out_dir"] == target_dir / "Renderings"
+    assert call["settings"]["model"] == "img/model"
+    assert call["settings"]["aspect_ratio"] == "16:9"
+    assert call["settings"]["max_cost"] == 0.25
+    assert (target_dir / "Renderings" / "villa.png").is_file()
+    assert (source_dir / "villa_prompt.txt").is_file(), "prompt files stay in source"
+    assert (source_dir / "villa_negative-prompt.txt").is_file()
+
+
+@pytest.mark.parametrize("sidecar_name", ["villa.json", "villa_1.json", "villa_7.json"])
+def test_gen_img_skips_when_sidecar_exists(tmp_path, monkeypatch, sidecar_name):
+    source_dir, target_dir, config_path = _gen_img_setup(tmp_path, {"villa_prompt.txt": "prompt"})
+    (target_dir / "Renderings").mkdir()
+    (target_dir / "Renderings" / sidecar_name).write_text("{}", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(cs, "GEN_IMG_GENERATOR", _fake_generator(calls))
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert calls == []
+
+
+def test_gen_img_done_marker_ignores_other_slugs():
+    with tempfile.TemporaryDirectory() as d:
+        bowl = Path(d)
+        (bowl / "villa_garden.json").write_text("{}")   # different slug, not numeric suffix
+        (bowl / "villager.json").write_text("{}")
+        assert cs.gen_img_done_marker(bowl, "villa") is None
+        (bowl / "villa_2.json").write_text("{}")
+        assert cs.gen_img_done_marker(bowl, "villa") == bowl / "villa_2.json"
+
+
+def test_gen_img_failure_continues_and_empty_prompt_skipped(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _gen_img_setup(
+        tmp_path, {"a_prompt.txt": "first", "b_prompt.txt": "second", "empty_prompt.txt": "   ", "notes.txt": "not a job"}
+    )
+    calls = []
+    monkeypatch.setattr(cs, "GEN_IMG_GENERATOR", _fake_generator(calls, fail_for={"a"}))
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert sorted(c["basename"] for c in calls) == ["a", "b"]
+    assert not (target_dir / "Renderings" / "a.png").exists()
+    assert (target_dir / "Renderings" / "b.png").is_file()
+    assert (source_dir / "a_prompt.txt").is_file()
+
+
+def test_gen_img_max_jobs_limits_run(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _gen_img_setup(
+        tmp_path, {"a_prompt.txt": "1", "b_prompt.txt": "2", "c_prompt.txt": "3"}, gen_img_section={"max_jobs": "2"}
+    )
+    calls = []
+    monkeypatch.setattr(cs, "GEN_IMG_GENERATOR", _fake_generator(calls))
+
+    cinderellasort(str(config_path), dryrun=False)
+    assert len(calls) == 2
+
+    calls.clear()
+    cinderellasort(str(config_path), dryrun=False)
+    assert len(calls) == 1, "remaining job is picked up on the next run; done ones are skipped"
+
+
+def test_gen_img_general_reference_fallback(tmp_path):
+    (tmp_path / "reference.png").write_bytes(b"general")
+    assert cs.gen_img_reference(tmp_path, "villa") == tmp_path / "reference.png"
+
+    (tmp_path / "villa.jpg").write_bytes(b"own")
+    assert cs.gen_img_reference(tmp_path, "villa") == tmp_path / "villa.jpg"
+
+    assert cs.gen_img_reference(tmp_path, "haus") == tmp_path / "reference.png"
+    (tmp_path / "reference.png").unlink()
+    assert cs.gen_img_reference(tmp_path, "haus") is None
+
+
+def test_gen_img_prompt_detection_and_slug():
+    assert cs.is_gen_img_prompt("villa_prompt.txt")
+    assert not cs.is_gen_img_prompt("villa_negative-prompt.txt")
+    assert not cs.is_gen_img_prompt("villa.txt")
+    assert not cs.is_gen_img_prompt("_prompt.txt")
+    assert cs.gen_img_slug("villa_prompt.txt") == "villa"
+
+
+def test_gen_img_settings_defaults():
+    config = ConfigParser()
+    config.optionxform = str
+    settings = cs.gen_img_settings(config)
+    assert settings == {
+        "model": None, "n": 1, "aspect_ratio": None, "resolution": None,
+        "quality": None, "output_format": None, "max_cost": None, "max_jobs": 20,
+    }
 
 
 if __name__ == '__main__':
