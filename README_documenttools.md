@@ -230,12 +230,12 @@ capitalized words. Each word starts with an uppercase Latin or German
 character and continues with lowercase Latin or German characters. Examples:
 
 ```text
-Anna Musterpeter
+Anna Musterfrau
 Herr Peter Muster
 Doreen Müller Beispiel
 ```
 
-Single-word surnames such as `Jahn` or `Schumann` are not currently detected
+Single-word surnames such as `Schmidt` or `Schumann` are not currently detected
 automatically. They can be added manually to the mapping by combining multiple
 original values in one row with semicolons:
 

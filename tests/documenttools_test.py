@@ -449,6 +449,23 @@ def test_update_text_mapping_creates_new_block_and_approved_rows_are_applied(tmp
     assert anonymize_text_content(source.read_text(encoding="utf-8"), mapping).startswith("Person-abc")
 
 
+def test_update_text_mapping_matches_semicolon_grouped_originals(tmp_path):
+    source = tmp_path / "document.md"
+    source.write_text("Herr Schmidt", encoding="utf-8")
+    mapping = tmp_path / "mapping.csv"
+    mapping.write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "new,Person-001,Herr Schmidt; Schmidt,name,old.md,line 1,1\n",
+        encoding="utf-8",
+    )
+
+    update_text_mapping(source, mapping)
+
+    rows = list(csv.DictReader(mapping.open(encoding="utf-8", newline="")))
+    assert len(rows) == 1
+    assert rows[0]["original_value"] == "Herr Schmidt; Schmidt"
+
+
 def test_pdf_to_markdown_cost_confirmation_aborts(pdf_copy, monkeypatch):
     monkeypatch.setattr(pdf2md, "estimate_cost", lambda model, pages, api_key=None: 5.0)
     monkeypatch.setattr("builtins.input", lambda prompt: "n")

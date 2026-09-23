@@ -673,7 +673,12 @@ def update_text_mapping(file_path: Path | str, mapping_path: Path | str) -> Path
     if not input_path.is_file():
         raise FileNotFoundError(input_path)
     existing_rows = _mapping_document_rows(mapping_file) if mapping_file.exists() else []
-    known = {row["original_value"] for row in existing_rows}
+    known = {
+        original.strip()
+        for row in existing_rows
+        for original in row["original_value"].split(";")
+        if original.strip()
+    }
     candidates = _text_candidate_rows(input_path.read_text(encoding="utf-8"), input_path.name)
     for candidate in candidates:
         if candidate["original_value"] in known:

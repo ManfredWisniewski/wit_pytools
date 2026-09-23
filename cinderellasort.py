@@ -717,6 +717,7 @@ def _docprep_pdf(source, output_path, settings):
         output_path=output_path,
         sidecar_path=settings.get('sidecar_path'),
         write_sidecar=settings['sidecar'],
+        overwrite=True,
         mode=settings['mode'],
         model=settings['model'],
         language=settings['language'],
@@ -835,21 +836,26 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
     try:
         pages = page_count(source)
         if pages > settings['max_pages']:
-            log_message(
-                f"Doc_prep: skipping {source.name}: {pages} pages exceed max_pages={settings['max_pages']}",
-                level="WARNING",
-            )
+            message = f"Doc_prep: skipping {source.name}: {pages} pages exceed max_pages={settings['max_pages']}"
+            log_message(message, level="WARNING")
+            print(message)
             return False
         if output_path.exists():
-            log_message(f"Doc_prep: {output_path.name} exists, skipping conversion", level="INFO")
+            message = f"Doc_prep: {output_path.name} exists, skipping conversion"
+            log_message(message, level="INFO")
+            print(message)
         else:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             conversion_settings = dict(settings)
             conversion_settings['sidecar_path'] = str(sidecar_path)
             convert(source, output_path, conversion_settings)
-            log_message(f"Doc_prep: created {output_path}", level="INFO")
+            message = f"Doc_prep: created {output_path}"
+            log_message(message, level="INFO")
+            print(message)
     except Exception as e:
-        log_message(f"Doc_prep: conversion failed for {source.name}: {e}", level="ERROR")
+        message = f"Doc_prep: conversion failed for {source.name}: {e}"
+        log_message(message, level="ERROR")
+        print(message)
         return False
 
     if settings['anonymize']:
