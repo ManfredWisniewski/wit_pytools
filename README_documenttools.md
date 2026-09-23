@@ -223,6 +223,31 @@ Fenced code blocks, inline code, link destinations, raw URLs, dates, numbers
 and blank content are excluded. Visible link labels remain eligible for
 replacement while their destinations stay unchanged.
 
+### Name detection
+
+Markdown name detection currently uses a regular expression for two to four
+capitalized words. Each word starts with an uppercase Latin or German
+character and continues with lowercase Latin or German characters. Examples:
+
+```text
+Anna Musterpeter
+Herr Peter Muster
+Doreen Müller Beispiel
+```
+
+Single-word surnames such as `Jahn` or `Schumann` are not currently detected
+automatically. They can be added manually to the mapping by combining multiple
+original values in one row with semicolons:
+
+```csv
+status,replacement_value,original_value,value_type,source_documents,locations,occurrences
+anon,Person-b7d,"Herr Schmidt; Schmidt",name,,,
+```
+
+This applies the same replacement to both `Herr Schmidt` and `Schmidt`. The mapping
+parser strips whitespace around semicolon-separated values. Names in fenced
+code, inline code, link destinations and raw URLs are not candidates.
+
 `anonymize_text_content()` returns transformed text without writing files.
 `anonymize_text()` never overwrites the source unless an explicit output path
 and `overwrite=True` are supplied. PDF conversion and anonymization are

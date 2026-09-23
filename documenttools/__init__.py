@@ -459,6 +459,7 @@ def _mapping_path_rows(mapping_path: Path) -> Dict[str, str]:
         if row["status"] != "anon":
             continue
         for original in row["original_value"].split(";"):
+            original = original.strip()
             if not original:
                 raise ValueError("Mapping original_value contains an empty entry")
             if original in mapping:
