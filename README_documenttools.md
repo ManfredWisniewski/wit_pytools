@@ -307,7 +307,15 @@ pdf_to_markdown(
 - `output_path`: defaults to `<stem>.md` beside the PDF. Existing outputs raise `FileExistsError` unless `overwrite=True`. The source PDF is never modified.
 - `end_page=None` means the last page.
 - `keep_pages`: keeps page images and per-page Markdown in `<stem>_pages/`.
-- `prompt_file`: UTF-8 file replacing the built-in prompt (`documenttools/pdf2md_prompt.txt`). The placeholder `{illegible}` is replaced by the language-specific token (`[illegible]` / `[unleserlich]`).
+- `prompt_file`: UTF-8 file replacing the built-in prompt (`documenttools/pdf2md_prompt.txt`). The placeholders `{illegible}`, `{signature}` and `{logo}` are translated for the selected language.
+
+Prompt slugs are translated with gettext. Translation sources are stored below:
+
+```text
+locale/<language>/LC_MESSAGES/pdf2md.po
+```
+
+The German slugs are `[unleserlich]`, `[Unterschrift]` and `[Logo]`. Compiled `.mo` files can be generated from the `.po` sources during packaging; fallback values keep the built-in translations available when `.mo` files are not present.
 - `retry_times`: failed or empty model responses are retried with a `2 × attempt` second pause. After the last attempt the page gets a failure marker; the run raises `RuntimeError` unless `continue_on_error=True`.
 - `max_cost` / `yes`: before any API call the cost is estimated as pages × per-image price of the model. Above the limit, or if the price is unknown, you are asked to confirm; `yes=True` skips the prompt.
 - `language`: `en` or `de`; controls the markers below and the illegibility token in the prompt.
