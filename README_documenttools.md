@@ -244,7 +244,7 @@ status,replacement_value,original_value,value_type,source_documents,locations,oc
 anon,Person-b7d,"Herr Schmidt; Schmidt",name,,,
 ```
 
-This applies the same replacement to both `Herr Schmidt` and `Schmidt`. The mapping
+This applies the same replacement to both `Mr Schmidt` and `Schmidt`. The mapping
 parser strips whitespace around semicolon-separated values. Names in fenced
 code, inline code, link destinations and raw URLs are not candidates.
 
@@ -252,6 +252,9 @@ code, inline code, link destinations and raw URLs are not candidates.
 `anonymize_text()` never overwrites the source unless an explicit output path
 and `overwrite=True` are supplied. PDF conversion and anonymization are
 separate explicit steps.
+
+**Known Limitations**
+It is not possible to discern between to persons with the same surname when they are addressed as Mr or Mrs. All Mr Schmidts in one anonymization mapping will have to share one anonymization value.
 
 ## PDF to Markdown
 
