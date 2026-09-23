@@ -130,6 +130,38 @@ The initial implementation does not anonymize:
 - VBA or other macro content;
 - `.xlsm` files.
 
+## Generic text/Markdown anonymization
+
+Text-based anonymization uses the same reviewed mapping CSV format as XLSX.
+The XLSX functions remain separate because workbook cells, formulas and
+metadata require different traversal and preservation logic.
+
+### Public functions
+
+- `identify_text_strings(...) -> Path`: create a candidate CSV for Markdown or plain text.
+- `anonymize_text_content(content, mapping_path) -> str`: apply a validated mapping to text content.
+- `anonymize_text(file_path, mapping_path, ...) -> Path`: write `<stem>_anon.<suffix>` without overwriting the source by default.
+
+### Candidate rules
+
+Text candidates include names and e-mail addresses. URL-shaped values are not
+candidates. Candidate CSV columns remain the common schema:
+`original_value`, `replacement_value`, `value_type`, `worksheet`, `cell`, and
+`occurrences`. Markdown locations use `worksheet=Markdown` and line locations
+such as `line 12; line 48`.
+
+Markdown candidate detection excludes fenced code blocks, inline code spans,
+link destinations, raw URLs, dates, numbers and blank content. Visible link
+labels remain eligible for replacement while their destinations are preserved.
+
+### Replacement rules
+
+Replacement uses the same mapping validation and containment grouping as XLSX.
+Markdown replacement protects fenced code, inline code, link destinations and
+raw URLs. The source is never modified implicitly. PDF conversion and
+anonymization are separate explicit steps; `pdf_to_markdown` does not invoke
+anonymization automatically.
+
 ## PDF to Markdown
 
 ### Purpose

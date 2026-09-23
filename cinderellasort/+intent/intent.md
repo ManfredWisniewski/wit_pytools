@@ -108,6 +108,9 @@ max_pages=50           ; larger documents are skipped
 retry_times=3
 continue_on_error=false
 sidecar=true           ; keep <stem>_pdf2md.json beside the original
+anonymize=false
+anonymize_mapping=P:\\customers\\customer-anon-mapping.csv
+anonymize_update=false
 ```
 
 ### Behavior per file
@@ -117,7 +120,25 @@ sidecar=true           ; keep <stem>_pdf2md.json beside the original
 3. Page count above `max_pages` → warning, file stays in the source directory.
 4. An existing Markdown in the mirrored target skips conversion, no API cost.
 5. Otherwise convert to the mirrored target (`documenttools.pdf_to_markdown` with `yes=True`, no interactive cost prompt).
-6. The original PDF stays in the source directory. Its `_pdf2md.json` sidecar is written beside the original. Conversion errors leave the PDF untouched; in `nc` mode the mirrored target directory is rescanned.
+6. The original PDF stays in the source directory. Its `_pdf2md.json` sidecar is written beside the original. Conversion errors leave the PDF untouched.
+7. If `anonymize=true`, add new candidates to the customer mapping with `status=new`. Apply only rows with `status=anon` to create `<stem>_anon.md` when at least one approved mapping matches. Rows with `status=keep` are explicitly ignored.
+8. After normal sorting, scan all existing Markdown files below `targetdir` that do not yet have an `_anon.md` output. If `anonymize_update=true`, revisit existing anonymized files too.
+9. After successful anonymization, remove the original Markdown and retain only `_anon.md`. If `anonymize_update=false`, an existing `_anon.md` is preserved; if true, it is refreshed. No `_anon.md` is created when no approved mapping matches. In `nc` mode the mirrored target directory is rescanned.
+
+The customer mapping is a CSV with a `status` column using only:
+
+- `anon` — approved and applied;
+- `keep` — explicitly do not replace;
+- `new` — proposal, never applied until changed to `anon`.
+
+Example:
+
+```csv
+status,replacement_value,original_value,value_type,source_documents,locations,occurrences
+anon,Person-abc,Anna Musterpeter,name,,,
+keep,,Peter Beispiel,name,document.md,line 4,1
+new,Person-def,Max Beispiel,name,document.md,line 8,1
+```
 
 Example:
 

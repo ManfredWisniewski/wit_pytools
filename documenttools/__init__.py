@@ -1,5 +1,6 @@
 import csv
 import hashlib
+import io
 import os
 import re
 import tempfile
@@ -412,56 +413,57 @@ def create_xlsx_mapping(
     return mapping_path
 
 
-def _mapping_path_rows(mapping_path: Path) -> Dict[str, str]:
-    with mapping_path.open(encoding="utf-8", newline="") as file_handle:
-        reader = csv.DictReader(file_handle)
-        if reader.fieldnames is None:
-            raise ValueError("Mapping CSV must contain a header row")
-        if all(column in reader.fieldnames for column in _MAPPING_COLUMNS):
-            original_column = "original_value"
-            replacement_column = "replacement_value"
-        elif all(column in reader.fieldnames for column in _OLD_MAPPING_COLUMNS):
-            original_column = "original_value"
-            replacement_column = "replacement_value"
-        else:
-            raise ValueError(
-                f"Mapping CSV must contain columns: {', '.join(_MAPPING_COLUMNS)}"
-            )
+_MAPPING_STATUS_COLUMNS = [
+    "status", "replacement_value", "original_value", "value_type",
+    "source_documents", "locations", "occurrences",
+]
+_VALID_MAPPING_STATUSES = {"keep", "anon", "new"}
 
-        mapping = {}
-        for line_number, row in enumerate(reader, start=2):
-            original_column_value = row.get(original_column) or ""
-            replacement = row.get(replacement_column) or ""
-            value_type = row.get("value_type")
-            if value_type is None or not value_type.strip():
-                raise ValueError(
-                    f"Mapping line {line_number}: missing value_type "
-                    f"(replacement {replacement!r}); check that the row has "
-                    "exactly three columns and quoted fields where needed"
-                )
-            if not replacement:
-                raise ValueError(
-                    f"Mapping line {line_number}: replacement_value must not be empty"
-                )
-            if value_type not in _VALUE_TYPES:
-                raise ValueError(
-                    f"Mapping line {line_number}: unsupported value_type "
-                    f"{value_type!r} (replacement {replacement!r}); "
-                    f"allowed: {', '.join(sorted(_VALUE_TYPES))}"
-                )
-            for original in original_column_value.split(";"):
-                if not original:
-                    raise ValueError(
-                        f"Mapping line {line_number}: empty original_value entry "
-                        f"(replacement {replacement!r}); check for ';;' or a "
-                        "trailing ';'"
-                    )
-                if original in mapping:
-                    raise ValueError(
-                        f"Mapping line {line_number}: duplicate original_value "
-                        f"{original!r} (already mapped to {mapping[original]!r})"
-                    )
-                mapping[original] = replacement
+
+def _mapping_document_rows(mapping_path: Path) -> List[Dict[str, str]]:
+    """Read mapping rows; rows without status remain backward-compatible as anon."""
+    text = mapping_path.read_text(encoding="utf-8")
+    lines = [line for line in text.splitlines() if line.strip() not in {"# NEW / NEU", "# IGNORE / IGNORIEREN"}]
+    reader = csv.DictReader(io.StringIO("\n".join(lines)))
+    if reader.fieldnames is None or not all(column in reader.fieldnames for column in _MAPPING_COLUMNS):
+        raise ValueError(f"Mapping CSV must contain columns: {', '.join(_MAPPING_COLUMNS)}")
+    rows = []
+    for line_number, row in enumerate(reader, start=2):
+        original = row.get("original_value") or ""
+        replacement = row.get("replacement_value") or ""
+        value_type = row.get("value_type") or ""
+        status = (row.get("status") or "anon").strip().lower()
+        if status not in _VALID_MAPPING_STATUSES:
+            raise ValueError(f"Mapping line {line_number}: unsupported status {status!r}")
+        if not original:
+            raise ValueError(f"Mapping line {line_number}: original_value must not be empty")
+        if value_type not in _VALUE_TYPES:
+            raise ValueError(f"Mapping line {line_number}: unsupported value_type {value_type!r}")
+        if status == "anon" and not replacement:
+            raise ValueError(f"Mapping line {line_number}: replacement_value must not be empty")
+        rows.append({
+            "replacement_value": replacement,
+            "original_value": original,
+            "value_type": value_type,
+            "status": status,
+            "source_documents": row.get("source_documents", "") or "",
+            "locations": row.get("locations", "") or "",
+            "occurrences": row.get("occurrences", "") or "",
+        })
+    return rows
+
+
+def _mapping_path_rows(mapping_path: Path) -> Dict[str, str]:
+    mapping = {}
+    for row in _mapping_document_rows(mapping_path):
+        if row["status"] != "anon":
+            continue
+        for original in row["original_value"].split(";"):
+            if not original:
+                raise ValueError("Mapping original_value contains an empty entry")
+            if original in mapping:
+                raise ValueError(f"Duplicate original_value: {original!r}")
+            mapping[original] = row["replacement_value"]
     return mapping
 
 
@@ -567,6 +569,181 @@ def explain_xlsx_replacement(
     finally:
         workbook.close()
     return results
+
+
+_MARKDOWN_PROTECTED = re.compile(
+    r"```[\s\S]*?```|`[^`\n]*`|\]\([^)]*\)|https?://[^\s)>]+",
+    re.IGNORECASE,
+)
+_TEXT_EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+_TEXT_NAME_PATTERN = re.compile(
+    r"[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+(?:\s+[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+){1,3}"
+)
+
+
+def _markdown_editable_parts(content: str):
+    position = 0
+    for match in _MARKDOWN_PROTECTED.finditer(content):
+        if match.start() > position:
+            yield True, content[position:match.start()]
+        yield False, match.group(0)
+        position = match.end()
+    if position < len(content):
+        yield True, content[position:]
+
+
+def _text_value_type(value: str) -> str:
+    if _EMAIL_PATTERN.fullmatch(value):
+        return "email"
+    if _NAME_PATTERN.fullmatch(value):
+        return "name"
+    return "string"
+
+
+def _text_candidate_rows(content: str, document_name: str) -> List[Dict[str, Any]]:
+    candidates: Dict[str, Dict[str, Any]] = {}
+    in_fence = False
+    for line_number, line in enumerate(content.splitlines(), start=1):
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        visible = _MARKDOWN_PROTECTED.sub("", line)
+        matches = list(_TEXT_EMAIL_PATTERN.finditer(visible)) + list(_TEXT_NAME_PATTERN.finditer(visible))
+        for match in matches:
+            original = match.group(0).rstrip('.,;:!?')
+            if not original:
+                continue
+            value_type = _text_value_type(original)
+            candidate = candidates.setdefault(
+                original,
+                {
+                    "original_value": original,
+                    "replacement_value": _replacement_for(original, value_type),
+                    "value_type": value_type,
+                    "worksheets": [],
+                    "cells": [],
+                    "occurrences": 0,
+                },
+            )
+            candidate["worksheets"].append(document_name)
+            candidate["cells"].append(f"line {line_number}")
+            candidate["occurrences"] += 1
+    return [
+        {
+            "original_value": value["original_value"],
+            "replacement_value": value["replacement_value"],
+            "value_type": value["value_type"],
+            "worksheet": "; ".join(value["worksheets"]),
+            "cell": "; ".join(value["cells"]),
+            "occurrences": value["occurrences"],
+        }
+        for value in candidates.values()
+    ]
+
+
+def identify_text_strings(
+    file_path: Path | str,
+    output_path: Optional[Path | str] = None,
+    *,
+    overwrite: bool = False,
+) -> Path:
+    """Identify name and email candidates in plain text or Markdown."""
+    input_path = Path(file_path)
+    if not input_path.is_file():
+        raise FileNotFoundError(input_path)
+    candidate_path = Path(output_path) if output_path is not None else _default_output_path(
+        input_path, "candidates", ".csv"
+    )
+    _check_output_path(candidate_path, input_path, overwrite)
+    _write_csv(
+        candidate_path,
+        _CANDIDATE_COLUMNS,
+        _text_candidate_rows(input_path.read_text(encoding="utf-8"), "Markdown"),
+    )
+    return candidate_path
+
+
+def update_text_mapping(file_path: Path | str, mapping_path: Path | str) -> Path:
+    """Add newly found text candidates with status ``new``."""
+    input_path = Path(file_path)
+    mapping_file = Path(mapping_path)
+    if not input_path.is_file():
+        raise FileNotFoundError(input_path)
+    existing_rows = _mapping_document_rows(mapping_file) if mapping_file.exists() else []
+    known = {row["original_value"] for row in existing_rows}
+    candidates = _text_candidate_rows(input_path.read_text(encoding="utf-8"), input_path.name)
+    for candidate in candidates:
+        if candidate["original_value"] in known:
+            continue
+        existing_rows.append({
+            "replacement_value": candidate["replacement_value"],
+            "original_value": candidate["original_value"],
+            "value_type": candidate["value_type"],
+            "status": "new",
+            "source_documents": candidate["worksheet"],
+            "locations": candidate["cell"],
+            "occurrences": str(candidate["occurrences"]),
+        })
+        known.add(candidate["original_value"])
+    mapping_file.parent.mkdir(parents=True, exist_ok=True)
+    with mapping_file.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=_MAPPING_STATUS_COLUMNS)
+        writer.writeheader()
+        writer.writerows(existing_rows)
+    return mapping_file
+
+
+def mapping_matches_text(content: str, mapping_path: Path | str) -> bool:
+    """Return whether approved mappings match editable text in ``content``."""
+    mapping = _mapping_path_rows(Path(mapping_path))
+    return any(
+        key in part
+        for editable, part in _markdown_editable_parts(content)
+        if editable
+        for key in mapping
+    )
+
+
+def _replace_text_part(part: str, mapping: Dict[str, str]) -> str:
+    keys = sorted((key for key in mapping if key), key=len, reverse=True)
+    if not keys:
+        return part
+    pattern = re.compile(
+        r"(?<!\w)(?:" + "|".join(re.escape(key) for key in keys) + r")(?!\w)"
+    )
+    return pattern.sub(lambda match: mapping[match.group(0)], part)
+
+
+def anonymize_text_content(content: str, mapping_path: Path | str) -> str:
+    """Apply a mapping to editable Markdown/text content without changing protected syntax."""
+    mapping = _mapping_path_rows(Path(mapping_path))
+    return "".join(
+        _replace_text_part(part, mapping) if editable else part
+        for editable, part in _markdown_editable_parts(content)
+    )
+
+
+def anonymize_text(
+    file_path: Path | str,
+    mapping_path: Path | str,
+    output_path: Optional[Path | str] = None,
+    *,
+    overwrite: bool = False,
+) -> Path:
+    """Apply a mapping to Markdown/text and write ``<stem>_anon.md`` by default."""
+    input_path = Path(file_path)
+    if not input_path.is_file():
+        raise FileNotFoundError(input_path)
+    output = Path(output_path) if output_path is not None else input_path.with_name(
+        f"{input_path.stem}_anon{input_path.suffix}"
+    )
+    _check_output_path(output, input_path, overwrite)
+    anonymized = anonymize_text_content(input_path.read_text(encoding="utf-8"), mapping_path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(anonymized, encoding="utf-8")
+    return output
 
 
 def anonymize_xlsx(

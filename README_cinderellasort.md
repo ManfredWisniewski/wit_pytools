@@ -101,6 +101,9 @@ max_pages=50
 retry_times=3
 continue_on_error=false
 sidecar=true
+anonymize=false
+anonymize_mapping=P:\\customers\\customer-anon-mapping.csv
+anonymize_update=false
 ```
 
 For a source tree:
@@ -149,7 +152,22 @@ Behavior:
   `max_pages` is the cost guard. Set `OPENROUTER_API_KEY` and
   `OPENROUTER_PDF_MODEL` in the environment of the process that runs
   cinderellasort.
-- In `nc` mode the mirrored target directory is rescanned after the move.
+- `anonymize=false` is the default. With `anonymize=true`, new candidates are
+  added with `status=new` in the configured customer mapping CSV. Only rows
+  with `status=anon` are applied. Set `status=anon` to approve a value or
+  `status=keep` to explicitly preserve it.
+- After normal sorting, the anonymization pass scans all existing Markdown files
+  below `targetdir` that do not have an `_anon.md` output yet. With
+  `anonymize_update=true`, it also revisits existing anonymized files.
+- After a successful anonymization, the original Markdown file is removed and
+  only `_anon.md` remains. `anonymize_update=false` preserves an existing
+  `_anon.md`; set it to `true` to apply the current approved mapping again. No
+  `_anon.md` is created when no approved mapping matches.
+- The customer mapping CSV starts with the `status` column and uses
+  `status=anon` for approved replacements, `status=keep` for values that must
+  not be replaced, and `status=new` for
+  proposals. Only `anon` rows are applied.
+- In `nc` mode the mirrored target directory is rescanned after conversion.
 - `[BOWLS_DOCPREP]` is merged from the central configuration like `[BOWLS]`;
   `[DOCPREP]` is project-specific.
 

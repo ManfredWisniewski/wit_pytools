@@ -193,6 +193,41 @@ The anonymization process:
 
 The mapping CSV is reversible by default. Destroying the mapping file makes the anonymization practically irreversible.
 
+## Generic text and Markdown anonymization
+
+Markdown anonymization uses the same reviewed mapping CSV format as XLSX but
+keeps the workbook-specific functions separate.
+
+```python
+from wit_pytools.documenttools import (
+    identify_text_strings,
+    anonymize_text,
+    anonymize_text_content,
+)
+
+candidates = identify_text_strings("document.md")
+output = anonymize_text("document.md", "document_mapping.csv")
+```
+
+Outputs use:
+
+```text
+document_candidates.csv
+document_mapping.csv
+document_anon.md
+```
+
+Candidate detection identifies names and e-mail addresses, but not URLs. It
+records `worksheet=Markdown`, line locations in `cell`, and occurrence counts.
+Fenced code blocks, inline code, link destinations, raw URLs, dates, numbers
+and blank content are excluded. Visible link labels remain eligible for
+replacement while their destinations stay unchanged.
+
+`anonymize_text_content()` returns transformed text without writing files.
+`anonymize_text()` never overwrites the source unless an explicit output path
+and `overwrite=True` are supplied. PDF conversion and anonymization are
+separate explicit steps.
+
 ## PDF to Markdown
 
 `pdf_to_markdown` converts a PDF into one Markdown file. The approach mirrors the concept of [MarkPDFDown](https://github.com/MarkPDFdown/markpdfdown) (Apache-2.0): each page is rendered to an image and transcribed by a multimodal model. No code from that project is used; rendering relies on `pdfplumber` and the model is reached through `wit_pytools.aitools` (OpenRouter).

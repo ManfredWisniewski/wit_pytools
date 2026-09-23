@@ -8,7 +8,12 @@ from wit_pytools.witpytools import dryprint
 from wit_pytools.sanitizers import prepregex, cleanfilestring, convert_numerals_arabic_western, normalize_spaces
 from wit_pytools.validators import valid_email_address
 from wit_pytools.systools import walklevel, rmemptydir, movefile, copyfile, delfile
-from wit_pytools.documenttools import document_find_regex
+from wit_pytools.documenttools import (
+    anonymize_text,
+    document_find_regex,
+    mapping_matches_text,
+    update_text_mapping,
+)
 from eliot import log_message
 import gettext
 
@@ -727,6 +732,63 @@ def _docprep_pdf(source, output_path, settings):
     return output
 
 
+def process_pending_docprep_anonymization(targetdir, settings):
+    """Anonymize existing target Markdown files that still need processing."""
+    if not settings['anonymize']:
+        return
+    if not settings['anonymize_mapping']:
+        message = 'Doc_prep anonymization skipped: anonymize_mapping is not configured'
+        log_message(message, level='WARNING')
+        print(message)
+        return
+    markdown_files = sorted(Path(targetdir).rglob('*.md'))
+    message = f'Doc_prep anonymization: scanning {targetdir}; found {len(markdown_files)} Markdown file(s)'
+    log_message(message, level='INFO')
+    print(message)
+    for markdown_path in markdown_files:
+        if markdown_path.name.endswith('_anon.md'):
+            continue
+        anonymized_path = markdown_path.with_name(f"{markdown_path.stem}_anon.md")
+        if anonymized_path.exists() and not settings['anonymize_update']:
+            continue
+        try:
+            handle_docprep_anonymization(markdown_path, settings)
+        except Exception as e:
+            log_message(
+                f"Pending Doc_prep anonymization failed for {markdown_path}: {e}",
+                level="ERROR",
+            )
+
+
+def handle_docprep_anonymization(markdown_path, settings):
+    """Collect proposals and optionally apply approved mappings to Markdown."""
+    if not settings['anonymize']:
+        return None
+    if not settings['anonymize_mapping']:
+        raise ValueError('DOCPREP anonymize=true requires anonymize_mapping')
+
+    mapping_path = Path(settings['anonymize_mapping'])
+    update_text_mapping(markdown_path, mapping_path)
+    log_message(f"Doc_prep anonymization: updated mapping {mapping_path}", level="INFO")
+    print(f"Doc_prep anonymization: updated mapping {mapping_path}")
+    content = Path(markdown_path).read_text(encoding='utf-8')
+    if not mapping_matches_text(content, mapping_path):
+        log_message(f"Doc_prep anonymization: no approved mapping matches {markdown_path.name}", level="INFO")
+        return None
+
+    output_path = Path(markdown_path).with_name(f"{Path(markdown_path).stem}_anon.md")
+    if output_path.exists() and not settings['anonymize_update']:
+        log_message(f"Doc_prep anonymization: {output_path.name} exists, skipping", level="INFO")
+        if Path(markdown_path).exists():
+            Path(markdown_path).unlink()
+            log_message(f"Doc_prep anonymization: removed source {markdown_path}", level="INFO")
+        return output_path
+    result = anonymize_text(markdown_path, mapping_path, output_path, overwrite=True)
+    Path(markdown_path).unlink()
+    log_message(f"Doc_prep anonymization: removed source {markdown_path}", level="INFO")
+    return result
+
+
 # Converter registry: extension -> (page counter, converter). Only PDF for now.
 DOCPREP_CONVERTERS = {
     '.pdf': (_pdf_page_count, _docprep_pdf),
@@ -746,6 +808,9 @@ def docprep_settings(config_object):
         'retry_times': int(section.get('retry_times', '3')),
         'continue_on_error': (section.get('continue_on_error', 'false') or 'false').strip().lower() == 'true',
         'sidecar': (section.get('sidecar', 'true') or 'true').strip().lower() == 'true',
+        'anonymize': (section.get('anonymize', 'false') or 'false').strip().lower() == 'true',
+        'anonymize_mapping': (section.get('anonymize_mapping', '') or '').strip() or None,
+        'anonymize_update': (section.get('anonymize_update', 'false') or 'false').strip().lower() == 'true',
     }
 
 
@@ -786,6 +851,13 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
     except Exception as e:
         log_message(f"Doc_prep: conversion failed for {source.name}: {e}", level="ERROR")
         return False
+
+    if settings['anonymize']:
+        try:
+            handle_docprep_anonymization(output_path, settings)
+        except Exception as e:
+            log_message(f"Doc_prep anonymization failed for {output_path.name}: {e}", level="ERROR")
+            return False
 
     if filemode == 'nc':
         from wit_pytools import nctools
@@ -1292,6 +1364,8 @@ def cinderellasort(
 #                        movefile(subdir, file, targetdir + bowldir(nfile, config_object), nfile, filemode, overwrite=overwrite, dryrun=dryrun)
         else:
             print(' #  No valid sort found!') 
+
+    process_pending_docprep_anonymization(targetdir, docprep_settings(config_object))
 
     print(f"\n## Removing empty directories:")
     rmemptydir(sourcedir,dryrun)
