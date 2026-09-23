@@ -484,6 +484,56 @@ def test_docprep_mirrors_subdir_and_keeps_original(tmp_path, monkeypatch):
     assert calls[0]["output"] == target_dir / "nested" / "Invoice.md"
 
 
+def test_docprep_anonymization_creates_proposals_then_applies_approved_mapping(tmp_path):
+    markdown = tmp_path / "document.md"
+    markdown.write_text("# Anna Musterpeter", encoding="utf-8")
+    mapping = tmp_path / "customer_mapping.csv"
+    settings = {
+        "anonymize": True,
+        "anonymize_mapping": str(mapping),
+        "anonymize_update": False,
+    }
+
+    assert cs.handle_docprep_anonymization(markdown, settings) is None
+    mapping_text = mapping.read_text(encoding="utf-8")
+    assert "status" in mapping_text and mapping_text.splitlines()[1].startswith("new,")
+    assert not (tmp_path / "document_anon.md").exists()
+
+    mapping.write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "anon,Person-abc,Anna Musterpeter,name,,,\n",
+        encoding="utf-8",
+    )
+    output = cs.handle_docprep_anonymization(markdown, settings)
+    assert output == tmp_path / "document_anon.md"
+    assert output.read_text(encoding="utf-8") == "# Person-abc"
+    assert not markdown.exists()
+
+
+def test_docprep_pending_anonymization_scans_existing_target_markdown(tmp_path):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        docprep_section={
+            "anonymize": "true",
+            "anonymize_mapping": str(tmp_path / "customer_mapping.csv"),
+        },
+    )
+    (source_dir / "Rechnung 2026.pdf").unlink()
+    target_markdown = target_dir / "old" / "existing.md"
+    target_markdown.parent.mkdir(parents=True)
+    target_markdown.write_text("Anna Musterpeter", encoding="utf-8")
+    mapping = tmp_path / "customer_mapping.csv"
+    mapping.write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "anon,Person-abc,Anna Musterpeter,name,,,\n",
+        encoding="utf-8",
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "old" / "existing_anon.md").read_text(encoding="utf-8") == "Person-abc"
+
+
 def test_docprep_settings_defaults():
     config = ConfigParser()
     config.optionxform = str

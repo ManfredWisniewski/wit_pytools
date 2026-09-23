@@ -1,0 +1,17 @@
+# German translations for pdf2md
+msgid ""
+msgstr ""
+"Project-Id-Version: pdf2md\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "[illegible]"
+msgstr "[unleserlich]"
+
+msgid "Signature"
+msgstr "Unterschrift"
+
+msgid "Logo"
+msgstr "Logo"

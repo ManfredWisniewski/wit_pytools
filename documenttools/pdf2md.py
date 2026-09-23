@@ -15,6 +15,7 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
+import gettext
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from eliot import log_message
@@ -35,15 +36,25 @@ MODES = ("vision", "text")
 LANGUAGES: Dict[str, Dict[str, str]] = {
     "en": {
         "illegible": "[illegible]",
+        "signature": "Signature",
+        "logo": "Logo",
         "failed": "> **Page {page}: conversion failed** — {reason}",
         "no_text": "> **Page {page}: no text layer** — use vision mode for this page",
     },
     "de": {
         "illegible": "[unleserlich]",
+        "signature": "Unterschrift",
+        "logo": "Logo",
         "failed": "> **Seite {page}: Konvertierung fehlgeschlagen** — {reason}",
         "no_text": "> **Seite {page}: keine Textebene** — für diese Seite den Modus vision verwenden",
     },
 }
+
+
+def _translation(language: str):
+    localedir = Path(__file__).parents[1] / "locale"
+    return gettext.translation("pdf2md", localedir=str(localedir), languages=[language], fallback=True)
+
 _SYSTEM_PROMPT = "You convert document page images to Markdown and output Markdown only."
 _FENCE_PATTERN = re.compile(r"\A\s*```(?:markdown|md)?\s*\n(.*?)\n?```\s*\Z", re.DOTALL)
 
@@ -62,7 +73,14 @@ def _language(language: Optional[str]) -> Dict[str, str]:
         raise ValueError(
             f"Unsupported language {code!r}; supported: {', '.join(sorted(LANGUAGES))}"
         )
-    return LANGUAGES[code]
+    translated = _translation(code).gettext
+    texts = dict(LANGUAGES[code])
+    defaults = {"illegible": "[illegible]", "signature": "Signature", "logo": "Logo"}
+    for slug, default in defaults.items():
+        translated_value = translated(default)
+        if translated_value != default:
+            texts[slug] = translated_value
+    return texts
 
 
 def _resolve_model(model: Optional[str]) -> str:
@@ -82,7 +100,13 @@ def _load_prompt(prompt_file: Optional[Union[str, Path]], texts: Dict[str, str])
     path = Path(prompt_file) if prompt_file else DEFAULT_PROMPT_FILE
     if not path.is_file():
         raise FileNotFoundError(path)
-    return path.read_text(encoding="utf-8").replace("{illegible}", texts["illegible"]).strip()
+    return (
+        path.read_text(encoding="utf-8")
+        .replace("{illegible}", texts["illegible"])
+        .replace("{signature}", texts["signature"])
+        .replace("{logo}", texts["logo"])
+        .strip()
+    )
 
 
 def _strip_fence(text: str) -> str:

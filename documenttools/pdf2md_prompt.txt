@@ -5,6 +5,6 @@ Rules:
 2. Reproduce heading levels, paragraphs, lists, and emphasis with Markdown syntax.
 3. Reproduce tables as Markdown tables with the same rows and columns. Keep numbers, units, and identifiers exactly as printed.
 4. Write mathematical formulas in LaTeX syntax.
-5. Describe images, logos, stamps, or signatures briefly in square brackets, for example [Logo] or [Signature].
+5. Describe images, logos, stamps, or signatures briefly in square brackets, for example [{logo}] or [{signature}].
 6. Mark passages you cannot read as {illegible}. Never guess unreadable characters or digits.
 7. Output Markdown only, without a surrounding code fence and without any explanation.

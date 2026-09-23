@@ -19,6 +19,11 @@ from wit_pytools.documenttools import (
     identify_xlsx_strings,
     pdf_to_markdown,
     pdf_to_markdown_text,
+    identify_text_strings,
+    anonymize_text,
+    anonymize_text_content,
+    update_text_mapping,
+    mapping_matches_text,
 )
 
 TEST_DOC = Path(__file__).parent / "documenttools" / "testdocument.pdf"
@@ -322,6 +327,16 @@ def test_pdf_to_markdown_failed_page_raises_unless_continue(pdf_copy, monkeypatc
     assert text.endswith("ok")
 
 
+def test_pdf2md_translatable_prompt_slugs():
+    texts = pdf2md._language("de")
+    assert texts["illegible"] == "[unleserlich]"
+    assert texts["signature"] == "Unterschrift"
+    assert texts["logo"] == "Logo"
+    prompt = pdf2md._load_prompt(None, texts)
+    assert "[Unterschrift]" in prompt
+    assert "[Logo]" in prompt
+
+
 def test_pdf_to_markdown_text_mode_uses_text_layer_without_api(pdf_copy, monkeypatch):
     monkeypatch.setattr(pdf2md, "chat", _fake_chat([]))
 
@@ -366,6 +381,72 @@ def test_pdf_to_markdown_image_only_pdf(tmp_path, monkeypatch, no_cost_prompt):
 
     monkeypatch.setattr(pdf2md, "chat", _fake_chat(["transcribed scan"]))
     assert pdf_to_markdown_text(scan, model="m") == "transcribed scan"
+
+
+def test_identify_and_anonymize_markdown(tmp_path):
+    source = tmp_path / "document.md"
+    source.write_text(
+        "# Anna Musterpeter\n\nContact anna@example.com.\n\n"
+        "[Anna](https://example.org/anna) `Anna`\n\n"
+        "```text\nAnna Musterpeter\n```\n",
+        encoding="utf-8",
+    )
+
+    candidates = identify_text_strings(source)
+    with candidates.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert {row["original_value"] for row in rows} == {
+        "Anna Musterpeter",
+        "anna@example.com",
+    }
+    assert all(row["worksheet"] == "Markdown" for row in rows)
+
+    mapping = tmp_path / "document_mapping.csv"
+    mapping.write_text(
+        "replacement_value,original_value,value_type\n"
+        "Person-abc,Anna Musterpeter,name\n"
+        "person-abc@example.invalid,anna@example.com,email\n",
+        encoding="utf-8",
+    )
+    output = anonymize_text(source, mapping)
+    result = output.read_text(encoding="utf-8")
+    assert "Person-abc" in result
+    assert "person-abc@example.invalid" in result
+    assert "https://example.org/anna" in result
+    assert "`Anna`" in result
+    assert "Anna Musterpeter" in result.split("```")[1]
+
+
+def test_anonymize_text_content_supports_containment_grouping(tmp_path):
+    mapping = tmp_path / "mapping.csv"
+    mapping.write_text(
+        "replacement_value,original_value,value_type\n"
+        "Person-1,Anna;Anna Musterpeter,name\n",
+        encoding="utf-8",
+    )
+    assert anonymize_text_content("Anna Musterpeter", mapping) == "Person-1"
+
+
+def test_update_text_mapping_creates_new_block_and_approved_rows_are_applied(tmp_path):
+    source = tmp_path / "document.md"
+    source.write_text("Anna Musterpeter contacted anna@example.com", encoding="utf-8")
+    mapping = tmp_path / "customer_mapping.csv"
+
+    update_text_mapping(source, mapping)
+    mapping_text = mapping.read_text(encoding="utf-8")
+    assert "status" in mapping_text
+    assert "new" in mapping_text
+    assert "Anna Musterpeter" in mapping_text
+    assert not mapping_matches_text(source.read_text(encoding="utf-8"), mapping)
+
+    mapping.write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "anon,Person-abc,Anna Musterpeter,name,,,\n"
+        "new,person-def,anna@example.com,email,document.md,line 1,1\n",
+        encoding="utf-8",
+    )
+    assert mapping_matches_text(source.read_text(encoding="utf-8"), mapping)
+    assert anonymize_text_content(source.read_text(encoding="utf-8"), mapping).startswith("Person-abc")
 
 
 def test_pdf_to_markdown_cost_confirmation_aborts(pdf_copy, monkeypatch):
