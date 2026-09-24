@@ -4,6 +4,7 @@ import csv
 import os
 import re
 import tempfile
+import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -94,6 +95,26 @@ _MARKDOWN_PROTECTED = re.compile(
 _CANDIDATE_COLUMNS = CANDIDATE_COLUMNS
 
 
+def _is_markdown_table_separator(value: str) -> bool:
+    stripped = value.strip()
+    if not stripped or "|" not in stripped:
+        return False
+    if all(character in "|:- \t" for character in stripped):
+        return True
+    cells = stripped.strip("|").split("|")
+    return len(cells) > 1 and all(
+        re.fullmatch(r":?-{3,}:?", cell.strip()) for cell in cells
+    )
+
+
+def _is_standalone_currency(value: str) -> bool:
+    stripped = value.strip()
+    return bool(stripped) and all(
+        character.isspace() or unicodedata.category(character) == "Sc"
+        for character in stripped
+    )
+
+
 def _require_openpyxl() -> None:
     if openpyxl is None:
         raise RuntimeError(
@@ -132,6 +153,8 @@ def _candidate_is_ignored(
     ignore_emails: bool,
     ignore_dates: bool,
 ) -> bool:
+    if _is_markdown_table_separator(value) or _is_standalone_currency(value):
+        return True
     if ignore_emails and (value_type == "email" or "@" in value):
         return True
     if ignore_numbers and any(character.isdigit() for character in value):
@@ -267,6 +290,25 @@ def _markdown_protected_spans(content: str):
     return [(match.start(), match.end()) for match in _MARKDOWN_PROTECTED.finditer(content)]
 
 
+def _merge_candidates(primary, secondary):
+    merged = {candidate.original_value: candidate for candidate in primary}
+    ordered = list(primary)
+    for candidate in secondary:
+        existing = merged.get(candidate.original_value)
+        if existing is None:
+            merged[candidate.original_value] = candidate
+            ordered.append(candidate)
+            continue
+        existing_locations = set(zip(existing.source_documents, existing.locations))
+        for source_document, location in zip(
+            candidate.source_documents, candidate.locations
+        ):
+            if (source_document, location) not in existing_locations:
+                existing.add_location(source_document, location)
+                existing_locations.add((source_document, location))
+    return ordered
+
+
 def _text_candidate_rows(
     content: str,
     document_name: str,
@@ -291,8 +333,8 @@ def _text_candidate_rows(
             protected_spans,
             name_catalog=name_catalog,
         )
-    elif anonymize_mode == "presidio":
-        candidates = detect_presidio_candidates(
+    elif anonymize_mode in {"presidio", "all"}:
+        presidio_candidates = detect_presidio_candidates(
             content,
             document_name,
             protected_spans,
@@ -307,6 +349,18 @@ def _text_candidate_rows(
             ignore_emails=ignore_emails,
             ignore_dates=ignore_dates,
         )
+        if anonymize_mode == "all":
+            candidates = _merge_candidates(
+                detect_text_candidates(
+                    content,
+                    document_name,
+                    protected_spans,
+                    name_catalog=name_catalog,
+                ),
+                presidio_candidates,
+            )
+        else:
+            candidates = presidio_candidates
     else:
         raise ValueError(f"Unsupported anonymize mode: {anonymize_mode!r}")
     candidates = [

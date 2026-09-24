@@ -857,8 +857,8 @@ def docprep_settings(config_object):
         )
 
     anonymize_mode = (section.get('anonymize-mode', 'custom') or 'custom').strip().lower()
-    if anonymize_mode not in {'custom', 'presidio'}:
-        raise ValueError('anonymize-mode must be custom or presidio')
+    if anonymize_mode not in {'custom', 'presidio', 'all'}:
+        raise ValueError('anonymize-mode must be custom, presidio, or all')
     presidio_entities = csv_values('anonymize_presidio_entities')
     if presidio_entities == ('all',):
         presidio_entities = None

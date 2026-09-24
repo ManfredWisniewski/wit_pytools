@@ -12,7 +12,8 @@ import pytest
 # Allow importing wit_pytools when running tests directly
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
-from wit_pytools.anonymization import create_mapping
+from wit_pytools.anonymization import Candidate, create_mapping
+import wit_pytools.documenttools as documenttools
 from wit_pytools.documenttools import (
     anonymize_xlsx,
     document_find_regex,
@@ -427,6 +428,68 @@ def test_anonymize_text_content_supports_containment_grouping(tmp_path):
     assert anonymize_text_content("Anna Musterpeter", mapping) == "Person-1"
 
 
+def test_all_anonymize_mode_merges_custom_and_presidio(monkeypatch):
+    custom_candidate = Candidate(
+        "Alice Smith",
+        "Person-custom",
+        "name",
+        ["document.md"],
+        ["line 1"],
+        1,
+    )
+    presidio_duplicate = Candidate(
+        "Alice Smith",
+        "Person-presidio",
+        "string",
+        ["document.md"],
+        ["line 1"],
+        1,
+    )
+    presidio_candidate = Candidate(
+        "555-0100",
+        "value-presidio",
+        "string",
+        ["document.md"],
+        ["line 2"],
+        1,
+    )
+    monkeypatch.setattr(
+        documenttools,
+        "detect_text_candidates",
+        lambda *args, **kwargs: [custom_candidate],
+    )
+    monkeypatch.setattr(
+        documenttools,
+        "detect_presidio_candidates",
+        lambda *args, **kwargs: [presidio_duplicate, presidio_candidate],
+    )
+
+    rows = documenttools._text_candidate_rows(
+        "ignored",
+        "document.md",
+        anonymize_mode="all",
+    )
+
+    assert rows == [
+        {
+            "original_value": "Alice Smith",
+            "replacement_value": "Person-custom",
+            "value_type": "name",
+            "worksheet": "document.md",
+            "cell": "line 1",
+            "occurrences": 1,
+        },
+        {
+            "original_value": "555-0100",
+            "replacement_value": "value-presidio",
+            "value_type": "string",
+            "worksheet": "document.md",
+            "cell": "line 2",
+            "occurrences": 1,
+        },
+    ]
+
+
 def test_update_text_mapping_creates_new_block_and_approved_rows_are_applied(tmp_path):
     source = tmp_path / "document.md"
     source.write_text("Anna Musterpeter contacted anna@example.com", encoding="utf-8")
@@ -461,7 +524,12 @@ def test_update_text_mapping_removes_existing_ignored_recommendations(tmp_path, 
         "new,person-001,test@example.com,email,doc.md,line 1,1\n"
         "new,value-002,12345,string,doc.md,line 1,1\n"
         "new,value-003,Garden,string,doc.md,line 1,1\n"
-        "new,value-004,12.03.2025,string,doc.md,line 1,1\n",
+        "new,value-004,12.03.2025,string,doc.md,line 1,1\n"
+        "new,Person-d50a,|------------------------------------------------------|----------------------------------------------------------------------------------|----------------------------------------------------------|,name,doc.md,line 1,1\n"
+        "new,Person-c4cc,€,name,doc.md,line 1,1\n"
+        "new,Person-dollar,$,name,doc.md,line 1,1\n"
+        "new,Person-pipe,|,name,doc.md,line 1,1\n"
+        "new,Person-pipes,| | |,name,doc.md,line 1,1\n",
         encoding="utf-8",
     )
 

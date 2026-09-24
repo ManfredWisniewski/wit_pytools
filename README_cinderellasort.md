@@ -151,6 +151,12 @@ installed `presidio-analyzer` package to detect entities, then uses the same
 reviewed mapping workflow. Presidio mode fails if the package or configured
 language model is unavailable; it does not fall back to custom detection.
 
+`anonymize-mode=all` runs both custom detection and Presidio, merging duplicate
+values with custom detection taking precedence. This mode is useful when the
+goal is to find as many possible names as possible, but it produces significantly
+more false-positive recommendations than either mode alone and requires more
+manual review.
+
 `anonymize_presidio_entities` is a comma-separated allow-list. Use `all` to
 request all entities available in the configured Presidio recognizer registry.
 The supported entity names include:
