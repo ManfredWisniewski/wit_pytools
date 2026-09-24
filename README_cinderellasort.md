@@ -107,7 +107,7 @@ anonymize-mode=custom
 anonymize_presidio_model=de_core_news_sm
 anonymize_presidio_score_threshold=0.5
 # Replacement token length; the default is 4.
-anonymize_replacement_length=4
+anonymize_token_length=4
 # DATE_TIME and URL are excluded by default.
 anonymize_presidio_entities=PERSON,EMAIL_ADDRESS,PHONE_NUMBER,LOCATION,ORGANIZATION,IP_ADDRESS,CREDIT_CARD,CRYPTO,IBAN_CODE,NRP,MEDICAL_LICENSE
 anonymize_ignore_dictionary=true

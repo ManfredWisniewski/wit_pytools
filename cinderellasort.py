@@ -800,7 +800,7 @@ def handle_docprep_anonymization(
         presidio_model=settings.get('anonymize_presidio_model', 'de_core_news_sm'),
         presidio_score_threshold=settings.get('anonymize_presidio_score_threshold', 0.5),
         presidio_entities=settings.get('anonymize_presidio_entities'),
-        replacement_length=settings.get('anonymize_replacement_length', 4),
+        replacement_length=settings.get('anonymize_token_length', 4),
         ignore_dictionary=settings.get('anonymize_ignore_dictionary', False),
         ignore_numbers=settings.get('anonymize_ignore_numbers', False),
         ignore_emails=settings.get('anonymize_ignore_emails', False),
@@ -868,10 +868,10 @@ def docprep_settings(config_object):
             'IBAN_CODE', 'NRP', 'MEDICAL_LICENSE',
         )
     replacement_length = int(
-        section.get('anonymize_replacement_length', '4') or '3'
+        section.get('anonymize_token_length', '4') or '3'
     )
     if replacement_length < 1:
-        raise ValueError('anonymize_replacement_length must be at least 1')
+        raise ValueError('anonymize_token_length must be at least 1')
 
     return {
         'mode': (section.get('mode', 'vision') or 'vision').strip().lower(),
@@ -887,7 +887,7 @@ def docprep_settings(config_object):
         'anonymize_presidio_model': (section.get('anonymize_presidio_model', 'de_core_news_sm') or 'de_core_news_sm').strip(),
         'anonymize_presidio_score_threshold': float(section.get('anonymize_presidio_score_threshold', '0.5') or '0.5'),
         'anonymize_presidio_entities': presidio_entities,
-        'anonymize_replacement_length': replacement_length,
+        'anonymize_token_length': replacement_length,
         'anonymize_ignore_dictionary': (section.get('anonymize_ignore_dictionary', 'false') or 'false').strip().lower() == 'true',
         'anonymize_ignore_numbers': (section.get('anonymize_ignore_numbers', 'false') or 'false').strip().lower() == 'true',
         'anonymize_ignore_emails': (section.get('anonymize_ignore_emails', 'false') or 'false').strip().lower() == 'true',

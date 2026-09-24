@@ -39,7 +39,7 @@ Candidate detection accepts these options:
   matching. Built-in common-word exclusions always apply.
 - `presidio_entities`: optional entity allow-list for Presidio mode. The default
   excludes `DATE_TIME` and `URL`; `all` uses the configured recognizer registry.
-- `replacement_length`: length of generated deterministic replacement tokens.
+- `token_length`: length of generated deterministic replacement tokens.
   Existing shorter generated replacements are regenerated during mapping updates.
 - `ignore_dictionary`: ignore Presidio values consisting only of configured-language dictionary words.
 - `ignore_numbers`: ignore numeric-only Presidio values.
