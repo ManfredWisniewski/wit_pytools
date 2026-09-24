@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import shutil
 from datetime import datetime
 from configparser import ConfigParser
 from pathlib import Path
@@ -761,7 +762,12 @@ def process_pending_docprep_anonymization(targetdir, settings):
             )
 
 
-def handle_docprep_anonymization(markdown_path, settings):
+def handle_docprep_anonymization(
+    markdown_path,
+    settings,
+    output_path=None,
+    remove_source=None,
+):
     """Collect proposals and optionally apply approved mappings to Markdown."""
     if not settings['anonymize']:
         return None
@@ -786,16 +792,24 @@ def handle_docprep_anonymization(markdown_path, settings):
         log_message(f"Doc_prep anonymization: no approved mapping matches {markdown_path.name}", level="INFO")
         return None
 
-    output_path = Path(markdown_path).with_name(f"{Path(markdown_path).stem}_anon.md")
+    output_path = (
+        Path(output_path)
+        if output_path is not None
+        else Path(markdown_path).with_name(f"{Path(markdown_path).stem}_anon.md")
+    )
+    keep_originals = settings.get('anonymize_keep_originals', False)
+    if remove_source is None:
+        remove_source = not keep_originals
     if output_path.exists() and not settings['anonymize_update']:
         log_message(f"Doc_prep anonymization: {output_path.name} exists, skipping", level="INFO")
-        if Path(markdown_path).exists():
+        if remove_source and Path(markdown_path).exists():
             Path(markdown_path).unlink()
             log_message(f"Doc_prep anonymization: removed source {markdown_path}", level="INFO")
         return output_path
     result = anonymize_text(markdown_path, mapping_path, output_path, overwrite=True)
-    Path(markdown_path).unlink()
-    log_message(f"Doc_prep anonymization: removed source {markdown_path}", level="INFO")
+    if remove_source:
+        Path(markdown_path).unlink()
+        log_message(f"Doc_prep anonymization: removed source {markdown_path}", level="INFO")
     return result
 
 
@@ -838,6 +852,7 @@ def docprep_settings(config_object):
         'anonymize': (section.get('anonymize', 'false') or 'false').strip().lower() == 'true',
         'anonymize_mapping': (section.get('anonymize_mapping', '') or '').strip() or None,
         'anonymize_update': (section.get('anonymize_update', 'false') or 'false').strip().lower() == 'true',
+        'anonymize_keep_originals': (section.get('anonymize-keep-originals', 'false') or 'false').strip().lower() == 'true',
         'anonymize_name_countries': csv_values('anonymize_name_countries'),
         'anonymize_use_name_datasets': optional_bool('anonymize_use_name_datasets'),
         'anonymize_name_cache_dir': (section.get('anonymize_name_cache_dir', '') or '').strip() or None,
@@ -859,10 +874,37 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
     target_root = Path(targetdir)
     output_path = target_root / relative_path.parent / f"{Path(cleaned_name).stem}.md"
     sidecar_path = source.parent / f"{Path(cleaned_name).stem}_pdf2md.json"
+    paired_markup = source.with_suffix('.md')
     log_message(_('Handling Doc_prep: {}').format(source), level="INFO")
 
     if dryrun:
-        print(f"  Doc_prep (dryrun): {source} -> {output_path}")
+        if paired_markup.is_file():
+            print(f"  Doc_prep (dryrun): using existing markup {paired_markup}")
+        else:
+            print(f"  Doc_prep (dryrun): {source} -> {output_path}")
+        return True
+
+    if paired_markup.is_file():
+        message = f"Doc_prep: found existing markup {paired_markup.name}, skipping conversion"
+        log_message(message, level="INFO")
+        print(message)
+        if settings['anonymize']:
+            try:
+                anonymized_output = output_path.with_name(
+                    f"{output_path.stem}_anon{output_path.suffix}"
+                )
+                handle_docprep_anonymization(
+                    paired_markup,
+                    settings,
+                    output_path=anonymized_output,
+                    remove_source=not settings.get('anonymize_keep_originals', False),
+                )
+            except Exception as e:
+                log_message(
+                    f"Doc_prep anonymization failed for {paired_markup.name}: {e}",
+                    level="ERROR",
+                )
+                return False
         return True
 
     try:
@@ -892,7 +934,16 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
 
     if settings['anonymize']:
         try:
-            handle_docprep_anonymization(output_path, settings)
+            keep_originals = settings.get('anonymize_keep_originals', False)
+            if keep_originals:
+                original_markup = source.with_suffix('.md')
+                if not original_markup.exists():
+                    shutil.copy2(output_path, original_markup)
+            handle_docprep_anonymization(
+                output_path,
+                settings,
+                remove_source=keep_originals,
+            )
         except Exception as e:
             log_message(f"Doc_prep anonymization failed for {output_path.name}: {e}", level="ERROR")
             return False

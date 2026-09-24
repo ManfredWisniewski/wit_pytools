@@ -510,6 +510,59 @@ def test_docprep_anonymization_creates_proposals_then_applies_approved_mapping(t
     assert not markdown.exists()
 
 
+def test_docprep_uses_paired_markup_and_keeps_original(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        docprep_section={
+            "anonymize": "true",
+            "anonymize_mapping": str(tmp_path / "mapping.csv"),
+            "anonymize-keep-originals": "true",
+        },
+    )
+    markup = source_dir / "Rechnung 2026.md"
+    markup.write_text("# Sample Person", encoding="utf-8")
+    (tmp_path / "mapping.csv").write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "anon,Person-001,Sample Person,name,, ,1\n",
+        encoding="utf-8",
+    )
+    calls = []
+    monkeypatch.setitem(cs.DOCPREP_CONVERTERS, ".pdf", (lambda source: 99, _fake_converter(calls)))
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert calls == []
+    assert markup.read_text(encoding="utf-8") == "# Sample Person"
+    assert (target_dir / "Rechnung 2026_anon.md").read_text(encoding="utf-8") == "# Person-001"
+
+
+def test_docprep_keep_originals_copies_generated_markup(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        docprep_section={
+            "anonymize": "true",
+            "anonymize_mapping": str(tmp_path / "mapping.csv"),
+            "anonymize-keep-originals": "true",
+        },
+    )
+    (tmp_path / "mapping.csv").write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "anon,Person-001,converted,string,,,1\n",
+        encoding="utf-8",
+    )
+    calls = []
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count, _fake_converter(calls)),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (source_dir / "Rechnung 2026.md").read_text(encoding="utf-8") == "# converted"
+    assert (target_dir / "Rechnung 2026_anon.md").read_text(encoding="utf-8") == "# Person-001"
+
+
 def test_docprep_pending_anonymization_scans_existing_target_markdown(tmp_path):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path,
@@ -542,6 +595,7 @@ def test_docprep_settings_defaults():
     assert settings["sidecar"] is True
     assert settings["anonymize_name_countries"] == ()
     assert settings["anonymize_use_name_datasets"] is None
+    assert settings["anonymize_keep_originals"] is False
     config["DOCPREP"] = {
         "language": "de",
         "sidecar": "false",
@@ -549,6 +603,7 @@ def test_docprep_settings_defaults():
         "anonymize_use_name_datasets": "true",
         "anonymize_name_dataset_offline": "true",
         "anonymize_name_exclusions": "common, word",
+        "anonymize-keep-originals": "true",
     }
     settings = cs.docprep_settings(config)
     assert settings["language"] == "de"
@@ -557,6 +612,7 @@ def test_docprep_settings_defaults():
     assert settings["anonymize_use_name_datasets"] is True
     assert settings["anonymize_name_dataset_offline"] is True
     assert settings["anonymize_name_exclusions"] == ("common", "word")
+    assert settings["anonymize_keep_originals"] is True
 
 
 def test_gen_img_ignore_max_cost_setting():
