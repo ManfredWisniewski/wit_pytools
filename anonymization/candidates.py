@@ -24,9 +24,14 @@ _TEXT_NAME_PATTERN = re.compile(
 class CandidateCollector:
     """Collect unique candidates and aggregate their locations."""
 
-    def __init__(self, name_catalog: Optional[NameCatalog] = None) -> None:
+    def __init__(
+        self,
+        name_catalog: Optional[NameCatalog] = None,
+        replacement_length: int = 4,
+    ) -> None:
         self._candidates: dict[str, Candidate] = {}
         self._name_catalog = name_catalog
+        self._replacement_length = replacement_length
 
     def add(
         self,
@@ -40,7 +45,11 @@ class CandidateCollector:
             value,
             Candidate(
                 original_value=value,
-                replacement_value=replacement_for(value, value_type),
+                replacement_value=replacement_for(
+                    value,
+                    value_type,
+                    self._replacement_length,
+                ),
                 value_type=value_type,
             ),
         )
@@ -77,10 +86,12 @@ def value_type_for(
     return "string"
 
 
-def replacement_for(value: str, value_type: str) -> str:
+def replacement_for(value: str, value_type: str, token_length: int = 4) -> str:
+    if token_length < 1:
+        raise ValueError("token_length must be at least 1")
     import hashlib
 
-    token = hashlib.sha256(value.encode("utf-8")).hexdigest()[:3]
+    token = hashlib.sha256(value.encode("utf-8")).hexdigest()[:token_length]
     if value_type == "email":
         return f"person-{token}@example.invalid"
     if value_type == "url":
@@ -90,15 +101,30 @@ def replacement_for(value: str, value_type: str) -> str:
     return f"value-{token}"
 
 
+def replacement_token_length(replacement: str, value_type: str) -> int:
+    prefixes = {
+        "email": "person-",
+        "url": "https://example.invalid/",
+        "name": "Person-",
+        "string": "value-",
+    }
+    prefix = prefixes.get(value_type, "")
+    token = replacement[len(prefix):] if replacement.startswith(prefix) else replacement
+    if value_type == "email":
+        token = token.split("@", 1)[0]
+    return len(token)
+
+
 def detect_text_candidates(
     content: str,
     source_document: str,
     protected_spans: Iterable[Tuple[int, int]] = (),
     name_catalog: Optional[NameCatalog] = None,
+    replacement_length: int = 4,
 ) -> List[Candidate]:
     """Detect names and e-mail addresses outside supplied protected spans."""
     spans = tuple(protected_spans)
-    collector = CandidateCollector(name_catalog)
+    collector = CandidateCollector(name_catalog, replacement_length)
     patterns = (_TEXT_EMAIL_PATTERN, _TEXT_NAME_PATTERN)
     for pattern in patterns:
         for match in pattern.finditer(content):

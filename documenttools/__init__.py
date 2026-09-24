@@ -20,6 +20,8 @@ from wit_pytools.anonymization import (
     mapping_path_rows,
     replace_related_values,
     replace_text_parts,
+    replacement_for,
+    replacement_token_length,
     related_mapping_values,
     write_csv,
 )
@@ -254,6 +256,7 @@ def _text_candidate_rows(
     presidio_model: str = "de_core_news_sm",
     presidio_score_threshold: float = 0.5,
     presidio_entities: Optional[Sequence[str]] = None,
+    replacement_length: int = 4,
 ) -> List[Dict[str, Any]]:
     protected_spans = _markdown_protected_spans(content)
     if anonymize_mode == "custom":
@@ -294,6 +297,7 @@ def identify_text_strings(
     presidio_model: str = "de_core_news_sm",
     presidio_score_threshold: float = 0.5,
     presidio_entities: Optional[Sequence[str]] = None,
+    replacement_length: int = 4,
 ) -> Path:
     """Identify text candidates while leaving markup-specific protection here."""
     input_path = Path(file_path)
@@ -323,6 +327,7 @@ def identify_text_strings(
             presidio_model=presidio_model,
             presidio_score_threshold=presidio_score_threshold,
             presidio_entities=presidio_entities,
+            replacement_length=replacement_length,
         ),
     )
     return candidate_path
@@ -380,6 +385,7 @@ def update_text_mapping(
     presidio_model: str = "de_core_news_sm",
     presidio_score_threshold: float = 0.5,
     presidio_entities: Optional[Sequence[str]] = None,
+    replacement_length: int = 4,
 ) -> Path:
     """Add newly found text candidates with status ``new``."""
     input_path = Path(file_path)
@@ -436,6 +442,20 @@ def update_text_mapping(
             )
         )
     ]
+    for row in rows:
+        if row["status"] not in {"anon", "new"}:
+            continue
+        if replacement_token_length(
+            row["replacement_value"], row["value_type"]
+        ) >= replacement_length:
+            continue
+        original = row["original_value"].split(";", 1)[0].strip()
+        row["replacement_value"] = replacement_for(
+            original,
+            row["value_type"],
+            replacement_length,
+        )
+
     unique_ignore_rows = []
     seen_ignore_values = set()
     for row in ignore_rows:
@@ -470,6 +490,8 @@ def update_text_mapping(
         language=language,
         presidio_model=presidio_model,
         presidio_score_threshold=presidio_score_threshold,
+        presidio_entities=presidio_entities,
+        replacement_length=replacement_length,
     )
     for candidate in candidates:
         if candidate["original_value"] in known:

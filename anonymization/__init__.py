@@ -6,6 +6,7 @@ from .candidates import (
     detect_text_candidates,
     is_date_string,
     replacement_for,
+    replacement_token_length,
     value_type_for,
 )
 from .mapping import (
@@ -60,6 +61,7 @@ __all__ = [
     "replace_text_part",
     "replace_text_parts",
     "replacement_for",
+    "replacement_token_length",
     "value_type_for",
     "write_csv",
 ]

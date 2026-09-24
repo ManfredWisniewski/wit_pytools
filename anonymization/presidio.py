@@ -67,6 +67,7 @@ def detect_presidio_candidates(
     model_name: str = "de_core_news_sm",
     score_threshold: float = 0.5,
     entities: Optional[Sequence[str]] = None,
+    replacement_length: int = 4,
 ) -> List[Candidate]:
     """Detect PII with Presidio and return the common candidate model."""
     analyzer = _create_engine(language, model_name)
@@ -77,7 +78,7 @@ def detect_presidio_candidates(
         entities=list(entities) if entities is not None else list(DEFAULT_PRESIDIO_ENTITIES),
     )
     spans = tuple(protected_spans)
-    collector = CandidateCollector()
+    collector = CandidateCollector(replacement_length=replacement_length)
     for result in results:
         if any(result.start < end and result.end > start for start, end in spans):
             continue
@@ -88,6 +89,8 @@ def detect_presidio_candidates(
         end = result.end - trailing
         value = content[start:end]
         if not value or "\n" in value or "\r" in value:
+            continue
+        if "person-" in value.casefold():
             continue
         entity_type = result.entity_type.upper()
         if entity_type in {"EMAIL_ADDRESS"}:

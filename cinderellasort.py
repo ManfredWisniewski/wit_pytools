@@ -800,6 +800,7 @@ def handle_docprep_anonymization(
         presidio_model=settings.get('anonymize_presidio_model', 'de_core_news_sm'),
         presidio_score_threshold=settings.get('anonymize_presidio_score_threshold', 0.5),
         presidio_entities=settings.get('anonymize_presidio_entities'),
+        replacement_length=settings.get('anonymize_replacement_length', 4),
     )
     log_message(f"Doc_prep anonymization: updated mapping {mapping_path}", level="INFO")
     print(f"Doc_prep anonymization: updated mapping {mapping_path}")
@@ -863,6 +864,11 @@ def docprep_settings(config_object):
             'ORGANIZATION', 'IP_ADDRESS', 'CREDIT_CARD', 'CRYPTO',
             'IBAN_CODE', 'NRP', 'MEDICAL_LICENSE',
         )
+    replacement_length = int(
+        section.get('anonymize_replacement_length', '4') or '3'
+    )
+    if replacement_length < 1:
+        raise ValueError('anonymize_replacement_length must be at least 1')
 
     return {
         'mode': (section.get('mode', 'vision') or 'vision').strip().lower(),
@@ -878,6 +884,7 @@ def docprep_settings(config_object):
         'anonymize_presidio_model': (section.get('anonymize_presidio_model', 'de_core_news_sm') or 'de_core_news_sm').strip(),
         'anonymize_presidio_score_threshold': float(section.get('anonymize_presidio_score_threshold', '0.5') or '0.5'),
         'anonymize_presidio_entities': presidio_entities,
+        'anonymize_replacement_length': replacement_length,
         'anonymize_mapping': (section.get('anonymize_mapping', '') or '').strip() or None,
         'anonymize_update': (section.get('anonymize_update', 'false') or 'false').strip().lower() == 'true',
         'anonymize_keep_originals': (section.get('anonymize-keep-originals', 'false') or 'false').strip().lower() == 'true',

@@ -39,6 +39,8 @@ Candidate detection accepts these options:
   matching. Built-in common-word exclusions always apply.
 - `presidio_entities`: optional entity allow-list for Presidio mode. The default
   excludes `DATE_TIME` and `URL`; `all` uses the configured recognizer registry.
+- `replacement_length`: length of generated deterministic replacement tokens.
+  Existing shorter generated replacements are regenerated during mapping updates.
 
 Explicit function arguments take precedence over environment variables.
 The runner exposes country, opt-out, offline, and debug options.

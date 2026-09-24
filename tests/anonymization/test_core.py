@@ -78,6 +78,26 @@ def test_presidio_candidates_trim_boundaries_and_skip_multiline_spans(monkeypatc
     assert [candidate.original_value for candidate in candidates] == ["Sample Person"]
 
 
+def test_presidio_ignores_generated_person_replacements(monkeypatch):
+    content = "Person-001"
+
+    class Result:
+        start = 0
+        end = 10
+        entity_type = "PERSON"
+
+    class Analyzer:
+        def analyze(self, **kwargs):
+            return [Result()]
+
+    monkeypatch.setattr(
+        "wit_pytools.anonymization.presidio._create_engine",
+        lambda language, model_name: Analyzer(),
+    )
+
+    assert detect_presidio_candidates(content, "sample.md") == []
+
+
 def test_replacement_proposals_are_deterministic():
     first = detect_text_candidates("Sample Person", "one.md")[0]
     second = detect_text_candidates("Sample Person", "two.md")[0]

@@ -518,7 +518,7 @@ def test_docprep_anonymization_creates_proposals_then_applies_approved_mapping(t
     )
     output = cs.handle_docprep_anonymization(markdown, settings)
     assert output == tmp_path / "document_anon.md"
-    assert output.read_text(encoding="utf-8") == "# Person-abc"
+    assert output.read_text(encoding="utf-8") == "# Person-e3a2"
     assert not markdown.exists()
 
 
@@ -575,7 +575,7 @@ def test_docprep_uses_paired_markup_and_keeps_original(tmp_path, monkeypatch):
     assert calls == []
     assert markup.read_text(encoding="utf-8") == "# Sample Person"
     assert not target_original.exists()
-    assert (target_dir / "Rechnung 2026_anon.md").read_text(encoding="utf-8") == "# Person-001"
+    assert (target_dir / "Rechnung 2026_anon.md").read_text(encoding="utf-8") == "# Person-16ad"
 
 
 def test_docprep_moves_target_markup_to_source_before_anonymizing(tmp_path, monkeypatch):
@@ -602,7 +602,7 @@ def test_docprep_moves_target_markup_to_source_before_anonymizing(tmp_path, monk
     assert calls == []
     assert (source_dir / "Rechnung 2026.md").read_text(encoding="utf-8") == "# Sample Person"
     assert not target_original.exists()
-    assert (target_dir / "Rechnung 2026_anon.md").read_text(encoding="utf-8") == "# Person-001"
+    assert (target_dir / "Rechnung 2026_anon.md").read_text(encoding="utf-8") == "# Person-16ad"
 
 
 def test_docprep_keep_originals_copies_generated_markup(tmp_path, monkeypatch):
@@ -653,7 +653,7 @@ def test_docprep_pending_anonymization_scans_existing_target_markdown(tmp_path):
 
     cinderellasort(str(config_path), dryrun=False)
 
-    assert (target_dir / "old" / "existing_anon.md").read_text(encoding="utf-8") == "Person-abc"
+    assert (target_dir / "old" / "existing_anon.md").read_text(encoding="utf-8") == "Person-e3a2"
 
 
 def test_docprep_settings_defaults():

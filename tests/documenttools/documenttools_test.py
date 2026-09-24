@@ -474,6 +474,23 @@ def test_update_text_mapping_moves_keep_rows_to_ignore_file(tmp_path):
     assert ignore_rows == [{"original_value": "Sensitive", "value_type": "string"}]
 
 
+def test_update_text_mapping_regenerates_short_replacements(tmp_path):
+    source = tmp_path / "document.md"
+    source.write_text("Sample Person", encoding="utf-8")
+    mapping = tmp_path / "mapping.csv"
+    mapping.write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "anon,Person-001,Sample Person,name,doc.md,line 1,1\n",
+        encoding="utf-8",
+    )
+
+    update_text_mapping(source, mapping, replacement_length=4)
+
+    row = next(csv.DictReader(mapping.open(encoding="utf-8", newline="")))
+    assert row["replacement_value"].startswith("Person-")
+    assert len(row["replacement_value"].split("Person-", 1)[1]) == 4
+
+
 def test_update_text_mapping_matches_semicolon_grouped_originals(tmp_path):
     source = tmp_path / "document.md"
     source.write_text("Herr Schmidt", encoding="utf-8")
