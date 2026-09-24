@@ -37,6 +37,8 @@ Candidate detection accepts these options:
   `False`.
 - `name_exclusions`: optional additional words excluded from single-token name
   matching. Built-in common-word exclusions always apply.
+- `presidio_entities`: optional entity allow-list for Presidio mode. The default
+  excludes `DATE_TIME` and `URL`; `all` uses the configured recognizer registry.
 
 Explicit function arguments take precedence over environment variables.
 The runner exposes country, opt-out, offline, and debug options.
@@ -60,6 +62,11 @@ The runner exposes country, opt-out, offline, and debug options.
 protected character spans. It returns generic `Candidate` objects. The detector
 handles candidate classification and locations; markup parsing remains in the
 calling adapter.
+
+Candidate detection supports two modes. `custom` uses the local text lists and
+is the default. `presidio` uses the locally installed `presidio-analyzer`
+package and the configured language model, then returns the same generic
+candidate model. Presidio errors are not silently replaced with custom mode.
 
 ### Mapping creation
 

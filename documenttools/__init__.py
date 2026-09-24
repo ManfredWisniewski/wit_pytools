@@ -12,6 +12,7 @@ from eliot import log_message
 from wit_pytools.anonymization import (
     CANDIDATE_COLUMNS,
     CandidateCollector,
+    detect_presidio_candidates,
     detect_text_candidates,
     is_date_string,
     load_name_catalog,
@@ -248,15 +249,33 @@ def _text_candidate_rows(
     document_name: str,
     *,
     name_catalog=None,
+    anonymize_mode: str = "custom",
+    language: str = "en",
+    presidio_model: str = "de_core_news_sm",
+    presidio_score_threshold: float = 0.5,
+    presidio_entities: Optional[Sequence[str]] = None,
 ) -> List[Dict[str, Any]]:
-    return _candidate_rows(
-        detect_text_candidates(
+    protected_spans = _markdown_protected_spans(content)
+    if anonymize_mode == "custom":
+        candidates = detect_text_candidates(
             content,
             document_name,
-            _markdown_protected_spans(content),
+            protected_spans,
             name_catalog=name_catalog,
         )
-    )
+    elif anonymize_mode == "presidio":
+        candidates = detect_presidio_candidates(
+            content,
+            document_name,
+            protected_spans,
+            language=language,
+            model_name=presidio_model,
+            score_threshold=presidio_score_threshold,
+            entities=presidio_entities,
+        )
+    else:
+        raise ValueError(f"Unsupported anonymize mode: {anonymize_mode!r}")
+    return _candidate_rows(candidates)
 
 
 def identify_text_strings(
@@ -270,6 +289,11 @@ def identify_text_strings(
     offline: Optional[bool] = None,
     debug: bool = False,
     name_exclusions: Optional[Sequence[str]] = None,
+    anonymize_mode: str = "custom",
+    language: str = "en",
+    presidio_model: str = "de_core_news_sm",
+    presidio_score_threshold: float = 0.5,
+    presidio_entities: Optional[Sequence[str]] = None,
 ) -> Path:
     """Identify text candidates while leaving markup-specific protection here."""
     input_path = Path(file_path)
@@ -294,6 +318,11 @@ def identify_text_strings(
             input_path.read_text(encoding="utf-8"),
             "Markdown",
             name_catalog=name_catalog,
+            anonymize_mode=anonymize_mode,
+            language=language,
+            presidio_model=presidio_model,
+            presidio_score_threshold=presidio_score_threshold,
+            presidio_entities=presidio_entities,
         ),
     )
     return candidate_path
@@ -309,6 +338,11 @@ def update_text_mapping(
     offline: Optional[bool] = None,
     debug: bool = False,
     name_exclusions: Optional[Sequence[str]] = None,
+    anonymize_mode: str = "custom",
+    language: str = "en",
+    presidio_model: str = "de_core_news_sm",
+    presidio_score_threshold: float = 0.5,
+    presidio_entities: Optional[Sequence[str]] = None,
 ) -> Path:
     """Add newly found text candidates with status ``new``."""
     input_path = Path(file_path)
@@ -338,6 +372,10 @@ def update_text_mapping(
         input_path.read_text(encoding="utf-8"),
         input_path.name,
         name_catalog=name_catalog,
+        anonymize_mode=anonymize_mode,
+        language=language,
+        presidio_model=presidio_model,
+        presidio_score_threshold=presidio_score_threshold,
     )
     rows = list(existing_documents)
     for candidate in candidates:

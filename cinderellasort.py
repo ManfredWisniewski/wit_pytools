@@ -789,6 +789,11 @@ def handle_docprep_anonymization(
         offline=settings.get('anonymize_name_dataset_offline'),
         debug=settings.get('anonymize_name_dataset_debug', False),
         name_exclusions=settings.get('anonymize_name_exclusions'),
+        anonymize_mode=settings.get('anonymize_mode', 'custom'),
+        language=settings.get('language', 'en'),
+        presidio_model=settings.get('anonymize_presidio_model', 'de_core_news_sm'),
+        presidio_score_threshold=settings.get('anonymize_presidio_score_threshold', 0.5),
+        presidio_entities=settings.get('anonymize_presidio_entities'),
     )
     log_message(f"Doc_prep anonymization: updated mapping {mapping_path}", level="INFO")
     print(f"Doc_prep anonymization: updated mapping {mapping_path}")
@@ -845,6 +850,19 @@ def docprep_settings(config_object):
             if value.strip()
         )
 
+    anonymize_mode = (section.get('anonymize-mode', 'custom') or 'custom').strip().lower()
+    if anonymize_mode not in {'custom', 'presidio'}:
+        raise ValueError('anonymize-mode must be custom or presidio')
+    presidio_entities = csv_values('anonymize_presidio_entities')
+    if presidio_entities == ('all',):
+        presidio_entities = None
+    elif not presidio_entities:
+        presidio_entities = (
+            'PERSON', 'EMAIL_ADDRESS', 'PHONE_NUMBER', 'LOCATION',
+            'ORGANIZATION', 'IP_ADDRESS', 'CREDIT_CARD', 'CRYPTO',
+            'IBAN_CODE', 'NRP', 'MEDICAL_LICENSE',
+        )
+
     return {
         'mode': (section.get('mode', 'vision') or 'vision').strip().lower(),
         'model': (section.get('model', '') or '').strip() or None,
@@ -855,6 +873,10 @@ def docprep_settings(config_object):
         'continue_on_error': (section.get('continue_on_error', 'false') or 'false').strip().lower() == 'true',
         'sidecar': (section.get('sidecar', 'true') or 'true').strip().lower() == 'true',
         'anonymize': (section.get('anonymize', 'false') or 'false').strip().lower() == 'true',
+        'anonymize_mode': anonymize_mode,
+        'anonymize_presidio_model': (section.get('anonymize_presidio_model', 'de_core_news_sm') or 'de_core_news_sm').strip(),
+        'anonymize_presidio_score_threshold': float(section.get('anonymize_presidio_score_threshold', '0.5') or '0.5'),
+        'anonymize_presidio_entities': presidio_entities,
         'anonymize_mapping': (section.get('anonymize_mapping', '') or '').strip() or None,
         'anonymize_update': (section.get('anonymize_update', 'false') or 'false').strip().lower() == 'true',
         'anonymize_keep_originals': (section.get('anonymize-keep-originals', 'false') or 'false').strip().lower() == 'true',
@@ -871,11 +893,18 @@ def _docprep_output_path(targetdir, relative_path, cleaned_name, bowl):
     target_root = Path(targetdir)
     relative_parent = relative_path.parent
     bowl_path = Path(str(bowl).replace('\\', '/').strip('/'))
-    if (
+    target_prefix_matches = (
+        relative_parent.parts
+        and target_root.name.casefold() == relative_parent.parts[0].casefold()
+    )
+    bowl_prefix_matches = (
         bowl_path != Path('.')
         and target_root.parts[-len(bowl_path.parts):] == bowl_path.parts
         and relative_parent.parts[:len(bowl_path.parts)] == bowl_path.parts
-    ):
+    )
+    if target_prefix_matches:
+        relative_parent = relative_parent.relative_to(relative_parent.parts[0])
+    elif bowl_prefix_matches:
         relative_parent = relative_parent.relative_to(bowl_path)
     return target_root / relative_parent / f"{Path(cleaned_name).stem}.md"
 
@@ -972,10 +1001,9 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
                     remove_source=not settings.get('anonymize_keep_originals', False),
                 )
             except Exception as e:
-                log_message(
-                    f"Doc_prep anonymization failed for {paired_markup.name}: {e}",
-                    level="ERROR",
-                )
+                message = f"Doc_prep anonymization failed for {paired_markup.name}: {e}"
+                log_message(message, level="ERROR")
+                print(message)
                 return False
         return True
 
@@ -1017,7 +1045,9 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
                 remove_source=keep_originals,
             )
         except Exception as e:
-            log_message(f"Doc_prep anonymization failed for {output_path.name}: {e}", level="ERROR")
+            message = f"Doc_prep anonymization failed for {output_path.name}: {e}"
+            log_message(message, level="ERROR")
+            print(message)
             return False
 
     if filemode == 'nc':

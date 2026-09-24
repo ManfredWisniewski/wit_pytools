@@ -13,4 +13,8 @@
 - **D08 Use German noun and proper-name lists when `DE` is configured** (alternatives: use only the international dataset; use the German list for all countries). Reason: the German categorized wordlist provides language-specific noun exclusions and positive first-name/surname evidence; its scope must remain explicit.
 - **D09 Treat German nouns as a single-token filter, not an absolute rejection of compound names** (alternatives: reject any candidate containing a noun; ignore nouns). Reason: legitimate surnames can also be German nouns.
 
+- **D10 Custom detection remains the default and Presidio is an explicit mode** (alternatives: make Presidio default; remove the custom detector). Reason: existing workflows remain backward-compatible while Presidio can be adopted deliberately.
+- **D11 Presidio mode uses entity detection only and the existing reviewed mapping workflow** (alternatives: call Presidio anonymization directly; bypass reviewed mappings). Reason: mappings remain reversible, auditable, and consistent across detection modes.
+- **D12 Presidio failures fail closed** (alternatives: fall back to custom detection; continue without candidates). Reason: silently changing detectors could alter anonymization coverage.
+
 Decision date: 2026-09-24

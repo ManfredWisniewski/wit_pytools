@@ -102,6 +102,12 @@ retry_times=3
 continue_on_error=false
 sidecar=true
 anonymize=false
+# custom uses the local text-list detector; presidio uses presidio-analyzer.
+anonymize-mode=custom
+anonymize_presidio_model=de_core_news_sm
+anonymize_presidio_score_threshold=0.5
+# DATE_TIME and URL are excluded by default.
+anonymize_presidio_entities=PERSON,EMAIL_ADDRESS,PHONE_NUMBER,LOCATION,ORGANIZATION,IP_ADDRESS,CREDIT_CARD,CRYPTO,IBAN_CODE,NRP,MEDICAL_LICENSE
 anonymize_mapping=P:\\customers\\customer-anon-mapping.csv
 anonymize_update=false
 anonymize-keep-originals=false
@@ -130,6 +136,47 @@ originals/Project/Rechnung 2026_pdf2md.json
 
 The `[BOWLS_DOCPREP]` bowl selects files; it does not create a `Doc_prep`
 subdirectory.
+
+## Anonymization modes
+
+`anonymize-mode=custom` is the default and preserves the existing candidate
+and reviewed-mapping workflow. `anonymize-mode=presidio` uses the locally
+installed `presidio-analyzer` package to detect entities, then uses the same
+reviewed mapping workflow. Presidio mode fails if the package or configured
+language model is unavailable; it does not fall back to custom detection.
+
+`anonymize_presidio_entities` is a comma-separated allow-list. Use `all` to
+request all entities available in the configured Presidio recognizer registry.
+The supported entity names include:
+
+```text
+CREDIT_CARD, CRYPTO, DATE_TIME, EMAIL_ADDRESS, IBAN_CODE, IP_ADDRESS,
+MAC_ADDRESS, NRP, LOCATION, PERSON, PHONE_NUMBER, MEDICAL_LICENSE, URL, UUID,
+US_BANK_NUMBER, US_DRIVER_LICENSE, US_ITIN, US_CLAIM_NUMBER,
+US_HEALTH_INSURANCE_MEMBER_ID, US_MBI, US_NPI, US_PASSPORT,
+US_PRESCRIPTION_NUMBER, US_PRIOR_AUTHORIZATION_NUMBER, US_PROVIDER_TAX_ID,
+US_REFERRAL_NUMBER, US_SSN,
+UK_DRIVING_LICENCE, UK_NHS, UK_NINO, UK_PASSPORT, UK_POSTCODE,
+UK_VEHICLE_REGISTRATION,
+ES_NIF, ES_NIE, ES_PASSPORT,
+IT_FISCAL_CODE, IT_DRIVER_LICENSE, IT_VAT_CODE, IT_PASSPORT,
+IT_IDENTITY_CARD,
+PL_PESEL, SG_NRIC_FIN, SG_UEN, AU_ABN, AU_ACN, AU_TFN, AU_MEDICARE,
+IN_PAN, IN_AADHAAR, IN_VEHICLE_REGISTRATION, IN_VOTER, IN_PASSPORT,
+IN_GSTIN, CA_SIN, CA_POSTAL_CODE
+```
+
+Entity availability depends on the installed Presidio version, language, and
+recognizer/model configuration. `DATE_TIME` and `URL` are intentionally absent
+from the default allow-list.
+
+For German Presidio detection, install a German spaCy model in addition to the
+Python dependency, for example:
+
+```text
+pip install -r requirements.txt
+python -m spacy download de_core_news_sm
+```
 
 | Key                 | Default                          | Meaning                                                          |
 | ------------------- | -------------------------------- | ---------------------------------------------------------------- |

@@ -28,8 +28,14 @@ class CandidateCollector:
         self._candidates: dict[str, Candidate] = {}
         self._name_catalog = name_catalog
 
-    def add(self, value: str, source_document: str, location: str) -> None:
-        value_type = value_type_for(value, self._name_catalog)
+    def add(
+        self,
+        value: str,
+        source_document: str,
+        location: str,
+        value_type: Optional[str] = None,
+    ) -> None:
+        value_type = value_type or value_type_for(value, self._name_catalog)
         candidate = self._candidates.setdefault(
             value,
             Candidate(

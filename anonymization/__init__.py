@@ -27,16 +27,23 @@ from .name_datasets import (
     NameDatasetUnavailableError,
     load_name_catalog,
 )
+from .presidio import (
+    DEFAULT_PRESIDIO_ENTITIES,
+    PresidioUnavailableError,
+    detect_presidio_candidates,
+)
 from .text import mapping_matches_parts, replace_text_part, replace_text_parts
 
 __all__ = [
     "CANDIDATE_COLUMNS",
+    "DEFAULT_PRESIDIO_ENTITIES",
     "Candidate",
     "CandidateCollector",
     "CandidateValidationError",
     "MappingValidationError",
     "NameCatalog",
     "NameDatasetUnavailableError",
+    "PresidioUnavailableError",
     "VALUE_TYPES",
     "create_mapping",
     "detect_text_candidates",
@@ -46,6 +53,7 @@ __all__ = [
     "mapping_matches_parts",
     "mapping_path_for_candidates",
     "mapping_path_rows",
+    "detect_presidio_candidates",
     "read_mapping_rows",
     "related_mapping_values",
     "replace_related_values",

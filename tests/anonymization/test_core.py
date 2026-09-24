@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 
 from wit_pytools.anonymization import (
     CandidateValidationError,
+    detect_presidio_candidates,
     MappingValidationError,
     create_mapping,
     detect_text_candidates,
@@ -28,6 +29,53 @@ def test_detect_text_candidates_skips_protected_spans():
         "sample@example.test",
     }
     assert all(candidate.locations == ["line 1"] for candidate in candidates)
+
+
+def test_presidio_candidates_use_common_candidate_model(monkeypatch):
+    class Result:
+        start = 8
+        end = 24
+        entity_type = "PERSON"
+
+    class Analyzer:
+        def analyze(self, **kwargs):
+            return [Result()]
+
+    monkeypatch.setattr(
+        "wit_pytools.anonymization.presidio._create_engine",
+        lambda language, model_name: Analyzer(),
+    )
+
+    candidates = detect_presidio_candidates("Contact Sample Person", "sample.md")
+
+    assert candidates[0].original_value == "Sample Person"
+    assert candidates[0].value_type == "name"
+
+
+def test_presidio_candidates_trim_boundaries_and_skip_multiline_spans(monkeypatch):
+    content = "Sample Person\nADAC\n\nPS"
+
+    class Result:
+        def __init__(self, start, end):
+            self.start = start
+            self.end = end
+            self.entity_type = "PERSON"
+
+    class Analyzer:
+        def analyze(self, **kwargs):
+            return [
+                Result(0, len("Sample Person\n")),
+                Result(content.index("ADAC"), len(content)),
+            ]
+
+    monkeypatch.setattr(
+        "wit_pytools.anonymization.presidio._create_engine",
+        lambda language, model_name: Analyzer(),
+    )
+
+    candidates = detect_presidio_candidates(content, "sample.md")
+
+    assert [candidate.original_value for candidate in candidates] == ["Sample Person"]
 
 
 def test_replacement_proposals_are_deterministic():

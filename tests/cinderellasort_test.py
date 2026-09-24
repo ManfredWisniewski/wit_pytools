@@ -635,6 +635,7 @@ def test_docprep_settings_defaults():
     assert settings["language"] == "en"
     assert settings["sidecar"] is True
     assert settings["anonymize_name_countries"] == ()
+    assert settings["anonymize_mode"] == "custom"
     assert settings["anonymize_use_name_datasets"] is None
     assert settings["anonymize_keep_originals"] is False
     config["DOCPREP"] = {
@@ -645,6 +646,8 @@ def test_docprep_settings_defaults():
         "anonymize_name_dataset_offline": "true",
         "anonymize_name_exclusions": "common, word",
         "anonymize-keep-originals": "true",
+        "anonymize-mode": "presidio",
+        "anonymize_presidio_score_threshold": "0.7",
     }
     settings = cs.docprep_settings(config)
     assert settings["language"] == "de"
@@ -654,6 +657,10 @@ def test_docprep_settings_defaults():
     assert settings["anonymize_name_dataset_offline"] is True
     assert settings["anonymize_name_exclusions"] == ("common", "word")
     assert settings["anonymize_keep_originals"] is True
+    assert settings["anonymize_mode"] == "presidio"
+    assert settings["anonymize_presidio_score_threshold"] == 0.7
+    assert "DATE_TIME" not in settings["anonymize_presidio_entities"]
+    assert "URL" not in settings["anonymize_presidio_entities"]
 
 
 def test_gen_img_ignore_max_cost_setting():
