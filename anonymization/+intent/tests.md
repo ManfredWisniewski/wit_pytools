@@ -12,6 +12,8 @@
 - **A08** Unknown country codes fail validation.
 - **A09** `use_name_datasets=False` skips dataset loading.
 - **A10** Protected spans are excluded from dataset-backed detection.
+- **A11** German nouns exclude single-token German name candidates.
+- **A12** German first-name and surname lists add positive name evidence.
 
 ## Test files
 

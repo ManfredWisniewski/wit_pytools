@@ -15,12 +15,24 @@ from urllib.request import Request, urlopen
 
 LOGGER = logging.getLogger(__name__)
 REPOSITORY = "sigpwned/popular-names-by-country-dataset"
+GERMAN_REPOSITORY = "ynsrc/german-categorized-wordlist"
 BRANCH = "main"
 COMMIT_URL = f"https://api.github.com/repos/{REPOSITORY}/commits/{BRANCH}"
+GERMAN_COMMIT_URL = (
+    f"https://api.github.com/repos/{GERMAN_REPOSITORY}/commits/{BRANCH}"
+)
 RAW_BASE_URL = f"https://raw.githubusercontent.com/{REPOSITORY}/{BRANCH}"
+GERMAN_RAW_BASE_URL = (
+    f"https://raw.githubusercontent.com/{GERMAN_REPOSITORY}/{BRANCH}/v1"
+)
 DATASET_FILES = {
     "forenames": "common-forenames-by-country.csv",
     "surnames": "common-surnames-by-country.csv",
+}
+GERMAN_DATASET_FILES = {
+    "nouns": "noun.txt",
+    "forenames": "noun-proper-first-name.txt",
+    "surnames": "noun-proper-surname.txt",
 }
 COUNTRY_PATTERN = re.compile(r"^[A-Z]{2}$")
 TOKEN_PATTERN = re.compile(r"[^\W_]+(?:[-'][^\W_]+)*", re.UNICODE)
@@ -40,6 +52,7 @@ class NameCatalog:
     countries: frozenset[str]
     forenames: frozenset[str]
     surnames: frozenset[str]
+    noun_words: frozenset[str] = frozenset()
     exclusions: frozenset[str] = frozenset()
 
     def is_name(self, value: str) -> bool:
@@ -47,6 +60,8 @@ class NameCatalog:
         if any(token in self.exclusions for token in tokens):
             return False
         if len(tokens) == 1:
+            if tokens[0] in self.noun_words:
+                return False
             return tokens[0] in self.forenames or tokens[0] in self.surnames
         if len(tokens) < 2:
             return False
@@ -96,10 +111,35 @@ def _fetch_commit() -> str:
     return commit
 
 
+def _fetch_german_commit() -> str:
+    request = Request(
+        GERMAN_COMMIT_URL,
+        headers={"User-Agent": "wit-pytools-anonymization"},
+    )
+    with urlopen(request, timeout=15) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    commit = payload.get("sha")
+    if not isinstance(commit, str) or not commit:
+        raise NameDatasetUnavailableError(
+            "German wordlist commit response did not contain a commit"
+        )
+    return commit
+
+
 def _fetch_text(dataset_name: str) -> str:
     filename = DATASET_FILES[dataset_name]
     request = Request(
         f"{RAW_BASE_URL}/{filename}",
+        headers={"User-Agent": "wit-pytools-anonymization"},
+    )
+    with urlopen(request, timeout=30) as response:
+        return response.read().decode("utf-8-sig")
+
+
+def _fetch_german_text(dataset_name: str) -> str:
+    filename = GERMAN_DATASET_FILES[dataset_name]
+    request = Request(
+        f"{GERMAN_RAW_BASE_URL}/{filename}",
         headers={"User-Agent": "wit-pytools-anonymization"},
     )
     with urlopen(request, timeout=30) as response:
@@ -114,8 +154,19 @@ def _cache_files(cache_dir: Path) -> tuple[Path, Path, Path]:
     )
 
 
-def _cache_is_complete(cache_dir: Path) -> bool:
-    return all(path.is_file() for path in _cache_files(cache_dir))
+def _german_cache_files(cache_dir: Path) -> tuple[Path, Path, Path]:
+    return (
+        cache_dir / GERMAN_DATASET_FILES["nouns"],
+        cache_dir / GERMAN_DATASET_FILES["forenames"],
+        cache_dir / GERMAN_DATASET_FILES["surnames"],
+    )
+
+
+def _cache_is_complete(cache_dir: Path, german: bool = False) -> bool:
+    paths = list(_cache_files(cache_dir))
+    if german:
+        paths.extend(_german_cache_files(cache_dir))
+    return all(path.is_file() for path in paths)
 
 
 def _load_cache(
@@ -124,14 +175,22 @@ def _load_cache(
     *,
     exclusions: frozenset[str] = DEFAULT_NAME_EXCLUSIONS,
     debug: bool = False,
+    german: bool = False,
 ) -> NameCatalog:
     forenames_path, surnames_path, metadata_path = _cache_files(cache_dir)
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    german_contents = None
+    if german:
+        german_contents = tuple(
+            path.read_text(encoding="utf-8-sig")
+            for path in _german_cache_files(cache_dir)
+        )
     catalog = _catalog_from_csv(
         forenames_path.read_text(encoding="utf-8-sig"),
         surnames_path.read_text(encoding="utf-8-sig"),
         countries,
         exclusions,
+        german_contents,
     )
     if debug:
         LOGGER.debug(
@@ -142,11 +201,21 @@ def _load_cache(
     return catalog
 
 
-def _write_cache(cache_dir: Path, commit: str, forenames: str, surnames: str) -> None:
+def _write_cache(
+    cache_dir: Path,
+    commit: str,
+    forenames: str,
+    surnames: str,
+    german_commit: Optional[str] = None,
+    german_contents: Optional[tuple[str, str, str]] = None,
+) -> None:
     cache_dir.mkdir(parents=True, exist_ok=True)
     forenames_path, surnames_path, metadata_path = _cache_files(cache_dir)
     forenames_path.write_text(forenames, encoding="utf-8")
     surnames_path.write_text(surnames, encoding="utf-8")
+    if german_contents is not None:
+        for path, content in zip(_german_cache_files(cache_dir), german_contents):
+            path.write_text(content, encoding="utf-8")
     metadata_path.write_text(
         json.dumps(
             {
@@ -154,6 +223,9 @@ def _write_cache(cache_dir: Path, commit: str, forenames: str, surnames: str) ->
                 "branch": BRANCH,
                 "commit": commit,
                 "files": DATASET_FILES,
+                "german_repository": GERMAN_REPOSITORY if german_commit else None,
+                "german_commit": german_commit,
+                "german_files": GERMAN_DATASET_FILES if german_commit else None,
             },
             indent=2,
         ),
@@ -166,10 +238,12 @@ def _catalog_from_csv(
     surnames_csv: str,
     countries: tuple[str, ...],
     exclusions: frozenset[str] = DEFAULT_NAME_EXCLUSIONS,
+    german_contents: Optional[tuple[str, str, str]] = None,
 ) -> NameCatalog:
     requested = set(countries)
     forenames = set()
     surnames = set()
+    noun_words = set()
     available = set()
 
     for row in csv.DictReader(forenames_csv.splitlines()):
@@ -190,13 +264,38 @@ def _catalog_from_csv(
                 if value:
                     surnames.add(_normalize(value))
 
+    if german_contents is not None and "DE" in requested:
+        noun_text, german_forenames, german_surnames = german_contents
+        noun_words.update(
+            _normalize(line)
+            for line in noun_text.splitlines()
+            if line.strip()
+        )
+        forenames.update(
+            _normalize(line)
+            for line in german_forenames.splitlines()
+            if line.strip()
+        )
+        surnames.update(
+            _normalize(line)
+            for line in german_surnames.splitlines()
+            if line.strip()
+        )
+        available.add("DE")
+
     missing = requested - available
     if missing:
         raise ValueError(
             "Configured countries are not present in the name datasets: "
             + ", ".join(sorted(missing))
         )
-    return NameCatalog(frozenset(requested), frozenset(forenames), frozenset(surnames))
+    return NameCatalog(
+        frozenset(requested),
+        frozenset(forenames),
+        frozenset(surnames),
+        frozenset(noun_words),
+        exclusions,
+    )
 
 
 def load_name_catalog(
@@ -224,7 +323,8 @@ def load_name_catalog(
 
     target_dir = Path(cache_dir) if cache_dir is not None else default_cache_dir()
     forenames_path, surnames_path, metadata_path = _cache_files(target_dir)
-    cache_available = _cache_is_complete(target_dir)
+    german_enabled = "DE" in selected
+    cache_available = _cache_is_complete(target_dir, german=german_enabled)
 
     try:
         if offline_mode:
@@ -237,31 +337,62 @@ def load_name_catalog(
                 selected,
                 exclusions=exclusions,
                 debug=debug,
+                german=german_enabled,
             )
 
         commit = _fetch_commit()
+        german_commit = _fetch_german_commit() if german_enabled else None
         cached_commit = None
+        cached_german_commit = None
         if cache_available:
             try:
-                cached_commit = json.loads(
-                    metadata_path.read_text(encoding="utf-8")
-                ).get("commit")
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                cached_commit = metadata.get("commit")
+                cached_german_commit = metadata.get("german_commit")
             except (OSError, json.JSONDecodeError):
                 cached_commit = None
-        if cache_available and cached_commit == commit:
+        if (
+            cache_available
+            and cached_commit == commit
+            and cached_german_commit == german_commit
+        ):
             return _load_cache(
                 target_dir,
                 selected,
                 exclusions=exclusions,
                 debug=debug,
+                german=german_enabled,
             )
 
         forenames = _fetch_text("forenames")
         surnames = _fetch_text("surnames")
-        _write_cache(target_dir, commit, forenames, surnames)
+        german_contents = None
+        if german_enabled:
+            german_contents = tuple(
+                _fetch_german_text(dataset)
+                for dataset in ("nouns", "forenames", "surnames")
+            )
+        _write_cache(
+            target_dir,
+            commit,
+            forenames,
+            surnames,
+            german_commit=german_commit,
+            german_contents=german_contents,
+        )
         if debug:
-            LOGGER.debug("Downloaded name datasets commit=%s", commit)
-        return _catalog_from_csv(forenames, surnames, selected, exclusions)
+            LOGGER.debug(
+                "Downloaded name datasets commit=%s german_commit=%s",
+                commit,
+                german_commit,
+            )
+        return _catalog_from_csv(
+            forenames,
+            surnames,
+            selected,
+            exclusions,
+            german_contents,
+        )
     except (
         OSError,
         URLError,
@@ -278,6 +409,7 @@ def load_name_catalog(
                 selected,
                 exclusions=exclusions,
                 debug=debug,
+                german=german_enabled,
             )
         raise NameDatasetUnavailableError(
             "Configured name datasets could not be loaded and no cache exists"

@@ -169,8 +169,14 @@ service tests.
 Candidate detection can optionally use the latest data from the
 `sigpwned/popular-names-by-country-dataset` Git repository. It reads the
 repository's `common-forenames-by-country.csv` and
-`common-surnames-by-country.csv` files. The data is CC0-licensed; the source
-repository and commit are recorded in cache metadata.
+`common-surnames-by-country.csv` files. When country `DE` is configured, it
+also reads `noun.txt`, `noun-proper-first-name.txt`, and
+`noun-proper-surname.txt` from the `ynsrc/german-categorized-wordlist`
+repository. German noun matches exclude single-token name candidates; the
+German proper-name files add positive first-name and surname evidence.
+
+The popular-name data is CC0-licensed. The German wordlist is CC BY 4.0.
+Source repositories and commits are recorded in cache metadata.
 
 Countries are configured with lowercase ISO 3166-1 alpha-2 codes. No country
 is enabled by default, and no geographic presets are provided initially. The

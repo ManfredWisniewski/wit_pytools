@@ -713,12 +713,17 @@ def _pdf_page_count(file_path):
 
 def _docprep_pdf(source, output_path, settings):
     from wit_pytools.documenttools import pdf_to_markdown
+    sidecar_path = settings.get('sidecar_path')
+    write_sidecar = settings['sidecar']
+    if sidecar_path and Path(sidecar_path).exists():
+        sidecar_path = None
+        write_sidecar = False
     output = pdf_to_markdown(
         source,
         output_path=output_path,
-        sidecar_path=settings.get('sidecar_path'),
-        write_sidecar=settings['sidecar'],
-        overwrite=True,
+        sidecar_path=sidecar_path,
+        write_sidecar=write_sidecar,
+        overwrite=False,
         mode=settings['mode'],
         model=settings['model'],
         language=settings['language'],
@@ -862,6 +867,34 @@ def docprep_settings(config_object):
     }
 
 
+def _docprep_output_path(targetdir, relative_path, cleaned_name, bowl):
+    target_root = Path(targetdir)
+    relative_parent = relative_path.parent
+    bowl_path = Path(str(bowl).replace('\\', '/').strip('/'))
+    if (
+        bowl_path != Path('.')
+        and target_root.parts[-len(bowl_path.parts):] == bowl_path.parts
+        and relative_parent.parts[:len(bowl_path.parts)] == bowl_path.parts
+    ):
+        relative_parent = relative_parent.relative_to(bowl_path)
+    return target_root / relative_parent / f"{Path(cleaned_name).stem}.md"
+
+
+def _find_existing_docprep_markup(targetdir, output_path, relative_path, bowl):
+    target_root = Path(targetdir)
+    direct_path = target_root / Path(str(bowl).replace('\\', '/')) / relative_path.parent / output_path.name
+    candidates = [output_path, direct_path]
+    candidates.extend(
+        path
+        for path in target_root.rglob(output_path.name)
+        if path.is_file()
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
     """Create Markdown in targetdir while preserving source documents."""
     settings = docprep_settings(config_object)
@@ -871,11 +904,43 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
     source = source.resolve()
     relative_path = source.relative_to(source_root)
     cleaned_name = normalize_spaces(cleanfilename(source.name, clean, clean_nocase, replacements))
-    target_root = Path(targetdir)
-    output_path = target_root / relative_path.parent / f"{Path(cleaned_name).stem}.md"
+    output_path = _docprep_output_path(
+        targetdir,
+        relative_path,
+        cleaned_name,
+        bowl,
+    )
     sidecar_path = source.parent / f"{Path(cleaned_name).stem}_pdf2md.json"
     paired_markup = source.with_suffix('.md')
     log_message(_('Handling Doc_prep: {}').format(source), level="INFO")
+
+    if not paired_markup.is_file():
+        existing_markup = _find_existing_docprep_markup(
+            targetdir,
+            output_path,
+            relative_path,
+            bowl,
+        )
+        if existing_markup is not None:
+            keep_originals = settings.get('anonymize_keep_originals', False)
+            if keep_originals:
+                paired_markup.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(existing_markup), str(paired_markup))
+            else:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                if existing_markup != output_path:
+                    shutil.move(str(existing_markup), str(output_path))
+                if settings['anonymize']:
+                    anonymized_output = output_path.with_name(
+                        f"{output_path.stem}_anon{output_path.suffix}"
+                    )
+                    handle_docprep_anonymization(
+                        output_path,
+                        settings,
+                        output_path=anonymized_output,
+                        remove_source=True,
+                    )
+                return True
 
     if dryrun:
         if paired_markup.is_file():
@@ -890,6 +955,13 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
         print(message)
         if settings['anonymize']:
             try:
+                keep_originals = settings.get('anonymize_keep_originals', False)
+                if keep_originals and output_path.is_file():
+                    output_path.unlink()
+                    log_message(
+                        f"Doc_prep: moved original markup to {paired_markup}",
+                        level="INFO",
+                    )
                 anonymized_output = output_path.with_name(
                     f"{output_path.stem}_anon{output_path.suffix}"
                 )

@@ -17,10 +17,32 @@ import wit_pytools.anonymization.name_datasets as name_datasets
 
 FORENAMES_CSV = """Country,Localized Name,Romanized Name
 ZZ,Qira,Qira
+DE,Qira,Qira
 """
 SURNAMES_CSV = """Country,Localized Name,Romanized Name
 ZZ,Zol,Zol
+DE,Zol,Zol
 """
+GERMAN_NOUNS = """Garten
+Sommer
+"""
+GERMAN_FORENAMES = """Qira
+"""
+GERMAN_SURNAMES = """Zol
+"""
+
+
+def test_german_nouns_filter_single_name_candidates():
+    catalog = NameCatalog(
+        frozenset({"DE"}),
+        frozenset({"qira", "sommer"}),
+        frozenset({"zol"}),
+        frozenset({"sommer"}),
+    )
+
+    assert catalog.is_name("Qira")
+    assert not catalog.is_name("Sommer")
+    assert catalog.is_name("Qira Zol")
 
 
 def test_dataset_names_detect_single_and_compound_values():
@@ -79,6 +101,32 @@ def test_load_name_catalog_uses_cache_when_repository_is_unavailable(tmp_path, m
 
     assert cached is not None
     assert cached.is_name("Qira")
+
+
+def test_load_name_catalog_loads_german_wordlist(tmp_path, monkeypatch):
+    monkeypatch.setattr(name_datasets, "_fetch_commit", lambda: "popular-1")
+    monkeypatch.setattr(name_datasets, "_fetch_german_commit", lambda: "german-1")
+    monkeypatch.setattr(
+        name_datasets,
+        "_fetch_text",
+        lambda dataset: FORENAMES_CSV if dataset == "forenames" else SURNAMES_CSV,
+    )
+    monkeypatch.setattr(
+        name_datasets,
+        "_fetch_german_text",
+        lambda dataset: {
+            "nouns": GERMAN_NOUNS,
+            "forenames": GERMAN_FORENAMES,
+            "surnames": GERMAN_SURNAMES,
+        }[dataset],
+    )
+
+    catalog = load_name_catalog(["DE"], cache_dir=tmp_path)
+
+    assert catalog is not None
+    assert catalog.is_name("Qira")
+    assert catalog.is_name("Qira Zol")
+    assert not catalog.is_name("Sommer")
 
 
 def test_load_name_catalog_fails_without_cache(monkeypatch, tmp_path):

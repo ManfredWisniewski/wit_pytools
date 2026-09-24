@@ -104,6 +104,7 @@ sidecar=true
 anonymize=false
 anonymize_mapping=P:\\customers\\customer-anon-mapping.csv
 anonymize_update=false
+anonymize-keep-originals=false
 # Optional country-aware name detection.
 anonymize_name_countries=de,us
 anonymize_use_name_datasets=true

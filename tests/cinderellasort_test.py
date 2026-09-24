@@ -391,6 +391,17 @@ def _fake_converter(calls, fail=False):
     return convert
 
 
+def test_docprep_output_path_does_not_duplicate_bowl():
+    relative_path = Path("DOCDIR") / "files" / "document.pdf"
+
+    assert cs._docprep_output_path(
+        Path("target") / "DOCDIR",
+        relative_path,
+        "document.pdf",
+        "ADAC",
+    ) == Path("target") / "DOCDIR" / "files" / "document.md"
+
+
 def test_docprep_converts_and_moves_original_to_originals(tmp_path, monkeypatch):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path, docprep_section={"language": "de", "model": "test/model"}
@@ -521,6 +532,8 @@ def test_docprep_uses_paired_markup_and_keeps_original(tmp_path, monkeypatch):
     )
     markup = source_dir / "Rechnung 2026.md"
     markup.write_text("# Sample Person", encoding="utf-8")
+    target_original = target_dir / "Rechnung 2026.md"
+    target_original.write_text("# stale target copy", encoding="utf-8")
     (tmp_path / "mapping.csv").write_text(
         "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
         "anon,Person-001,Sample Person,name,, ,1\n",
@@ -533,6 +546,34 @@ def test_docprep_uses_paired_markup_and_keeps_original(tmp_path, monkeypatch):
 
     assert calls == []
     assert markup.read_text(encoding="utf-8") == "# Sample Person"
+    assert not target_original.exists()
+    assert (target_dir / "Rechnung 2026_anon.md").read_text(encoding="utf-8") == "# Person-001"
+
+
+def test_docprep_moves_target_markup_to_source_before_anonymizing(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        docprep_section={
+            "anonymize": "true",
+            "anonymize_mapping": str(tmp_path / "mapping.csv"),
+            "anonymize-keep-originals": "true",
+        },
+    )
+    target_original = target_dir / "Rechnung 2026.md"
+    target_original.write_text("# Sample Person", encoding="utf-8")
+    (tmp_path / "mapping.csv").write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "anon,Person-001,Sample Person,name,,,1\n",
+        encoding="utf-8",
+    )
+    calls = []
+    monkeypatch.setitem(cs.DOCPREP_CONVERTERS, ".pdf", (lambda source: 99, _fake_converter(calls)))
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert calls == []
+    assert (source_dir / "Rechnung 2026.md").read_text(encoding="utf-8") == "# Sample Person"
+    assert not target_original.exists()
     assert (target_dir / "Rechnung 2026_anon.md").read_text(encoding="utf-8") == "# Person-001"
 
 
