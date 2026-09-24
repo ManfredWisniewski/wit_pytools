@@ -11,10 +11,32 @@ def main() -> int:
     parser.add_argument("candidates", type=Path)
     parser.add_argument("overwrite", type=int, choices=(0, 1))
     parser.add_argument("group_contained_values", type=int, choices=(0, 1))
+    parser.add_argument("--countries", default="")
+    parser.add_argument("--no-name-datasets", action="store_true")
+    parser.add_argument("--offline", action="store_true")
+    parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--name-exclusions", default="")
     args = parser.parse_args()
 
     if not args.candidates.exists():
-        print(identify_xlsx_strings(args.source))
+        countries = tuple(
+            country.strip() for country in args.countries.split(",") if country.strip()
+        )
+        name_exclusions = tuple(
+            value.strip()
+            for value in args.name_exclusions.split(",")
+            if value.strip()
+        )
+        print(
+            identify_xlsx_strings(
+                args.source,
+                countries=countries or None,
+                use_name_datasets=False if args.no_name_datasets else None,
+                offline=args.offline,
+                debug=args.debug,
+                name_exclusions=name_exclusions or None,
+            )
+        )
         print("Candidates created. Review the CSV before the next run.")
         return 0
 

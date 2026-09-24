@@ -769,7 +769,16 @@ def handle_docprep_anonymization(markdown_path, settings):
         raise ValueError('DOCPREP anonymize=true requires anonymize_mapping')
 
     mapping_path = Path(settings['anonymize_mapping'])
-    update_text_mapping(markdown_path, mapping_path)
+    update_text_mapping(
+        markdown_path,
+        mapping_path,
+        countries=settings.get('anonymize_name_countries'),
+        use_name_datasets=settings.get('anonymize_use_name_datasets'),
+        cache_dir=settings.get('anonymize_name_cache_dir'),
+        offline=settings.get('anonymize_name_dataset_offline'),
+        debug=settings.get('anonymize_name_dataset_debug', False),
+        name_exclusions=settings.get('anonymize_name_exclusions'),
+    )
     log_message(f"Doc_prep anonymization: updated mapping {mapping_path}", level="INFO")
     print(f"Doc_prep anonymization: updated mapping {mapping_path}")
     content = Path(markdown_path).read_text(encoding='utf-8')
@@ -800,6 +809,23 @@ def docprep_settings(config_object):
     """Read the [DOCPREP] section with defaults."""
     section = config_object['DOCPREP'] if config_object.has_section('DOCPREP') else {}
     language = (section.get('language', 'en') or 'en').strip().lower()
+
+    def optional_bool(key):
+        value = section.get(key)
+        if value is None or not value.strip():
+            return None
+        normalized = value.strip().lower()
+        if normalized not in {'true', 'false'}:
+            raise ValueError(f'{key} must be true or false')
+        return normalized == 'true'
+
+    def csv_values(key):
+        return tuple(
+            value.strip()
+            for value in (section.get(key, '') or '').split(',')
+            if value.strip()
+        )
+
     return {
         'mode': (section.get('mode', 'vision') or 'vision').strip().lower(),
         'model': (section.get('model', '') or '').strip() or None,
@@ -812,6 +838,12 @@ def docprep_settings(config_object):
         'anonymize': (section.get('anonymize', 'false') or 'false').strip().lower() == 'true',
         'anonymize_mapping': (section.get('anonymize_mapping', '') or '').strip() or None,
         'anonymize_update': (section.get('anonymize_update', 'false') or 'false').strip().lower() == 'true',
+        'anonymize_name_countries': csv_values('anonymize_name_countries'),
+        'anonymize_use_name_datasets': optional_bool('anonymize_use_name_datasets'),
+        'anonymize_name_cache_dir': (section.get('anonymize_name_cache_dir', '') or '').strip() or None,
+        'anonymize_name_dataset_offline': optional_bool('anonymize_name_dataset_offline'),
+        'anonymize_name_dataset_debug': (section.get('anonymize_name_dataset_debug', 'false') or 'false').strip().lower() == 'true',
+        'anonymize_name_exclusions': csv_values('anonymize_name_exclusions'),
     }
 
 

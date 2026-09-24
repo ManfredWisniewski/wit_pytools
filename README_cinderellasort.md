@@ -104,6 +104,13 @@ sidecar=true
 anonymize=false
 anonymize_mapping=P:\\customers\\customer-anon-mapping.csv
 anonymize_update=false
+# Optional country-aware name detection.
+anonymize_name_countries=de,us
+anonymize_use_name_datasets=true
+anonymize_name_dataset_offline=false
+anonymize_name_dataset_debug=false
+anonymize_name_cache_dir=
+anonymize_name_exclusions=
 ```
 
 For a source tree:

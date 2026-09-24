@@ -22,6 +22,11 @@ from .mapping import (
     write_csv,
 )
 from .models import Candidate
+from .name_datasets import (
+    NameCatalog,
+    NameDatasetUnavailableError,
+    load_name_catalog,
+)
 from .text import mapping_matches_parts, replace_text_part, replace_text_parts
 
 __all__ = [
@@ -30,11 +35,14 @@ __all__ = [
     "CandidateCollector",
     "CandidateValidationError",
     "MappingValidationError",
+    "NameCatalog",
+    "NameDatasetUnavailableError",
     "VALUE_TYPES",
     "create_mapping",
     "detect_text_candidates",
     "group_contained_rows",
     "is_date_string",
+    "load_name_catalog",
     "mapping_matches_parts",
     "mapping_path_for_candidates",
     "mapping_path_rows",

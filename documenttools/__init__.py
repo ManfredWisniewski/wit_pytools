@@ -5,7 +5,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from eliot import log_message
 
@@ -14,6 +14,7 @@ from wit_pytools.anonymization import (
     CandidateCollector,
     detect_text_candidates,
     is_date_string,
+    load_name_catalog,
     mapping_matches_parts,
     mapping_path_rows,
     replace_related_values,
@@ -137,6 +138,12 @@ def identify_xlsx_strings(
     output_path: Optional[Path | str] = None,
     *,
     overwrite: bool = False,
+    countries: Optional[Sequence[str]] = None,
+    use_name_datasets: Optional[bool] = None,
+    cache_dir: Optional[Path | str] = None,
+    offline: Optional[bool] = None,
+    debug: bool = False,
+    name_exclusions: Optional[Sequence[str]] = None,
 ) -> Path:
     """Identify string cell values and write a reviewed-candidate CSV."""
     _require_openpyxl()
@@ -146,7 +153,15 @@ def identify_xlsx_strings(
     )
     _check_output_path(candidate_path, input_path, overwrite)
 
-    collector = CandidateCollector()
+    name_catalog = load_name_catalog(
+        countries,
+        use_name_datasets=use_name_datasets,
+        cache_dir=cache_dir,
+        offline=offline,
+        debug=debug,
+        name_exclusions=name_exclusions,
+    )
+    collector = CandidateCollector(name_catalog)
     workbook = openpyxl.load_workbook(input_path, data_only=False, keep_links=True)
     try:
         for worksheet in workbook.worksheets:
@@ -228,12 +243,18 @@ def _markdown_protected_spans(content: str):
     return [(match.start(), match.end()) for match in _MARKDOWN_PROTECTED.finditer(content)]
 
 
-def _text_candidate_rows(content: str, document_name: str) -> List[Dict[str, Any]]:
+def _text_candidate_rows(
+    content: str,
+    document_name: str,
+    *,
+    name_catalog=None,
+) -> List[Dict[str, Any]]:
     return _candidate_rows(
         detect_text_candidates(
             content,
             document_name,
             _markdown_protected_spans(content),
+            name_catalog=name_catalog,
         )
     )
 
@@ -243,6 +264,12 @@ def identify_text_strings(
     output_path: Optional[Path | str] = None,
     *,
     overwrite: bool = False,
+    countries: Optional[Sequence[str]] = None,
+    use_name_datasets: Optional[bool] = None,
+    cache_dir: Optional[Path | str] = None,
+    offline: Optional[bool] = None,
+    debug: bool = False,
+    name_exclusions: Optional[Sequence[str]] = None,
 ) -> Path:
     """Identify text candidates while leaving markup-specific protection here."""
     input_path = Path(file_path)
@@ -252,15 +279,37 @@ def identify_text_strings(
         input_path, "candidates", ".csv"
     )
     _check_output_path(candidate_path, input_path, overwrite)
+    name_catalog = load_name_catalog(
+        countries,
+        use_name_datasets=use_name_datasets,
+        cache_dir=cache_dir,
+        offline=offline,
+        debug=debug,
+        name_exclusions=name_exclusions,
+    )
     write_csv(
         candidate_path,
         _CANDIDATE_COLUMNS,
-        _text_candidate_rows(input_path.read_text(encoding="utf-8"), "Markdown"),
+        _text_candidate_rows(
+            input_path.read_text(encoding="utf-8"),
+            "Markdown",
+            name_catalog=name_catalog,
+        ),
     )
     return candidate_path
 
 
-def update_text_mapping(file_path: Path | str, mapping_path: Path | str) -> Path:
+def update_text_mapping(
+    file_path: Path | str,
+    mapping_path: Path | str,
+    *,
+    countries: Optional[Sequence[str]] = None,
+    use_name_datasets: Optional[bool] = None,
+    cache_dir: Optional[Path | str] = None,
+    offline: Optional[bool] = None,
+    debug: bool = False,
+    name_exclusions: Optional[Sequence[str]] = None,
+) -> Path:
     """Add newly found text candidates with status ``new``."""
     input_path = Path(file_path)
     mapping_file = Path(mapping_path)
@@ -277,8 +326,18 @@ def update_text_mapping(file_path: Path | str, mapping_path: Path | str) -> Path
         for original in row["original_value"].split(";")
         if original.strip()
     }
+    name_catalog = load_name_catalog(
+        countries,
+        use_name_datasets=use_name_datasets,
+        cache_dir=cache_dir,
+        offline=offline,
+        debug=debug,
+        name_exclusions=name_exclusions,
+    )
     candidates = _text_candidate_rows(
-        input_path.read_text(encoding="utf-8"), input_path.name
+        input_path.read_text(encoding="utf-8"),
+        input_path.name,
+        name_catalog=name_catalog,
     )
     rows = list(existing_documents)
     for candidate in candidates:

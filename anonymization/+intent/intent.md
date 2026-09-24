@@ -22,6 +22,25 @@ regions, and output reconstruction. The anonymization package does not depend on
 - **Containment grouping**: grouping whole values where one value occurs inside
   another, so related values can share a replacement.
 
+## Configuration
+
+Candidate detection accepts these options:
+
+- `countries`: explicit ISO 3166-1 alpha-2 codes. When omitted, the
+  `ANONYMIZATION_NAME_COUNTRIES` comma-separated environment variable is used.
+- `use_name_datasets`: explicitly enable or disable dataset use. The default is
+  enabled only when countries are configured.
+- `cache_dir`: optional cache directory override. Otherwise the user cache
+  directory is used.
+- `offline`: use cache only and prohibit network access.
+- `debug`: emit cache, repository, and matching diagnostics. The default is
+  `False`.
+- `name_exclusions`: optional additional words excluded from single-token name
+  matching. Built-in common-word exclusions always apply.
+
+Explicit function arguments take precedence over environment variables.
+The runner exposes country, opt-out, offline, and debug options.
+
 ## Processing order
 
 1. Validate candidate or mapping input.
@@ -66,8 +85,10 @@ how editable and protected parts are identified and how output is written.
 - `mapping_matches_parts(...)` — check whether approved mappings match editable parts.
 - `is_date_string(...)` — identify supported date strings excluded from anonymization.
 - `replacement_for(...)` — generate a deterministic replacement proposal.
+- `load_name_catalog(...)` — load configured country-aware forename and surname data.
 
-`CandidateValidationError` and `MappingValidationError` identify invalid input.
+`CandidateValidationError`, `MappingValidationError`, and
+`NameDatasetUnavailableError` identify invalid or unavailable input.
 The package does not modify source files implicitly.
 
 ## Data and file formats
@@ -136,12 +157,39 @@ service tests.
 
 - No direct XLSX, PDF, or Markdown parsing is performed here.
 - No model or external service is required for candidate detection.
-- Candidate detection currently uses deterministic regular-expression-based
-  classification.
+- Candidate detection uses deterministic regular-expression-based
+  classification and optional country-aware datasets.
 - URL-shaped values in Markdown are protected by the Markdown adapter rather
   than treated as editable candidates.
-- Candidate detection for country-specific names is not implemented yet.
+- Candidate detection does not provide statistical confidence scores.
+- Geographic presets are not implemented; configure explicit country codes.
+
+## Name dataset support
+
+Candidate detection can optionally use the latest data from the
+`sigpwned/popular-names-by-country-dataset` Git repository. It reads the
+repository's `common-forenames-by-country.csv` and
+`common-surnames-by-country.csv` files. The data is CC0-licensed; the source
+repository and commit are recorded in cache metadata.
+
+Countries are configured with lowercase ISO 3166-1 alpha-2 codes. No country
+is enabled by default, and no geographic presets are provided initially. The
+explicit function argument takes precedence over the
+`ANONYMIZATION_NAME_COUNTRIES` environment variable.
+
+When countries are configured, each run checks the repository's current `main`
+commit. Cached data is reused when the commit is unchanged. Changed data is
+downloaded and cached in the user cache directory. If the connection fails,
+existing cached data is used. If no cache exists, candidate detection raises
+`NameDatasetUnavailableError` unless `use_name_datasets=False` is supplied.
+`offline=True` prohibits network access and uses only the cache.
+
+The refresh/cache status is logged only with `debug=True`. Candidate CSV output
+keeps the existing schema and does not include country or confidence columns.
+Dataset matching is Unicode-normalized and case-insensitive for comparison;
+original source text is preserved.
 
 ## Open items
 
-See `todo.md` for planned support for configurable country-aware name datasets.
+See `todo.md` for planned support for popular-name dataset enhancements and
+country-specific configuration improvements.

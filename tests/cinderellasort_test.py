@@ -540,10 +540,23 @@ def test_docprep_settings_defaults():
     settings = cs.docprep_settings(config)
     assert settings["language"] == "en"
     assert settings["sidecar"] is True
-    config["DOCPREP"] = {"language": "de", "sidecar": "false"}
+    assert settings["anonymize_name_countries"] == ()
+    assert settings["anonymize_use_name_datasets"] is None
+    config["DOCPREP"] = {
+        "language": "de",
+        "sidecar": "false",
+        "anonymize_name_countries": "de, us",
+        "anonymize_use_name_datasets": "true",
+        "anonymize_name_dataset_offline": "true",
+        "anonymize_name_exclusions": "common, word",
+    }
     settings = cs.docprep_settings(config)
     assert settings["language"] == "de"
     assert settings["sidecar"] is False
+    assert settings["anonymize_name_countries"] == ("de", "us")
+    assert settings["anonymize_use_name_datasets"] is True
+    assert settings["anonymize_name_dataset_offline"] is True
+    assert settings["anonymize_name_exclusions"] == ("common", "word")
 
 
 def test_gen_img_ignore_max_cost_setting():
