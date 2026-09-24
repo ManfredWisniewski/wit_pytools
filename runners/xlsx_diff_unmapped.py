@@ -4,7 +4,8 @@ from pathlib import Path
 
 import openpyxl
 
-from wit_pytools.documenttools import _mapping_path_rows, anonymize_xlsx
+from wit_pytools.anonymization import mapping_path_rows
+from wit_pytools.documenttools import anonymize_xlsx
 
 
 def main() -> int:
@@ -15,7 +16,7 @@ def main() -> int:
     parser.add_argument("mapping", type=Path)
     args = parser.parse_args()
 
-    mapping = _mapping_path_rows(args.mapping)
+    mapping = mapping_path_rows(args.mapping)
     with tempfile.TemporaryDirectory() as tmp:
         output = anonymize_xlsx(args.source, args.mapping, Path(tmp) / "out.xlsx")
         src = openpyxl.load_workbook(args.source, data_only=False)

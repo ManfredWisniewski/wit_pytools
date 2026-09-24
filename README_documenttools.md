@@ -83,10 +83,10 @@ Identifies candidate string values in an `.xlsx` workbook and writes the candida
 - `overwrite`: permits replacing an existing candidates CSV.
 - Returns: the output `Path`.
 
-### `create_xlsx_mapping`
+### `create_mapping`
 
 ```python
-create_xlsx_mapping(
+create_mapping(
     candidate_path,
     output_path=None,
     *,
@@ -199,6 +199,7 @@ Markdown anonymization uses the same reviewed mapping CSV format as XLSX but
 keeps the workbook-specific functions separate.
 
 ```python
+from wit_pytools.anonymization import create_mapping
 from wit_pytools.documenttools import (
     identify_text_strings,
     anonymize_text,

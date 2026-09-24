@@ -1,11 +1,8 @@
 import argparse
 from pathlib import Path
 
-from wit_pytools.documenttools import (
-    anonymize_xlsx,
-    create_xlsx_mapping,
-    identify_xlsx_strings,
-)
+from wit_pytools.anonymization import create_mapping
+from wit_pytools.documenttools import anonymize_xlsx, identify_xlsx_strings
 
 
 def main() -> int:
@@ -27,7 +24,7 @@ def main() -> int:
         mapping_stem = mapping_stem[: -len("_candidates")]
     mapping = args.candidates.with_name(f"{mapping_stem}_mapping.csv")
     if not mapping.exists():
-        mapping = create_xlsx_mapping(
+        mapping = create_mapping(
             args.candidates,
             overwrite=overwrite,
             group_contained_values=bool(args.group_contained_values),

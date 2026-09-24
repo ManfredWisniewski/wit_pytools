@@ -37,7 +37,7 @@ Anonymization is a three-step workflow:
 The workflow should expose modular functions equivalent to:
 
 - `identify_xlsx_strings(...)`: create the candidate CSV.
-- `create_xlsx_mapping(...)`: validate the reviewed candidate CSV and create the mapping CSV.
+- `create_mapping(...)`: validate the reviewed candidate CSV and create the mapping CSV.
 - `anonymize_xlsx(...)`: apply the mapping CSV and create the anonymized workbook.
 
 The replacement step requires the mapping CSV, allowing the same mapping to be reused for additional copies of the source data.
@@ -222,3 +222,23 @@ The initial implementation does not provide:
 - OCR without a model;
 - a Nextcloud Flow wrapper (planned follow-up in `witnctools`);
 - automatic fallback from `text` to `vision`.
+
+## Anonymization package boundary
+
+Generic anonymization functionality is provided by `wit_pytools.anonymization`.
+It owns candidate models and detection, deterministic replacement proposals,
+mapping CSV validation and application, containment grouping, and generic text
+replacement. It does not depend on document parsers or external document
+providers.
+
+`documenttools` owns format adapters: XLSX traversal and workbook preservation,
+and Markdown parsing, protected-region detection, and reconstruction. These
+adapters call `anonymization` for candidate detection and replacement logic.
+Candidate detection accepts generic text and format-provided protected spans.
+
+The migration switches all callers to the new package immediately. Obsolete
+anonymization implementations are removed from `documenttools`; no
+compatibility wrappers are retained. Generic anonymization tests live under
+`tests/anonymization/`, while format adapter tests remain under
+`tests/documenttools/`. The existing candidate and mapping CSV schemas remain
+the file interchange format.

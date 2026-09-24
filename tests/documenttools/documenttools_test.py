@@ -12,9 +12,9 @@ import pytest
 # Allow importing wit_pytools when running tests directly
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
+from wit_pytools.anonymization import create_mapping
 from wit_pytools.documenttools import (
     anonymize_xlsx,
-    create_xlsx_mapping,
     document_find_regex,
     identify_xlsx_strings,
     pdf_to_markdown,
@@ -26,7 +26,7 @@ from wit_pytools.documenttools import (
     mapping_matches_text,
 )
 
-TEST_DOC = Path(__file__).parent / "documenttools" / "testdocument.pdf"
+TEST_DOC = Path(__file__).parent / "testdocument.pdf"
 
 
 def test_document_find_regex_literal_real_document():
@@ -84,7 +84,7 @@ def test_xlsx_anonymization_workflow_preserves_formulas(tmp_path):
         writer.writeheader()
         writer.writerows(candidate_rows)
 
-    mapping_path = create_xlsx_mapping(candidates_path)
+    mapping_path = create_mapping(candidates_path)
     output_path = anonymize_xlsx(source_path, mapping_path)
 
     anonymized = openpyxl.load_workbook(output_path, data_only=False)
@@ -98,7 +98,7 @@ def test_xlsx_anonymization_workflow_preserves_formulas(tmp_path):
     anonymized.close()
 
 
-def test_create_xlsx_mapping_rejects_invalid_rows(tmp_path):
+def test_create_mapping_rejects_invalid_rows(tmp_path):
     candidate_path = tmp_path / "source_candidates.csv"
     with candidate_path.open("w", encoding="utf-8", newline="") as file_handle:
         writer = csv.DictWriter(
@@ -135,10 +135,10 @@ def test_create_xlsx_mapping_rejects_invalid_rows(tmp_path):
         )
 
     with pytest.raises(ValueError, match="Duplicate original_value"):
-        create_xlsx_mapping(candidate_path)
+        create_mapping(candidate_path)
 
 
-def test_create_xlsx_mapping_groups_contained_values(tmp_path):
+def test_create_mapping_groups_contained_values(tmp_path):
     candidate_path = tmp_path / "source_candidates.csv"
     with candidate_path.open("w", encoding="utf-8", newline="") as file_handle:
         writer = csv.DictWriter(file_handle, fieldnames=[
@@ -165,7 +165,7 @@ def test_create_xlsx_mapping_groups_contained_values(tmp_path):
                 "occurrences": "1",
             })
 
-    mapping_path = create_xlsx_mapping(
+    mapping_path = create_mapping(
         candidate_path,
         group_contained_values=True,
     )

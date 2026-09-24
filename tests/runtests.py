@@ -30,16 +30,21 @@ def run_individual_tests():
     print("Running individual test files...")
     success = True
     
-    # Get all Python files in the tests directory that start with 'test_' or end with '_test.py'
+    # Get all Python test files recursively from the tests directory.
     test_dir = os.path.dirname(os.path.abspath(__file__))
-    test_files = [f for f in os.listdir(test_dir) 
-                 if f.endswith('.py') and (f.startswith('test_') or f.endswith('_test.py'))]
-    
-    for test_file in test_files:
+    test_files = []
+    for root, _, files in os.walk(test_dir):
+        for filename in files:
+            if filename.endswith('.py') and (
+                filename.startswith('test_') or filename.endswith('_test.py')
+            ):
+                test_files.append(os.path.join(root, filename))
+
+    for file_path in sorted(test_files):
+        test_file = os.path.relpath(file_path, test_dir)
         print(f"\nRunning {test_file}...")
         try:
             # Run the test file with pytest
-            file_path = os.path.join(test_dir, test_file)
             result = pytest.main(['-v', file_path])
             if result != 0:
                 success = False
