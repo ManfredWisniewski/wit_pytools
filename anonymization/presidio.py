@@ -1,6 +1,7 @@
 """Presidio-backed candidate detection."""
 
 from functools import lru_cache
+import re
 from typing import Iterable, List, Optional, Sequence, Tuple
 
 from .candidates import CandidateCollector
@@ -68,6 +69,10 @@ def detect_presidio_candidates(
     score_threshold: float = 0.5,
     entities: Optional[Sequence[str]] = None,
     replacement_length: int = 4,
+    name_catalog=None,
+    ignore_dictionary: bool = False,
+    ignore_numbers: bool = False,
+    ignore_emails: bool = False,
 ) -> List[Candidate]:
     """Detect PII with Presidio and return the common candidate model."""
     analyzer = _create_engine(language, model_name)
@@ -93,6 +98,12 @@ def detect_presidio_candidates(
         if "person-" in value.casefold():
             continue
         entity_type = result.entity_type.upper()
+        if ignore_emails and (entity_type == "EMAIL_ADDRESS" or "@" in value):
+            continue
+        if ignore_numbers and re.fullmatch(r"[\d\s.,:/()+\-€$%]+", value):
+            continue
+        if ignore_dictionary and name_catalog is not None and name_catalog.is_dictionary_word(value):
+            continue
         if entity_type in {"EMAIL_ADDRESS"}:
             value_type = "email"
         elif entity_type in {"URL"}:

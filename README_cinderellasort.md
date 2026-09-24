@@ -110,6 +110,9 @@ anonymize_presidio_score_threshold=0.5
 anonymize_replacement_length=4
 # DATE_TIME and URL are excluded by default.
 anonymize_presidio_entities=PERSON,EMAIL_ADDRESS,PHONE_NUMBER,LOCATION,ORGANIZATION,IP_ADDRESS,CREDIT_CARD,CRYPTO,IBAN_CODE,NRP,MEDICAL_LICENSE
+anonymize_ignore_dictionary=true
+anonymize_ignore_numbers=true
+anonymize_ignore_emails=true
 anonymize_mapping=P:\\customers\\customer-anon-mapping.csv
 anonymize_update=false
 anonymize-keep-originals=false
@@ -171,6 +174,14 @@ IN_GSTIN, CA_SIN, CA_POSTAL_CODE
 Entity availability depends on the installed Presidio version, language, and
 recognizer/model configuration. `DATE_TIME` and `URL` are intentionally absent
 from the default allow-list.
+
+Presidio recommendations can also be filtered before they enter the mapping:
+
+- `anonymize_ignore_dictionary=true` ignores values made entirely of configured-language dictionary words.
+- `anonymize_ignore_numbers=true` ignores numeric-only values.
+- `anonymize_ignore_emails=true` ignores e-mail addresses.
+
+These filters default to `false`.
 
 When a mapping row has `status=keep`, its `original_value` is moved to a
 sibling ignore file such as `Wisniewski-anon-ignore.csv`. The ignore file has

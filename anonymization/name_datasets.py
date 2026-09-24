@@ -55,6 +55,12 @@ class NameCatalog:
     noun_words: frozenset[str] = frozenset()
     exclusions: frozenset[str] = frozenset()
 
+    def is_dictionary_word(self, value: str) -> bool:
+        tokens = [_normalize(token) for token in TOKEN_PATTERN.findall(value)]
+        return bool(tokens) and bool(self.noun_words) and all(
+            token in self.noun_words for token in tokens
+        )
+
     def is_name(self, value: str) -> bool:
         tokens = [_normalize(token) for token in TOKEN_PATTERN.findall(value)]
         if any(token in self.exclusions for token in tokens):

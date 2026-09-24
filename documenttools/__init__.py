@@ -257,6 +257,9 @@ def _text_candidate_rows(
     presidio_score_threshold: float = 0.5,
     presidio_entities: Optional[Sequence[str]] = None,
     replacement_length: int = 4,
+    ignore_dictionary: bool = False,
+    ignore_numbers: bool = False,
+    ignore_emails: bool = False,
 ) -> List[Dict[str, Any]]:
     protected_spans = _markdown_protected_spans(content)
     if anonymize_mode == "custom":
@@ -275,6 +278,11 @@ def _text_candidate_rows(
             model_name=presidio_model,
             score_threshold=presidio_score_threshold,
             entities=presidio_entities,
+            replacement_length=replacement_length,
+            name_catalog=name_catalog,
+            ignore_dictionary=ignore_dictionary,
+            ignore_numbers=ignore_numbers,
+            ignore_emails=ignore_emails,
         )
     else:
         raise ValueError(f"Unsupported anonymize mode: {anonymize_mode!r}")
@@ -298,6 +306,9 @@ def identify_text_strings(
     presidio_score_threshold: float = 0.5,
     presidio_entities: Optional[Sequence[str]] = None,
     replacement_length: int = 4,
+    ignore_dictionary: bool = False,
+    ignore_numbers: bool = False,
+    ignore_emails: bool = False,
 ) -> Path:
     """Identify text candidates while leaving markup-specific protection here."""
     input_path = Path(file_path)
@@ -328,6 +339,9 @@ def identify_text_strings(
             presidio_score_threshold=presidio_score_threshold,
             presidio_entities=presidio_entities,
             replacement_length=replacement_length,
+            ignore_dictionary=ignore_dictionary,
+            ignore_numbers=ignore_numbers,
+            ignore_emails=ignore_emails,
         ),
     )
     return candidate_path
@@ -386,6 +400,9 @@ def update_text_mapping(
     presidio_score_threshold: float = 0.5,
     presidio_entities: Optional[Sequence[str]] = None,
     replacement_length: int = 4,
+    ignore_dictionary: bool = False,
+    ignore_numbers: bool = False,
+    ignore_emails: bool = False,
 ) -> Path:
     """Add newly found text candidates with status ``new``."""
     input_path = Path(file_path)

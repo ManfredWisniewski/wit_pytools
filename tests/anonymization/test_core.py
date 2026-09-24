@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../.
 
 from wit_pytools.anonymization import (
     CandidateValidationError,
+    NameCatalog,
     detect_presidio_candidates,
     MappingValidationError,
     create_mapping,
@@ -96,6 +97,46 @@ def test_presidio_ignores_generated_person_replacements(monkeypatch):
     )
 
     assert detect_presidio_candidates(content, "sample.md") == []
+
+
+def test_presidio_recommendation_filters(monkeypatch):
+    content = "test@example.com 12345 Garden"
+
+    class Result:
+        def __init__(self, start, end, entity_type):
+            self.start = start
+            self.end = end
+            self.entity_type = entity_type
+
+    class Analyzer:
+        def analyze(self, **kwargs):
+            return [
+                Result(0, 16, "EMAIL_ADDRESS"),
+                Result(17, 22, "PHONE_NUMBER"),
+                Result(23, 29, "PERSON"),
+            ]
+
+    monkeypatch.setattr(
+        "wit_pytools.anonymization.presidio._create_engine",
+        lambda language, model_name: Analyzer(),
+    )
+    catalog = NameCatalog(
+        frozenset({"DE"}),
+        frozenset(),
+        frozenset(),
+        frozenset({"garden"}),
+    )
+
+    candidates = detect_presidio_candidates(
+        content,
+        "sample.md",
+        name_catalog=catalog,
+        ignore_dictionary=True,
+        ignore_numbers=True,
+        ignore_emails=True,
+    )
+
+    assert candidates == []
 
 
 def test_replacement_proposals_are_deterministic():

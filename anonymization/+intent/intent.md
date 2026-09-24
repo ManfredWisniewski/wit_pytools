@@ -41,6 +41,9 @@ Candidate detection accepts these options:
   excludes `DATE_TIME` and `URL`; `all` uses the configured recognizer registry.
 - `replacement_length`: length of generated deterministic replacement tokens.
   Existing shorter generated replacements are regenerated during mapping updates.
+- `ignore_dictionary`: ignore Presidio values consisting only of configured-language dictionary words.
+- `ignore_numbers`: ignore numeric-only Presidio values.
+- `ignore_emails`: ignore Presidio e-mail recommendations.
 
 Explicit function arguments take precedence over environment variables.
 The runner exposes country, opt-out, offline, and debug options.

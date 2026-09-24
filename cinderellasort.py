@@ -801,6 +801,9 @@ def handle_docprep_anonymization(
         presidio_score_threshold=settings.get('anonymize_presidio_score_threshold', 0.5),
         presidio_entities=settings.get('anonymize_presidio_entities'),
         replacement_length=settings.get('anonymize_replacement_length', 4),
+        ignore_dictionary=settings.get('anonymize_ignore_dictionary', False),
+        ignore_numbers=settings.get('anonymize_ignore_numbers', False),
+        ignore_emails=settings.get('anonymize_ignore_emails', False),
     )
     log_message(f"Doc_prep anonymization: updated mapping {mapping_path}", level="INFO")
     print(f"Doc_prep anonymization: updated mapping {mapping_path}")
@@ -885,6 +888,9 @@ def docprep_settings(config_object):
         'anonymize_presidio_score_threshold': float(section.get('anonymize_presidio_score_threshold', '0.5') or '0.5'),
         'anonymize_presidio_entities': presidio_entities,
         'anonymize_replacement_length': replacement_length,
+        'anonymize_ignore_dictionary': (section.get('anonymize_ignore_dictionary', 'false') or 'false').strip().lower() == 'true',
+        'anonymize_ignore_numbers': (section.get('anonymize_ignore_numbers', 'false') or 'false').strip().lower() == 'true',
+        'anonymize_ignore_emails': (section.get('anonymize_ignore_emails', 'false') or 'false').strip().lower() == 'true',
         'anonymize_mapping': (section.get('anonymize_mapping', '') or '').strip() or None,
         'anonymize_update': (section.get('anonymize_update', 'false') or 'false').strip().lower() == 'true',
         'anonymize_keep_originals': (section.get('anonymize-keep-originals', 'false') or 'false').strip().lower() == 'true',
