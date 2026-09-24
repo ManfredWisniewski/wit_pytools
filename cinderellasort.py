@@ -780,8 +780,14 @@ def handle_docprep_anonymization(
         raise ValueError('DOCPREP anonymize=true requires anonymize_mapping')
 
     mapping_path = Path(settings['anonymize_mapping'])
+    output_path = (
+        Path(output_path)
+        if output_path is not None
+        else Path(markdown_path).with_name(f"{Path(markdown_path).stem}_anon.md")
+    )
+    candidate_source = output_path if output_path.exists() else Path(markdown_path)
     update_text_mapping(
-        markdown_path,
+        candidate_source,
         mapping_path,
         countries=settings.get('anonymize_name_countries'),
         use_name_datasets=settings.get('anonymize_use_name_datasets'),
@@ -802,11 +808,6 @@ def handle_docprep_anonymization(
         log_message(f"Doc_prep anonymization: no approved mapping matches {markdown_path.name}", level="INFO")
         return None
 
-    output_path = (
-        Path(output_path)
-        if output_path is not None
-        else Path(markdown_path).with_name(f"{Path(markdown_path).stem}_anon.md")
-    )
     keep_originals = settings.get('anonymize_keep_originals', False)
     if remove_source is None:
         remove_source = not keep_originals

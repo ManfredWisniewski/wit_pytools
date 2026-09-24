@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import csv
 import os
 import sys
 import pytest
@@ -519,6 +520,33 @@ def test_docprep_anonymization_creates_proposals_then_applies_approved_mapping(t
     assert output == tmp_path / "document_anon.md"
     assert output.read_text(encoding="utf-8") == "# Person-abc"
     assert not markdown.exists()
+
+
+def test_docprep_mapping_updates_from_existing_anonymized_file(tmp_path):
+    source = tmp_path / "document.md"
+    output = tmp_path / "document_anon.md"
+    source.write_text("Sample Person; New Person", encoding="utf-8")
+    output.write_text("Person-001; New Person", encoding="utf-8")
+    mapping = tmp_path / "mapping.csv"
+    mapping.write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "anon,Person-001,Sample Person,name,source.md,line 1,1\n",
+        encoding="utf-8",
+    )
+    settings = {
+        "anonymize": True,
+        "anonymize_mapping": str(mapping),
+        "anonymize_update": True,
+        "anonymize_mode": "custom",
+        "anonymize_keep_originals": True,
+    }
+
+    cs.handle_docprep_anonymization(source, settings, output_path=output, remove_source=False)
+
+    rows = list(csv.DictReader(mapping.open(encoding="utf-8", newline="")))
+    originals = [row["original_value"] for row in rows]
+    assert originals.count("Sample Person") == 1
+    assert "New Person" in originals
 
 
 def test_docprep_uses_paired_markup_and_keeps_original(tmp_path, monkeypatch):
