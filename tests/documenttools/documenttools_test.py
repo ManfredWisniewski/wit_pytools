@@ -10,7 +10,7 @@ import openpyxl
 import pytest
 
 # Allow importing wit_pytools when running tests directly
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
 from wit_pytools.anonymization import create_mapping
 from wit_pytools.documenttools import (
@@ -447,6 +447,31 @@ def test_update_text_mapping_creates_new_block_and_approved_rows_are_applied(tmp
     )
     assert mapping_matches_text(source.read_text(encoding="utf-8"), mapping)
     assert anonymize_text_content(source.read_text(encoding="utf-8"), mapping).startswith("Person-abc")
+
+
+def test_update_text_mapping_moves_keep_rows_to_ignore_file(tmp_path):
+    source = tmp_path / "document.md"
+    source.write_text("Sample Person; Sensitive", encoding="utf-8")
+    mapping = tmp_path / "customer_mapping.csv"
+    mapping.write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "keep,ignored-replacement,Sensitive,string,doc.md,line 1,1\n"
+        "anon,Person-001,Sample Person,name,doc.md,line 1,1\n",
+        encoding="utf-8",
+    )
+
+    update_text_mapping(source, mapping)
+
+    mapping_rows = list(csv.DictReader(mapping.open(encoding="utf-8", newline="")))
+    assert len(mapping_rows) == 1
+    assert mapping_rows[0]["status"] == "anon"
+    assert mapping_rows[0]["source_documents"] == ""
+    assert mapping_rows[0]["locations"] == ""
+    assert mapping_rows[0]["occurrences"] == ""
+
+    ignore_path = tmp_path / "customer-ignore.csv"
+    ignore_rows = list(csv.DictReader(ignore_path.open(encoding="utf-8", newline="")))
+    assert ignore_rows == [{"original_value": "Sensitive", "value_type": "string"}]
 
 
 def test_update_text_mapping_matches_semicolon_grouped_originals(tmp_path):

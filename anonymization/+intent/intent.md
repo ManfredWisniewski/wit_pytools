@@ -124,7 +124,10 @@ replacement_value,original_value,value_type
 `original_value` may contain semicolon-separated related originals. Status-aware
 mapping files may additionally contain `status`, `source_documents`,
 `locations`, and `occurrences`. Supported statuses are `keep`, `anon`, and
-`new`; rows without a status are treated as `anon`.
+`new`; rows without a status are treated as `anon`. During text mapping
+updates, `keep` rows are moved to a sibling `*-ignore.csv` file containing
+`original_value` and `value_type`. Approved `anon` rows retain no source
+location metadata.
 
 ## Safety and preservation
 

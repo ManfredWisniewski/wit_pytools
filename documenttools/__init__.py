@@ -328,6 +328,43 @@ def identify_text_strings(
     return candidate_path
 
 
+def _ignore_path_for_mapping(mapping_path: Path) -> Path:
+    stem = mapping_path.stem
+    for suffix in ("-mapping", "_mapping"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    return mapping_path.with_name(f"{stem}-ignore.csv")
+
+
+def _read_ignore_rows(ignore_path: Path) -> List[Dict[str, str]]:
+    if not ignore_path.exists():
+        return []
+    with ignore_path.open(encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None or "original_value" not in reader.fieldnames:
+            raise ValueError("Ignore CSV must contain an original_value column")
+        return [
+            {
+                "original_value": row.get("original_value", "") or "",
+                "value_type": row.get("value_type", "") or "",
+            }
+            for row in reader
+            if row.get("original_value")
+        ]
+
+
+def _write_ignore_rows(ignore_path: Path, rows: List[Dict[str, str]]) -> None:
+    ignore_path.parent.mkdir(parents=True, exist_ok=True)
+    with ignore_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["original_value", "value_type"],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def update_text_mapping(
     file_path: Path | str,
     mapping_path: Path | str,
@@ -354,9 +391,66 @@ def update_text_mapping(
         from wit_pytools.anonymization import read_mapping_rows
 
         existing_documents = read_mapping_rows(mapping_file)
-    known = {
+
+    ignore_path = _ignore_path_for_mapping(mapping_file)
+    ignore_rows = _read_ignore_rows(ignore_path)
+    ignored_values = {
+        row["original_value"].strip()
+        for row in ignore_rows
+        if row["original_value"].strip()
+    }
+    anon_values = set()
+    rows = []
+    for row in existing_documents:
+        originals = {
+            original.strip()
+            for original in row["original_value"].split(";")
+            if original.strip()
+        }
+        if row["status"] == "keep":
+            for original in originals:
+                if original not in ignored_values:
+                    ignore_rows.append(
+                        {
+                            "original_value": original,
+                            "value_type": row["value_type"],
+                        }
+                    )
+                    ignored_values.add(original)
+            continue
+        if row["status"] == "anon":
+            anon_values.update(originals)
+            row["source_documents"] = ""
+            row["locations"] = ""
+            row["occurrences"] = ""
+        rows.append(row)
+
+    rows = [
+        row
+        for row in rows
+        if not (
+            row["status"] == "new"
+            and any(
+                original in ignored_values or original in anon_values
+                for original in row["original_value"].split(";")
+            )
+        )
+    ]
+    unique_ignore_rows = []
+    seen_ignore_values = set()
+    for row in ignore_rows:
+        original = row["original_value"].strip()
+        if not original or original in seen_ignore_values:
+            continue
+        seen_ignore_values.add(original)
+        unique_ignore_rows.append(
+            {"original_value": original, "value_type": row["value_type"]}
+        )
+    ignore_rows = unique_ignore_rows
+    _write_ignore_rows(ignore_path, ignore_rows)
+    known = ignored_values | anon_values | {
         original.strip()
-        for row in existing_documents
+        for row in rows
         for original in row["original_value"].split(";")
         if original.strip()
     }
@@ -377,7 +471,6 @@ def update_text_mapping(
         presidio_model=presidio_model,
         presidio_score_threshold=presidio_score_threshold,
     )
-    rows = list(existing_documents)
     for candidate in candidates:
         if candidate["original_value"] in known:
             continue

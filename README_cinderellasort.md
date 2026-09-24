@@ -170,6 +170,13 @@ Entity availability depends on the installed Presidio version, language, and
 recognizer/model configuration. `DATE_TIME` and `URL` are intentionally absent
 from the default allow-list.
 
+When a mapping row has `status=keep`, its `original_value` is moved to a
+sibling ignore file such as `Wisniewski-anon-ignore.csv`. The ignore file has
+`original_value` and `value_type` columns and prevents those values from being
+added as new candidates on later runs. Approved `anon` rows retain only their
+replacement, original, and type fields; source document and location metadata
+is removed.
+
 For German Presidio detection, install a German spaCy model in addition to the
 Python dependency, for example:
 
