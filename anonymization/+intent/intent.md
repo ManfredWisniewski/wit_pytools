@@ -44,6 +44,7 @@ Candidate detection accepts these options:
 - `ignore_dictionary`: ignore Presidio values consisting only of configured-language dictionary words.
 - `ignore_numbers`: ignore numeric-only Presidio values.
 - `ignore_emails`: ignore Presidio e-mail recommendations.
+- `ignore_dates`: ignore Presidio `DATE_TIME` and date-like recommendations.
 
 Explicit function arguments take precedence over environment variables.
 The runner exposes country, opt-out, offline, and debug options.

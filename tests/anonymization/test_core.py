@@ -100,7 +100,7 @@ def test_presidio_ignores_generated_person_replacements(monkeypatch):
 
 
 def test_presidio_recommendation_filters(monkeypatch):
-    content = "test@example.com 12345 Garden"
+    content = "test@example.com 12345 Garden 12.03.2025"
 
     class Result:
         def __init__(self, start, end, entity_type):
@@ -114,6 +114,7 @@ def test_presidio_recommendation_filters(monkeypatch):
                 Result(0, 16, "EMAIL_ADDRESS"),
                 Result(17, 22, "PHONE_NUMBER"),
                 Result(23, 29, "PERSON"),
+                Result(30, 40, "DATE_TIME"),
             ]
 
     monkeypatch.setattr(
@@ -134,6 +135,7 @@ def test_presidio_recommendation_filters(monkeypatch):
         ignore_dictionary=True,
         ignore_numbers=True,
         ignore_emails=True,
+        ignore_dates=True,
     )
 
     assert candidates == []

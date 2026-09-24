@@ -449,6 +449,43 @@ def test_update_text_mapping_creates_new_block_and_approved_rows_are_applied(tmp
     assert anonymize_text_content(source.read_text(encoding="utf-8"), mapping).startswith("Person-abc")
 
 
+def test_update_text_mapping_removes_existing_ignored_recommendations(tmp_path, monkeypatch):
+    source = tmp_path / "document.md"
+    source.write_text(
+        "test@example.com 12345 Garden 12.03.2025",
+        encoding="utf-8",
+    )
+    mapping = tmp_path / "customer_mapping.csv"
+    mapping.write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "new,person-001,test@example.com,email,doc.md,line 1,1\n"
+        "new,value-002,12345,string,doc.md,line 1,1\n"
+        "new,value-003,Garden,string,doc.md,line 1,1\n"
+        "new,value-004,12.03.2025,string,doc.md,line 1,1\n",
+        encoding="utf-8",
+    )
+
+    class Catalog:
+        def is_dictionary_word(self, value):
+            return value.casefold() == "garden"
+
+        def is_name(self, value):
+            return False
+
+    monkeypatch.setattr("wit_pytools.documenttools.load_name_catalog", lambda *args, **kwargs: Catalog())
+
+    update_text_mapping(
+        source,
+        mapping,
+        ignore_dictionary=True,
+        ignore_numbers=True,
+        ignore_emails=True,
+        ignore_dates=True,
+    )
+
+    assert list(csv.DictReader(mapping.open(encoding="utf-8", newline=""))) == []
+
+
 def test_update_text_mapping_moves_keep_rows_to_ignore_file(tmp_path):
     source = tmp_path / "document.md"
     source.write_text("Sample Person; Sensitive", encoding="utf-8")

@@ -122,6 +122,27 @@ def _check_output_path(output_path: Path, input_path: Path, overwrite: bool) -> 
         raise FileExistsError(output_path)
 
 
+def _candidate_is_ignored(
+    value: str,
+    value_type: str,
+    name_catalog,
+    *,
+    ignore_dictionary: bool,
+    ignore_numbers: bool,
+    ignore_emails: bool,
+    ignore_dates: bool,
+) -> bool:
+    if ignore_emails and (value_type == "email" or "@" in value):
+        return True
+    if ignore_numbers and any(character.isdigit() for character in value):
+        return True
+    if ignore_dates and is_date_string(value):
+        return True
+    return ignore_dictionary and (
+        name_catalog is not None and name_catalog.is_dictionary_word(value)
+    )
+
+
 def _candidate_rows(candidates) -> List[Dict[str, Any]]:
     return [
         {
@@ -260,6 +281,7 @@ def _text_candidate_rows(
     ignore_dictionary: bool = False,
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
+    ignore_dates: bool = False,
 ) -> List[Dict[str, Any]]:
     protected_spans = _markdown_protected_spans(content)
     if anonymize_mode == "custom":
@@ -283,9 +305,23 @@ def _text_candidate_rows(
             ignore_dictionary=ignore_dictionary,
             ignore_numbers=ignore_numbers,
             ignore_emails=ignore_emails,
+            ignore_dates=ignore_dates,
         )
     else:
         raise ValueError(f"Unsupported anonymize mode: {anonymize_mode!r}")
+    candidates = [
+        candidate
+        for candidate in candidates
+        if not _candidate_is_ignored(
+            candidate.original_value,
+            candidate.value_type,
+            name_catalog,
+            ignore_dictionary=ignore_dictionary,
+            ignore_numbers=ignore_numbers,
+            ignore_emails=ignore_emails,
+            ignore_dates=ignore_dates,
+        )
+    ]
     return _candidate_rows(candidates)
 
 
@@ -309,6 +345,7 @@ def identify_text_strings(
     ignore_dictionary: bool = False,
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
+    ignore_dates: bool = False,
 ) -> Path:
     """Identify text candidates while leaving markup-specific protection here."""
     input_path = Path(file_path)
@@ -342,6 +379,7 @@ def identify_text_strings(
             ignore_dictionary=ignore_dictionary,
             ignore_numbers=ignore_numbers,
             ignore_emails=ignore_emails,
+            ignore_dates=ignore_dates,
         ),
     )
     return candidate_path
@@ -403,6 +441,7 @@ def update_text_mapping(
     ignore_dictionary: bool = False,
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
+    ignore_dates: bool = False,
 ) -> Path:
     """Add newly found text candidates with status ``new``."""
     input_path = Path(file_path)
@@ -499,6 +538,24 @@ def update_text_mapping(
         debug=debug,
         name_exclusions=name_exclusions,
     )
+    rows = [
+        row
+        for row in rows
+        if row["status"] != "new"
+        or not any(
+            _candidate_is_ignored(
+                original.strip(),
+                row["value_type"],
+                name_catalog,
+                ignore_dictionary=ignore_dictionary,
+                ignore_numbers=ignore_numbers,
+                ignore_emails=ignore_emails,
+                ignore_dates=ignore_dates,
+            )
+            for original in row["original_value"].split(";")
+            if original.strip()
+        )
+    ]
     candidates = _text_candidate_rows(
         input_path.read_text(encoding="utf-8"),
         input_path.name,
@@ -509,6 +566,10 @@ def update_text_mapping(
         presidio_score_threshold=presidio_score_threshold,
         presidio_entities=presidio_entities,
         replacement_length=replacement_length,
+        ignore_dictionary=ignore_dictionary,
+        ignore_numbers=ignore_numbers,
+        ignore_emails=ignore_emails,
+        ignore_dates=ignore_dates,
     )
     for candidate in candidates:
         if candidate["original_value"] in known:

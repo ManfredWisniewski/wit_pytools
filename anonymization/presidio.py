@@ -1,10 +1,9 @@
 """Presidio-backed candidate detection."""
 
 from functools import lru_cache
-import re
 from typing import Iterable, List, Optional, Sequence, Tuple
 
-from .candidates import CandidateCollector
+from .candidates import CandidateCollector, is_date_string
 from .models import Candidate
 
 
@@ -73,6 +72,7 @@ def detect_presidio_candidates(
     ignore_dictionary: bool = False,
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
+    ignore_dates: bool = False,
 ) -> List[Candidate]:
     """Detect PII with Presidio and return the common candidate model."""
     analyzer = _create_engine(language, model_name)
@@ -100,7 +100,9 @@ def detect_presidio_candidates(
         entity_type = result.entity_type.upper()
         if ignore_emails and (entity_type == "EMAIL_ADDRESS" or "@" in value):
             continue
-        if ignore_numbers and re.fullmatch(r"[\d\s.,:/()+\-€$%]+", value):
+        if ignore_numbers and any(character.isdigit() for character in value):
+            continue
+        if ignore_dates and (entity_type == "DATE_TIME" or is_date_string(value)):
             continue
         if ignore_dictionary and name_catalog is not None and name_catalog.is_dictionary_word(value):
             continue
