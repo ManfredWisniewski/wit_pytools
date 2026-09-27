@@ -41,8 +41,8 @@ Candidate detection accepts these options:
   excludes `DATE_TIME` and `URL`; `all` uses the configured recognizer registry.
 - `token_length`: length of generated deterministic replacement tokens.
   Existing shorter generated replacements are regenerated during mapping updates.
-- `ignore_dictionary`: ignore Presidio values consisting only of configured-language dictionary words.
-- `ignore_numbers`: ignore numeric-only Presidio values.
+- `ignore_dictionary`: ignore Presidio values containing configured-language dictionary words.
+- `ignore_numbers`: ignore Presidio values containing digits.
 - `ignore_emails`: ignore Presidio e-mail recommendations.
 - `ignore_dates`: ignore Presidio `DATE_TIME` and date-like recommendations.
 

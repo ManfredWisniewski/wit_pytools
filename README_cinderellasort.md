@@ -114,7 +114,8 @@ anonymize_ignore_dictionary=true
 anonymize_ignore_numbers=true
 anonymize_ignore_emails=true
 anonymize_ignore_dates=true
-anonymize_mapping=P:\\customers\\customer-anon-mapping.csv
+# Optional; defaults to <sourcedir>/<sourcedir-name>-anon-mapping.csv.
+anonymize_mapping_file=P:\\customers\\customer-anon-mapping.csv
 anonymize_update=false
 anonymize-keep-originals=false
 # Optional country-aware name detection.
@@ -184,7 +185,7 @@ from the default allow-list.
 
 Presidio recommendations can also be filtered before they enter the mapping:
 
-- `anonymize_ignore_dictionary=true` ignores values made entirely of configured-language dictionary words.
+- `anonymize_ignore_dictionary=true` ignores values containing configured-language dictionary words.
 - `anonymize_ignore_numbers=true` ignores any recommendation containing a digit.
 - `anonymize_ignore_emails=true` ignores e-mail addresses.
 - `anonymize_ignore_dates=true` ignores date-like and `DATE_TIME` recommendations.

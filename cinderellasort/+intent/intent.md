@@ -109,7 +109,7 @@ retry_times=3
 continue_on_error=false
 sidecar=true           ; keep <stem>_pdf2md.json beside the original
 anonymize=false
-anonymize_mapping=P:\\customers\\customer-anon-mapping.csv
+anonymize_mapping_file=P:\\customers\\customer-anon-mapping.csv ; optional; default: <sourcedir>/<sourcedir-name>-anon-mapping.csv
 anonymize_update=false
 ```
 

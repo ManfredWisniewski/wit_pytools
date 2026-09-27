@@ -12,7 +12,8 @@
 ### Implemented design
 
 - `[DOCPREP] anonymize=false` is off by default.
-- `anonymize_mapping` points to one customer mapping CSV.
+- `anonymize_mapping_file` points to one customer mapping CSV; when unset it
+  defaults to `<sourcedir>/<sourcedir-name>-anon-mapping.csv`.
 - On the first run, Markdown is generated and new candidates are added with
   `status=new`; no anonymized output is created yet.
 - Only rows with `status=anon` are approved and applied.

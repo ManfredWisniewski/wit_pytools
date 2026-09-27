@@ -36,6 +36,7 @@ GERMAN_DATASET_FILES = {
 }
 COUNTRY_PATTERN = re.compile(r"^[A-Z]{2}$")
 TOKEN_PATTERN = re.compile(r"[^\W_]+(?:[-'][^\W_]+)*", re.UNICODE)
+MIN_DICTIONARY_SUBSTRING_LENGTH = 3
 DEFAULT_NAME_EXCLUSIONS = frozenset(
     {"and", "contact", "email", "for", "password", "server", "test", "the", "user"}
 )
@@ -56,10 +57,18 @@ class NameCatalog:
     exclusions: frozenset[str] = frozenset()
 
     def is_dictionary_word(self, value: str) -> bool:
+        if not self.noun_words:
+            return False
         tokens = [_normalize(token) for token in TOKEN_PATTERN.findall(value)]
-        return bool(tokens) and bool(self.noun_words) and all(
-            token in self.noun_words for token in tokens
-        )
+        for token in tokens:
+            for start in range(len(token)):
+                for end in range(
+                    start + MIN_DICTIONARY_SUBSTRING_LENGTH,
+                    len(token) + 1,
+                ):
+                    if token[start:end] in self.noun_words:
+                        return True
+        return False
 
     def is_name(self, value: str) -> bool:
         tokens = [_normalize(token) for token in TOKEN_PATTERN.findall(value)]

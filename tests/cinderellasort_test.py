@@ -502,7 +502,7 @@ def test_docprep_anonymization_creates_proposals_then_applies_approved_mapping(t
     mapping = tmp_path / "customer_mapping.csv"
     settings = {
         "anonymize": True,
-        "anonymize_mapping": str(mapping),
+        "anonymize_mapping_file": str(mapping),
         "anonymize_update": False,
     }
 
@@ -535,7 +535,7 @@ def test_docprep_mapping_updates_from_existing_anonymized_file(tmp_path):
     )
     settings = {
         "anonymize": True,
-        "anonymize_mapping": str(mapping),
+        "anonymize_mapping_file": str(mapping),
         "anonymize_update": True,
         "anonymize_mode": "custom",
         "anonymize_keep_originals": True,
@@ -557,7 +557,7 @@ def test_docprep_uses_paired_markup_and_keeps_original(tmp_path, monkeypatch):
         tmp_path,
         docprep_section={
             "anonymize": "true",
-            "anonymize_mapping": str(tmp_path / "mapping.csv"),
+            "anonymize_mapping_file": str(tmp_path / "mapping.csv"),
             "anonymize-keep-originals": "true",
         },
     )
@@ -586,7 +586,7 @@ def test_docprep_moves_target_markup_to_source_before_anonymizing(tmp_path, monk
         tmp_path,
         docprep_section={
             "anonymize": "true",
-            "anonymize_mapping": str(tmp_path / "mapping.csv"),
+            "anonymize_mapping_file": str(tmp_path / "mapping.csv"),
             "anonymize-keep-originals": "true",
         },
     )
@@ -613,7 +613,7 @@ def test_docprep_keep_originals_copies_generated_markup(tmp_path, monkeypatch):
         tmp_path,
         docprep_section={
             "anonymize": "true",
-            "anonymize_mapping": str(tmp_path / "mapping.csv"),
+            "anonymize_mapping_file": str(tmp_path / "mapping.csv"),
             "anonymize-keep-originals": "true",
         },
     )
@@ -638,16 +638,13 @@ def test_docprep_keep_originals_copies_generated_markup(tmp_path, monkeypatch):
 def test_docprep_pending_anonymization_scans_existing_target_markdown(tmp_path):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path,
-        docprep_section={
-            "anonymize": "true",
-            "anonymize_mapping": str(tmp_path / "customer_mapping.csv"),
-        },
+        docprep_section={"anonymize": "true"},
     )
     (source_dir / "Rechnung 2026.pdf").unlink()
     target_markdown = target_dir / "old" / "existing.md"
     target_markdown.parent.mkdir(parents=True)
     target_markdown.write_text("Anna Musterpeter", encoding="utf-8")
-    mapping = tmp_path / "customer_mapping.csv"
+    mapping = source_dir / "source-anon-mapping.csv"
     mapping.write_text(
         "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
         "anon,Person-abc,Anna Musterpeter,name,,,\n",
@@ -657,9 +654,10 @@ def test_docprep_pending_anonymization_scans_existing_target_markdown(tmp_path):
     cinderellasort(str(config_path), dryrun=False)
 
     assert (target_dir / "old" / "existing_anon.md").read_text(encoding="utf-8") == "Person-e3a2"
+    assert (source_dir / "source-anon.csv").is_file()
 
 
-def test_docprep_settings_defaults():
+def test_docprep_settings_defaults(tmp_path):
     config = ConfigParser()
     config.optionxform = str
     settings = cs.docprep_settings(config)
@@ -669,6 +667,8 @@ def test_docprep_settings_defaults():
     assert settings["anonymize_mode"] == "custom"
     assert settings["anonymize_use_name_datasets"] is None
     assert settings["anonymize_keep_originals"] is False
+    assert settings["anonymize_mapping_file"] is None
+    config["TABLE"] = {"sourcedir": str(tmp_path / "source")}
     config["DOCPREP"] = {
         "language": "de",
         "sidecar": "false",
@@ -692,6 +692,13 @@ def test_docprep_settings_defaults():
     assert settings["anonymize_presidio_score_threshold"] == 0.7
     assert "DATE_TIME" not in settings["anonymize_presidio_entities"]
     assert "URL" not in settings["anonymize_presidio_entities"]
+    assert settings["anonymize_mapping_file"] == str(
+        tmp_path / "source" / "source-anon-mapping.csv"
+    )
+    custom_mapping = tmp_path / "custom-mapping.csv"
+    config["DOCPREP"]["anonymize_mapping_file"] = str(custom_mapping)
+    settings = cs.docprep_settings(config)
+    assert settings["anonymize_mapping_file"] == str(custom_mapping)
 
 
 def test_gen_img_ignore_max_cost_setting():

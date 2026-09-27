@@ -743,8 +743,8 @@ def process_pending_docprep_anonymization(targetdir, settings):
     """Anonymize existing target Markdown files that still need processing."""
     if not settings['anonymize']:
         return
-    if not settings['anonymize_mapping']:
-        message = 'Doc_prep anonymization skipped: anonymize_mapping is not configured'
+    if not settings['anonymize_mapping_file']:
+        message = 'Doc_prep anonymization skipped: anonymize_mapping_file is not configured'
         log_message(message, level='WARNING')
         print(message)
         return
@@ -776,10 +776,10 @@ def handle_docprep_anonymization(
     """Collect proposals and optionally apply approved mappings to Markdown."""
     if not settings['anonymize']:
         return None
-    if not settings['anonymize_mapping']:
-        raise ValueError('DOCPREP anonymize=true requires anonymize_mapping')
+    if not settings['anonymize_mapping_file']:
+        raise ValueError('DOCPREP anonymize=true requires anonymize_mapping_file')
 
-    mapping_path = Path(settings['anonymize_mapping'])
+    mapping_path = Path(settings['anonymize_mapping_file'])
     output_path = (
         Path(output_path)
         if output_path is not None
@@ -835,6 +835,12 @@ DOCPREP_CONVERTERS = {
 }
 
 
+def _default_docprep_mapping_file(sourcedir):
+    source_path = Path(str(sourcedir).replace('\\', '/').replace('//', '/'))
+    slug = source_path.name or 'documents'
+    return source_path / f"{slug}-anon-mapping.csv"
+
+
 def docprep_settings(config_object):
     """Read the [DOCPREP] section with defaults."""
     section = config_object['DOCPREP'] if config_object.has_section('DOCPREP') else {}
@@ -873,6 +879,11 @@ def docprep_settings(config_object):
     )
     if replacement_length < 1:
         raise ValueError('anonymize_token_length must be at least 1')
+    mapping_file = (section.get('anonymize_mapping_file', '') or '').strip()
+    if not mapping_file and config_object.has_section('TABLE'):
+        mapping_file = str(
+            _default_docprep_mapping_file(config_object['TABLE'].get('sourcedir', '.'))
+        )
 
     return {
         'mode': (section.get('mode', 'vision') or 'vision').strip().lower(),
@@ -893,7 +904,7 @@ def docprep_settings(config_object):
         'anonymize_ignore_numbers': (section.get('anonymize_ignore_numbers', 'false') or 'false').strip().lower() == 'true',
         'anonymize_ignore_emails': (section.get('anonymize_ignore_emails', 'false') or 'false').strip().lower() == 'true',
         'anonymize_ignore_dates': (section.get('anonymize_ignore_dates', 'false') or 'false').strip().lower() == 'true',
-        'anonymize_mapping': (section.get('anonymize_mapping', '') or '').strip() or None,
+        'anonymize_mapping_file': mapping_file or None,
         'anonymize_update': (section.get('anonymize_update', 'false') or 'false').strip().lower() == 'true',
         'anonymize_keep_originals': (section.get('anonymize-keep-originals', 'false') or 'false').strip().lower() == 'true',
         'anonymize_name_countries': csv_values('anonymize_name_countries'),

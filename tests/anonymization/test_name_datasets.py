@@ -45,6 +45,20 @@ def test_german_nouns_filter_single_name_candidates():
     assert catalog.is_name("Qira Zol")
 
 
+def test_dictionary_matching_uses_substrings():
+    catalog = NameCatalog(
+        frozenset({"DE"}),
+        frozenset(),
+        frozenset(),
+        frozenset({"aufname", "monat", "gläubiger", "mitglied", "service", "ag"}),
+    )
+
+    assert catalog.is_dictionary_word("Aufnahme-Monat")
+    assert catalog.is_dictionary_word("Gläubiger-Nr")
+    assert catalog.is_dictionary_word("Mitgliederservice")
+    assert not catalog.is_dictionary_word("ADAC e.V.")
+
+
 def test_dataset_names_detect_single_and_compound_values():
     catalog = NameCatalog(frozenset({"ZZ"}), frozenset({"qira"}), frozenset({"zol"}))
 
