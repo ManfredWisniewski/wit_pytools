@@ -109,7 +109,11 @@ max_pages=50
 retry_times=3
 continue_on_error=false
 sidecar=true
+# Remove Markdown copies whose registered source document no longer exists.
+sync-deletes=false
 anonymize=false
+# Remove orphaned _anon.md files independently of sync-deletes.
+anonymize-sync-deletes=true
 # custom uses the local text-list detector; presidio uses presidio-analyzer.
 anonymize-mode=custom
 anonymize_presidio_model=de_core_news_sm
@@ -235,6 +239,8 @@ python -m spacy download de_core_news_sm
 | `retry_times`       | `3`                              | Retries per page.                                                |
 | `continue_on_error` | `false`                          | Keep going when a page fails after all retries.                  |
 | `sidecar`           | `true`                           | Keep the `_pdf2md.json` sidecar with the original.                |
+| `sync-deletes`      | `false`                          | Remove `.md` files without a registered source document.          |
+| `anonymize-sync-deletes` | `true`                      | Remove `_anon.md` files without a registered source document.     |
 | `recursive`         | `true`                           | Process files in subdirectories; set `false` for the source root only. |
 
 Behavior:
@@ -250,6 +256,10 @@ Behavior:
   no output is created.
 - The source directory is scanned recursively and its relative directory
   structure is mirrored below `targetdir`.
+- Delete synchronization uses every extension registered in
+  `DOCPREP_CONVERTERS` (currently `.pdf`) and automatically supports future
+  converter types. `sync-deletes=false` keeps ordinary orphaned `.md` files;
+  `anonymize-sync-deletes=true` removes orphaned `_anon.md` files by default.
 - The cost confirmation of `pdf_to_markdown` is bypassed (`yes=True`);
   `max_pages` is the cost guard. Set `OPENROUTER_API_KEY` and
   `OPENROUTER_PDF_MODEL` in the environment of the process that runs

@@ -857,6 +857,139 @@ def test_docprep_keep_originals_copies_generated_markup(tmp_path, monkeypatch):
     assert (target_dir / "Rechnung 2026_anon.md").read_text(encoding="utf-8") == "# Person-001"
 
 
+def test_docprep_sync_deletes_removes_orphan_markdown(tmp_path):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        docprep_section={"sync-deletes": "true"},
+    )
+    orphan_source = source_dir / "Orphan.md"
+    orphan_nested = target_dir / "Archive" / "Nested.md"
+    orphan_anon = target_dir / "Orphan_anon.md"
+    orphan_source.write_text("orphan", encoding="utf-8")
+    orphan_nested.parent.mkdir()
+    orphan_nested.write_text("orphan", encoding="utf-8")
+    orphan_anon.write_text("orphan", encoding="utf-8")
+    (source_dir / "Rechnung 2026.md").write_text(
+        "source markdown", encoding="utf-8"
+    )
+    shutil.copy(TEST_PDF, source_dir / "Marked_anon.pdf")
+    (target_dir / "Marked_anon.md").write_text(
+        "not anonymized", encoding="utf-8"
+    )
+    target_dir.joinpath("Rechnung 2026.md").write_text(
+        "original", encoding="utf-8"
+    )
+    target_dir.joinpath("Rechnung 2026_anon.md").write_text(
+        "anon", encoding="utf-8"
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not orphan_source.exists()
+    assert not orphan_nested.exists()
+    assert not orphan_anon.exists()
+    assert (source_dir / "Rechnung 2026.md").is_file()
+    assert (target_dir / "Rechnung 2026.md").is_file()
+    assert (target_dir / "Rechnung 2026_anon.md").is_file()
+    assert (target_dir / "Marked_anon.md").is_file()
+
+
+def test_docprep_sync_deletes_defaults_to_keeping_original_markdown(tmp_path):
+    source_dir, target_dir, config_path = _docprep_setup(tmp_path)
+    orphan = target_dir / "Orphan.md"
+    orphan_anon = target_dir / "Orphan_anon.md"
+    orphan.write_text("orphan", encoding="utf-8")
+    orphan_anon.write_text("orphan anon", encoding="utf-8")
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert orphan.is_file()
+    assert not orphan_anon.exists()
+
+
+def test_docprep_anonymize_sync_deletes_false_keeps_orphan_anon(tmp_path):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        docprep_section={
+            "sync-deletes": "true",
+            "anonymize-sync-deletes": "false",
+        },
+    )
+    orphan = target_dir / "Orphan.md"
+    orphan_anon = target_dir / "Orphan_anon.md"
+    orphan.write_text("orphan", encoding="utf-8")
+    orphan_anon.write_text("orphan anon", encoding="utf-8")
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not orphan.exists()
+    assert orphan_anon.is_file()
+
+
+def test_docprep_sync_deletes_supports_registered_extensions(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        docprep_section={"sync-deletes": "true"},
+    )
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".docx",
+        (lambda source: 1, _fake_converter([])),
+    )
+    (source_dir / "Original.docx").write_text("document", encoding="utf-8")
+    (target_dir / "Original.md").write_text("original", encoding="utf-8")
+    (target_dir / "Original_anon.md").write_text("anon", encoding="utf-8")
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "Original.md").is_file()
+    assert (target_dir / "Original_anon.md").is_file()
+
+
+def test_docprep_sync_deletes_dryrun_keeps_orphans(tmp_path):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        docprep_section={"sync-deletes": "true"},
+    )
+    orphan = target_dir / "Orphan.md"
+    orphan_anon = target_dir / "Orphan_anon.md"
+    orphan.write_text("orphan", encoding="utf-8")
+    orphan_anon.write_text("orphan anon", encoding="utf-8")
+
+    cinderellasort(str(config_path), dryrun=True)
+
+    assert orphan.is_file()
+    assert orphan_anon.is_file()
+
+
+def test_docprep_sync_deletes_inactive_without_docprep_bowls(tmp_path):
+    source_dir = tmp_path / "source"
+    target_dir = tmp_path / "target"
+    source_dir.mkdir()
+    target_dir.mkdir()
+    (source_dir / "document.txt").write_text("text", encoding="utf-8")
+    orphan_anon = target_dir / "Orphan_anon.md"
+    orphan_anon.write_text("orphan anon", encoding="utf-8")
+
+    config = ConfigParser()
+    config.optionxform = str
+    config["TABLE"] = {
+        "sourcedir": str(source_dir),
+        "targetdir": str(target_dir),
+        "ftype_sort": ".txt",
+        "filemode": "win",
+    }
+    config["SETTINGS"] = {"overwrite": "false"}
+    config["BOWLS"] = {"Docs": "."}
+    config_path = tmp_path / "config.ini"
+    with config_path.open("w", encoding="utf-8") as fp:
+        config.write(fp)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert orphan_anon.is_file()
+
+
 def test_docprep_pending_anonymization_scans_existing_target_markdown(tmp_path):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path,
@@ -926,6 +1059,8 @@ def test_docprep_settings_defaults(tmp_path):
     assert settings["anonymize_keep_originals"] is False
     assert settings["anonymize_ignore_save"] is False
     assert settings["anonymize_mapping_file"] is None
+    assert settings["sync_deletes"] is False
+    assert settings["anonymize_sync_deletes"] is True
     config["TABLE"] = {"sourcedir": str(tmp_path / "source")}
     config["DOCPREP"] = {
         "language": "de",
@@ -938,6 +1073,8 @@ def test_docprep_settings_defaults(tmp_path):
         "anonymize-mode": "all",
         "anonymize_ignore_save": "true",
         "anonymize_presidio_score_threshold": "0.7",
+        "sync-deletes": "true",
+        "anonymize-sync-deletes": "false",
     }
     settings = cs.docprep_settings(config)
     assert settings["language"] == "de"
@@ -950,6 +1087,8 @@ def test_docprep_settings_defaults(tmp_path):
     assert settings["anonymize_mode"] == "all"
     assert settings["anonymize_ignore_save"] is True
     assert settings["anonymize_presidio_score_threshold"] == 0.7
+    assert settings["sync_deletes"] is True
+    assert settings["anonymize_sync_deletes"] is False
     assert "DATE_TIME" not in settings["anonymize_presidio_entities"]
     assert "URL" not in settings["anonymize_presidio_entities"]
     assert settings["anonymize_mapping_file"] == str(

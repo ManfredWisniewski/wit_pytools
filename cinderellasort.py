@@ -910,6 +910,7 @@ def docprep_settings(config_object):
         'retry_times': int(section.get('retry_times', '3')),
         'continue_on_error': (section.get('continue_on_error', 'false') or 'false').strip().lower() == 'true',
         'sidecar': (section.get('sidecar', 'true') or 'true').strip().lower() == 'true',
+        'sync_deletes': (section.get('sync-deletes', 'false') or 'false').strip().lower() == 'true',
         'anonymize': (section.get('anonymize', 'false') or 'false').strip().lower() == 'true',
         'anonymize_mode': anonymize_mode,
         'anonymize_presidio_model': (section.get('anonymize_presidio_model', 'de_core_news_sm') or 'de_core_news_sm').strip(),
@@ -923,6 +924,7 @@ def docprep_settings(config_object):
         'anonymize_ignore_save': (section.get('anonymize_ignore_save', 'false') or 'false').strip().lower() == 'true',
         'anonymize_mapping_file': mapping_file or None,
         'anonymize_update': (section.get('anonymize_update', 'false') or 'false').strip().lower() == 'true',
+        'anonymize_sync_deletes': (section.get('anonymize-sync-deletes', 'true') or 'true').strip().lower() == 'true',
         'anonymize_keep_originals': (section.get('anonymize-keep-originals', 'false') or 'false').strip().lower() == 'true',
         'anonymize_name_countries': csv_values('anonymize_name_countries'),
         'anonymize_use_name_datasets': optional_bool('anonymize_use_name_datasets'),
@@ -1091,6 +1093,130 @@ def _docprep_output_path(targetdir, relative_path, cleaned_name, bowl):
     elif bowl_prefix_matches:
         relative_parent = relative_parent.relative_to(bowl_path)
     return target_root / relative_parent / f"{Path(cleaned_name).stem}.md"
+
+
+def _docprep_source_has_document(markdown_path):
+    return any(
+        markdown_path.with_name(f"{markdown_path.stem}{extension}").is_file()
+        for extension in DOCPREP_CONVERTERS
+    )
+
+
+def _docprep_expected_markdown_paths(
+    sourcedir,
+    targetdir,
+    config_object,
+    settings,
+    clean,
+    clean_nocase,
+    replacements,
+    recursive,
+):
+    """Calculate Markdown outputs belonging to registered source documents."""
+    source_root = Path(sourcedir).resolve()
+    expected_source = set()
+    expected_target = set()
+    for root, _, files in _walk_source(sourcedir, recursive):
+        for filename in files:
+            source_path = Path(root) / filename
+            if source_path.suffix.lower() not in DOCPREP_CONVERTERS:
+                continue
+            expected_source.add(source_path.with_suffix(".md").resolve())
+            relative_path = source_path.resolve().relative_to(source_root)
+            relative_path = _docprep_anonymized_relative_path(
+                relative_path,
+                settings,
+            )
+            cleaned_name = normalize_spaces(
+                cleanfilename(filename, clean, clean_nocase, replacements)
+            )
+            bowl = bowldir_docprep(cleaned_name, config_object)
+            expected_target.add(
+                _docprep_output_path(
+                    targetdir,
+                    relative_path,
+                    cleaned_name,
+                    bowl,
+                ).resolve()
+            )
+    return expected_source, expected_target
+
+
+def _sync_docprep_deletes(
+    sourcedir,
+    targetdir,
+    config_object,
+    settings,
+    clean,
+    clean_nocase,
+    replacements,
+    recursive,
+    dryrun,
+):
+    """Remove Markdown outputs whose registered source document is gone."""
+    if not bowllist_docprep(config_object):
+        return
+    if not (
+        settings["sync_deletes"] or settings["anonymize_sync_deletes"]
+    ):
+        return
+    expected_source, expected_target = _docprep_expected_markdown_paths(
+        sourcedir,
+        targetdir,
+        config_object,
+        settings,
+        clean,
+        clean_nocase,
+        replacements,
+        recursive,
+    )
+
+    def delete(path):
+        delfile(path.parent, path.name, dryrun)
+
+    def markdown_files(root):
+        paths = root.rglob("*") if recursive else root.glob("*")
+        return (
+            path
+            for path in paths
+            if path.is_file() and path.suffix.casefold() == ".md"
+        )
+
+    source_root = Path(sourcedir)
+    target_root = Path(targetdir)
+    for markdown_path in markdown_files(source_root):
+        resolved = markdown_path.resolve()
+        is_anonymized = markdown_path.name.casefold().endswith("_anon.md")
+        if resolved in expected_source:
+            continue
+        if is_anonymized:
+            if not settings["anonymize_sync_deletes"]:
+                continue
+            base = markdown_path.with_name(
+                markdown_path.name[: -len("_anon.md")] + ".md"
+            )
+            if _docprep_source_has_document(base):
+                continue
+        elif not settings["sync_deletes"]:
+            continue
+        delete(markdown_path)
+
+    for markdown_path in markdown_files(target_root):
+        resolved = markdown_path.resolve()
+        is_anonymized = markdown_path.name.casefold().endswith("_anon.md")
+        if resolved in expected_target:
+            continue
+        if is_anonymized:
+            if not settings["anonymize_sync_deletes"]:
+                continue
+            base_path = markdown_path.with_name(
+                markdown_path.name[: -len("_anon.md")] + ".md"
+            )
+            if base_path.resolve() in expected_target:
+                continue
+        elif not settings["sync_deletes"]:
+            continue
+        delete(markdown_path)
 
 
 def _find_existing_docprep_markup(targetdir, output_path, relative_path, bowl):
@@ -1652,6 +1778,17 @@ def cinderellasort(
         recursive,
         dryrun,
         ignore_append,
+    )
+    _sync_docprep_deletes(
+        sourcedir,
+        targetdir,
+        config_object,
+        docprep_config,
+        clean,
+        clean_nocase,
+        replacements,
+        recursive,
+        dryrun,
     )
 
     # prepare for sort process
