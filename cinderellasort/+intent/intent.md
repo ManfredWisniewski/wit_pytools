@@ -37,6 +37,7 @@ One INI file per project. Keys and bowl names are case-preserving.
 - `skipunmatched` (default `true`) — leave files without a matching bowl in place instead of moving them to `targetdir`.
 - `check_content` — for PDFs, also search the document text for `[BOWLS]` criteria (`document_find_regex`).
 - `recursive` (default `true`) — process subdirectories; set `false` to process only files directly in `sourcedir`.
+- `clear-empty-directories` — remove empty source directories after sorting. Defaults to `true` for standard bowls and `false` when `[BOWLS_DOCPREP]` is configured.
 
 ### `[REPLACEMENTS]`
 
@@ -71,12 +72,15 @@ In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, `BOWLS_DOCPREP`, and `BOWLS_GE
 `cinderellasort(configfile, single=None, filemode='win', dryrun=False, common_configfile=None)`:
 
 1. Read the configuration, merge common rules, read settings.
-2. `prepsort`: create bowl directories for `BOWLS`, `BOWLS_EMAIL`, `BOWLS_GEN_IMG`.
-3. Single mode: `handlefile` for the given file. All-files mode:
+2. When Doc_prep anonymization is enabled, source subdirectory names update the
+   proposal mapping and approved directory mappings rename mirrored target
+   directories before file processing.
+3. `prepsort`: create bowl directories for `BOWLS`, `BOWLS_EMAIL`, `BOWLS_GEN_IMG`.
+4. Single mode: `handlefile` for the given file. All-files mode:
    - first pass: delete `ftype_delete` files in directories that contain sortable files;
    - second pass: delete `trash`/`trash_nocase` matches, then `handlefile` for every remaining file;
    - legacy pass over subdirectories (to be replaced by `handlefile`).
-4. Remove empty source directories.
+5. Remove empty source directories when `clear-empty-directories` is true.
 
 `handlefile` evaluates bowl types in this fixed priority and stops at the first that handles the file:
 
@@ -117,7 +121,10 @@ anonymize_update=false
 ### Behavior per file
 
 1. Clean the filename as for every bowl; the Markdown gets the cleaned stem.
-2. Mirror the source file's relative path below `targetdir`.
+2. Mirror the source file's relative path below `targetdir`. When anonymization
+   is enabled, approved mappings are applied per directory component and an
+   existing unanonymized target directory is renamed or merged into the
+   anonymized directory.
 3. Page count above `max_pages` → warning, file stays in the source directory.
 4. An existing Markdown in the mirrored target skips conversion, no API cost.
 5. Otherwise convert to the mirrored target (`documenttools.pdf_to_markdown` with `yes=True`, no interactive cost prompt).

@@ -1602,6 +1602,14 @@ def cinderellasort(
     skip_unmatched = settings.get('skipunmatched', 'true').strip().lower() == 'true'
     check_content = settings.get('check_content', 'false').strip().lower() == 'true'
     recursive = settings.get('recursive', 'true').strip().lower() == 'true'
+    has_docprep_bowls = bool(bowllist_docprep(config_object))
+    clear_empty_directories = settings.get('clear-empty-directories')
+    if clear_empty_directories is None:
+        clear_empty_directories = not has_docprep_bowls
+    else:
+        clear_empty_directories = (
+            clear_empty_directories.strip().lower() == 'true'
+        )
 
     # Fetch replacements from the REPLACEMENTS section
     replacements = {}
@@ -1630,7 +1638,8 @@ def cinderellasort(
         print(' jpg qual: ' + str(jpg_quality))
         print(' gps move unmatched: ' + str(gps_moved_unmatched))
         print(' gps comp: ' + str(gps_compress))
-        print(' skip unmatched: ' + str(skip_unmatched)) 
+        print(' skip unmatched: ' + str(skip_unmatched))
+        print(' clear empty dirs: ' + str(clear_empty_directories)) 
 
     # ADD unzip
 
@@ -1790,5 +1799,6 @@ def cinderellasort(
         ignore_append=ignore_append,
     )
 
-    print(f"\n## Removing empty directories:")
-    rmemptydir(sourcedir,dryrun)
+    if clear_empty_directories:
+        print(f"\n## Removing empty directories:")
+        rmemptydir(sourcedir,dryrun)

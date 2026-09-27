@@ -134,7 +134,7 @@ def test_recursive_false_processes_only_source_root(tmp_path):
     assert (nested / "nested.txt").is_file()
 
 
-def _write_path_safety_config(tmp_path, source_dir, target_dir):
+def _write_path_safety_config(tmp_path, source_dir, target_dir, settings=None):
     config = ConfigParser()
     config.optionxform = str
     config["TABLE"] = {
@@ -143,7 +143,7 @@ def _write_path_safety_config(tmp_path, source_dir, target_dir):
         "ftype_sort": ".txt",
         "filemode": "win",
     }
-    config["SETTINGS"] = {}
+    config["SETTINGS"] = settings or {}
     config_path = tmp_path / "path-safety.ini"
     with config_path.open("w", encoding="utf-8") as fp:
         config.write(fp)
@@ -175,6 +175,76 @@ def test_target_inside_source_directory_fails(tmp_path):
         cinderellasort(str(config_path), dryrun=False)
 
     assert source_file.is_file()
+
+
+def test_clear_empty_directories_defaults_true_for_standard_bowls(tmp_path):
+    source_dir = tmp_path / "source"
+    target_dir = tmp_path / "target"
+    empty_dir = source_dir / "empty"
+    empty_dir.mkdir(parents=True)
+    target_dir.mkdir()
+    (source_dir / "sample.txt").write_text("data", encoding="utf-8")
+    config_path = _write_path_safety_config(tmp_path, source_dir, target_dir)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not empty_dir.exists()
+
+
+def test_clear_empty_directories_false_keeps_standard_directories(tmp_path):
+    source_dir = tmp_path / "source"
+    target_dir = tmp_path / "target"
+    empty_dir = source_dir / "empty"
+    empty_dir.mkdir(parents=True)
+    target_dir.mkdir()
+    (source_dir / "sample.txt").write_text("data", encoding="utf-8")
+    config_path = _write_path_safety_config(
+        tmp_path,
+        source_dir,
+        target_dir,
+        settings={"clear-empty-directories": "false"},
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert empty_dir.is_dir()
+
+
+def test_clear_empty_directories_keeps_non_empty_directories(tmp_path):
+    source_dir = tmp_path / "source"
+    target_dir = tmp_path / "target"
+    empty_dir = source_dir / "empty"
+    non_empty_dir = source_dir / "non-empty"
+    empty_dir.mkdir(parents=True)
+    non_empty_dir.mkdir()
+    (non_empty_dir / "sample.bin").write_text("unmatched", encoding="utf-8")
+    target_dir.mkdir()
+    (source_dir / "sample.txt").write_text("data", encoding="utf-8")
+    config_path = _write_path_safety_config(tmp_path, source_dir, target_dir)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not empty_dir.exists()
+    assert (non_empty_dir / "sample.bin").is_file()
+
+
+def test_clear_empty_directories_dryrun_keeps_empty_directories(tmp_path):
+    source_dir = tmp_path / "source"
+    target_dir = tmp_path / "target"
+    empty_dir = source_dir / "empty"
+    empty_dir.mkdir(parents=True)
+    target_dir.mkdir()
+    (source_dir / "sample.txt").write_text("data", encoding="utf-8")
+    config_path = _write_path_safety_config(
+        tmp_path,
+        source_dir,
+        target_dir,
+        settings={"clear-empty-directories": "true"},
+    )
+
+    cinderellasort(str(config_path), dryrun=True)
+
+    assert empty_dir.is_dir()
 
 
 def test_ftype_delete_applies_in_nested_directories(tmp_path):
@@ -396,7 +466,14 @@ import wit_pytools.cinderellasort as cs
 TEST_PDF = os.path.join(os.path.dirname(__file__), "documenttools", "testdocument.pdf")
 
 
-def _docprep_setup(tmp_path, *, docprep_section=None, bowls=None, pdf_name="Rechnung 2026.pdf"):
+def _docprep_setup(
+    tmp_path,
+    *,
+    docprep_section=None,
+    bowls=None,
+    pdf_name="Rechnung 2026.pdf",
+    settings_section=None,
+):
     source_dir = tmp_path / "source"
     target_dir = tmp_path / "target"
     source_dir.mkdir()
@@ -413,7 +490,7 @@ def _docprep_setup(tmp_path, *, docprep_section=None, bowls=None, pdf_name="Rech
         "ftype_sort": ".pdf",
         "filemode": "win",
     }
-    config["SETTINGS"] = {"overwrite": "false"}
+    config["SETTINGS"] = {"overwrite": "false", **(settings_section or {})}
     config["BOWLS_DOCPREP"] = {"Rechnungen": "Rechnung,Invoice"}
     if bowls:
         config["BOWLS"] = bowls
@@ -537,6 +614,108 @@ def test_docprep_mirrors_subdir_and_keeps_original(tmp_path, monkeypatch):
     assert (source_dir / "nested" / "Invoice.pdf").is_file()
     assert (target_dir / "nested" / "Invoice.md").is_file()
     assert calls[0]["output"] == target_dir / "nested" / "Invoice.md"
+
+
+def test_docprep_clear_empty_directories_defaults_false(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(tmp_path)
+    empty_dir = source_dir / "empty"
+    empty_dir.mkdir()
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count, _fake_converter([])),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert empty_dir.is_dir()
+    assert (target_dir / "Rechnung 2026.md").is_file()
+
+
+def test_docprep_clear_empty_directories_true_removes_directories(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        settings_section={"clear-empty-directories": "true"},
+    )
+    empty_dir = source_dir / "empty"
+    empty_dir.mkdir()
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count, _fake_converter([])),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not empty_dir.exists()
+    assert (target_dir / "Rechnung 2026.md").is_file()
+
+
+def test_docprep_source_directories_create_anonymization_proposals(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        docprep_section={
+            "anonymize": "true",
+            "anonymize-keep-originals": "true",
+        },
+        pdf_name="Anna Muster/Rechnung 2026.pdf",
+    )
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count, _fake_converter([])),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    mapping = source_dir / "source-anon-mapping.csv"
+    rows = list(csv.DictReader(mapping.open(encoding="utf-8", newline="")))
+    directory_rows = [
+        row for row in rows
+        if row["source_documents"].startswith("directory:")
+    ]
+    assert [row["original_value"] for row in directory_rows] == [
+        "Anna Muster"
+    ]
+    assert directory_rows[0]["source_documents"] == "directory:Anna Muster"
+    assert (target_dir / "Anna Muster" / "Rechnung 2026.md").is_file()
+
+
+def test_docprep_anonymized_source_directories_rename_target_directories(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        docprep_section={
+            "anonymize": "true",
+            "anonymize-keep-originals": "true",
+        },
+        pdf_name="Anna Muster/Sub Name/Rechnung 2026.pdf",
+    )
+    old_target_dir = target_dir / "Anna Muster" / "Sub Name"
+    old_target_dir.mkdir(parents=True)
+    old_target_dir.joinpath("existing.md").write_text(
+        "existing", encoding="utf-8"
+    )
+    mapping = source_dir / "source-anon-mapping.csv"
+    mapping.write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "anon,Person-abcd,Anna Muster,name,,,\n"
+        "anon,value-ef12,Sub Name,string,,,\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count, _fake_converter([])),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    new_target_dir = target_dir / "Person-abcd" / "value-ef12"
+    assert not (target_dir / "Anna Muster").exists()
+    assert (new_target_dir / "existing.md").read_text(
+        encoding="utf-8"
+    ) == "existing"
+    assert (new_target_dir / "Rechnung 2026.md").is_file()
 
 
 def test_docprep_anonymization_creates_proposals_then_applies_approved_mapping(tmp_path):

@@ -254,8 +254,10 @@ code, inline code, link destinations and raw URLs are not candidates.
 
 `anonymize_text_content()` returns transformed text without writing files.
 `anonymize_text()` never overwrites the source unless an explicit output path
-and `overwrite=True` are supplied. PDF conversion and anonymization are
-separate explicit steps.
+and `overwrite=True` are supplied. `update_directory_mapping()` submits source
+subdirectory names to the same proposal workflow, and `anonymize_path_parts()`
+applies approved mappings independently to each path component. PDF conversion
+and anonymization are separate explicit steps.
 
 **Known Limitations**
 It is not possible to discern between to persons with the same surname when they are addressed as Mr or Mrs. All Mr Schmidts in one anonymization mapping will have to share one anonymization value.

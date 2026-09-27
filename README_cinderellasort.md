@@ -72,7 +72,15 @@ filemode=nc
 
 [BOWLS]
 Project=project
+
+[SETTINGS]
+clear-empty-directories=true
 ```
+
+`clear-empty-directories` controls removal of empty source directories after
+sorting. It defaults to `true` for standard Cinderella bowls and `false` when
+`[BOWLS_DOCPREP]` is configured. An explicit `true` or `false` overrides either
+default.
 
 For Nextcloud mode, the project configuration is normally named
 `mailsort-ini.txt`. Standalone configurations can use `mailsort.ini`.
@@ -202,6 +210,12 @@ those values from being added as new candidates on later runs. Rows with `status
 sibling approved mapping file, such as `Wisniewski-anon.csv`; anonymization
 functions read that file automatically. Approved rows retain replacement,
 original, type, and `vip` fields.
+
+With `anonymize=true`, source subdirectory names are also checked for
+recommendations. Approved mappings are applied to the mirrored target directory
+path before Markdown output is written. If a matching unanonymized target
+directory already exists, it is renamed; an existing anonymized directory is
+merged without overwriting files. Source directories remain unchanged.
 
 For German Presidio detection, install a German spaCy model in addition to the
 Python dependency, for example:

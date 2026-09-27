@@ -26,6 +26,11 @@
 - `anonymize_ignore_save=false` is off by default; when true, values filtered
   from proposals are written to `<slug>-anon-ignore-save.csv`, which is rewritten
   on each run. `<slug>-anon-ignore.csv` remains cumulative for `keep` rows.
+- Source subdirectory names are included in anonymization proposals. Approved
+  mappings rename matching mirrored target directories before document output;
+  source directories remain unchanged.
+- `clear-empty-directories` controls empty-source-directory cleanup. It defaults
+  to `false` for Doc_prep configurations and `true` otherwise.
 - JSON mapping support is a future UI-oriented option; CSV remains the current
   manually editable format.
 

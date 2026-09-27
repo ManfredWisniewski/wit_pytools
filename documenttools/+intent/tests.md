@@ -13,6 +13,7 @@
 - **A09 Output safety** refuses to overwrite source or existing output files unless explicitly requested.
 - **A10 Package isolation** allows the anonymization core to run without document parser dependencies.
 - **A11 Mapping separation** moves approved `anon` rows to the sibling `*-anon.csv` file and mapping consumers resolve that file automatically.
+- **A12 Directory mapping** proposes source subdirectory names and applies approved mappings independently to each target path component.
 
 ## Test levels
 

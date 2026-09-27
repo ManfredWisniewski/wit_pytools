@@ -514,8 +514,8 @@ def reset_saved_ignore_file(mapping_path: Path | str) -> Path:
     return ignore_path
 
 
-def update_text_mapping(
-    file_path: Path | str,
+def _update_text_mapping_sources(
+    text_sources: Sequence[tuple[str, str]],
     mapping_path: Path | str,
     *,
     countries: Optional[Sequence[str]] = None,
@@ -537,11 +537,8 @@ def update_text_mapping(
     ignore_save: bool = False,
     ignore_append: bool = False,
 ) -> Path:
-    """Add newly found text candidates with status ``new``."""
-    input_path = Path(file_path)
+    """Add candidates from ``(content, source_name)`` pairs."""
     mapping_file = Path(mapping_path)
-    if not input_path.is_file():
-        raise FileNotFoundError(input_path)
     anon_file = anon_path_for_mapping(mapping_file)
     if anon_file.resolve() == mapping_file.resolve():
         raise ValueError(
@@ -710,22 +707,30 @@ def update_text_mapping(
     rows = filtered_rows
 
     ignored_candidates = []
-    candidates = _text_candidate_rows(
-        input_path.read_text(encoding="utf-8"),
-        input_path.name,
-        name_catalog=name_catalog,
-        anonymize_mode=anonymize_mode,
-        language=language,
-        presidio_model=presidio_model,
-        presidio_score_threshold=presidio_score_threshold,
-        presidio_entities=presidio_entities,
-        replacement_length=replacement_length,
-        ignore_dictionary=ignore_dictionary,
-        ignore_numbers=ignore_numbers,
-        ignore_emails=ignore_emails,
-        ignore_dates=ignore_dates,
-        ignored_candidates=ignored_candidates if ignore_save else None,
-    )
+    candidates = []
+    for content, source_name in text_sources:
+        source_ignored_candidates = []
+        candidates.extend(
+            _text_candidate_rows(
+                content,
+                source_name,
+                name_catalog=name_catalog,
+                anonymize_mode=anonymize_mode,
+                language=language,
+                presidio_model=presidio_model,
+                presidio_score_threshold=presidio_score_threshold,
+                presidio_entities=presidio_entities,
+                replacement_length=replacement_length,
+                ignore_dictionary=ignore_dictionary,
+                ignore_numbers=ignore_numbers,
+                ignore_emails=ignore_emails,
+                ignore_dates=ignore_dates,
+                ignored_candidates=(
+                    source_ignored_candidates if ignore_save else None
+                ),
+            )
+        )
+        ignored_candidates.extend(source_ignored_candidates)
     if ignore_save:
         filtered_ignore_rows.extend(
             {
@@ -775,6 +780,137 @@ def update_text_mapping(
         writer.writeheader()
         writer.writerows(rows)
     return mapping_file
+
+
+def update_text_mapping(
+    file_path: Path | str,
+    mapping_path: Path | str,
+    *,
+    countries: Optional[Sequence[str]] = None,
+    use_name_datasets: Optional[bool] = None,
+    cache_dir: Optional[Path | str] = None,
+    offline: Optional[bool] = None,
+    debug: bool = False,
+    name_exclusions: Optional[Sequence[str]] = None,
+    anonymize_mode: str = "custom",
+    language: str = "en",
+    presidio_model: str = "de_core_news_sm",
+    presidio_score_threshold: float = 0.5,
+    presidio_entities: Optional[Sequence[str]] = None,
+    replacement_length: int = 4,
+    ignore_dictionary: bool = False,
+    ignore_numbers: bool = False,
+    ignore_emails: bool = False,
+    ignore_dates: bool = False,
+    ignore_save: bool = False,
+    ignore_append: bool = False,
+) -> Path:
+    """Add newly found text candidates with status ``new``."""
+    input_path = Path(file_path)
+    if not input_path.is_file():
+        raise FileNotFoundError(input_path)
+    return _update_text_mapping_sources(
+        [(input_path.read_text(encoding="utf-8"), input_path.name)],
+        mapping_path,
+        countries=countries,
+        use_name_datasets=use_name_datasets,
+        cache_dir=cache_dir,
+        offline=offline,
+        debug=debug,
+        name_exclusions=name_exclusions,
+        anonymize_mode=anonymize_mode,
+        language=language,
+        presidio_model=presidio_model,
+        presidio_score_threshold=presidio_score_threshold,
+        presidio_entities=presidio_entities,
+        replacement_length=replacement_length,
+        ignore_dictionary=ignore_dictionary,
+        ignore_numbers=ignore_numbers,
+        ignore_emails=ignore_emails,
+        ignore_dates=ignore_dates,
+        ignore_save=ignore_save,
+        ignore_append=ignore_append,
+    )
+
+
+def update_directory_mapping(
+    sourcedir: Path | str,
+    mapping_path: Path | str,
+    *,
+    recursive: bool = True,
+    countries: Optional[Sequence[str]] = None,
+    use_name_datasets: Optional[bool] = None,
+    cache_dir: Optional[Path | str] = None,
+    offline: Optional[bool] = None,
+    debug: bool = False,
+    name_exclusions: Optional[Sequence[str]] = None,
+    anonymize_mode: str = "custom",
+    language: str = "en",
+    presidio_model: str = "de_core_news_sm",
+    presidio_score_threshold: float = 0.5,
+    presidio_entities: Optional[Sequence[str]] = None,
+    replacement_length: int = 4,
+    ignore_dictionary: bool = False,
+    ignore_numbers: bool = False,
+    ignore_emails: bool = False,
+    ignore_dates: bool = False,
+    ignore_save: bool = False,
+    ignore_append: bool = False,
+) -> Path:
+    """Add candidates found in source directory names."""
+    source_root = Path(sourcedir).resolve()
+    if not source_root.is_dir():
+        raise FileNotFoundError(source_root)
+    directories = (
+        sorted(path for path in source_root.rglob("*") if path.is_dir())
+        if recursive
+        else []
+    )
+    text_sources = [
+        (
+            directory.name,
+            f"directory:{directory.relative_to(source_root).as_posix()}",
+        )
+        for directory in directories
+    ]
+    return _update_text_mapping_sources(
+        text_sources,
+        mapping_path,
+        countries=countries,
+        use_name_datasets=use_name_datasets,
+        cache_dir=cache_dir,
+        offline=offline,
+        debug=debug,
+        name_exclusions=name_exclusions,
+        anonymize_mode=anonymize_mode,
+        language=language,
+        presidio_model=presidio_model,
+        presidio_score_threshold=presidio_score_threshold,
+        presidio_entities=presidio_entities,
+        replacement_length=replacement_length,
+        ignore_dictionary=ignore_dictionary,
+        ignore_numbers=ignore_numbers,
+        ignore_emails=ignore_emails,
+        ignore_dates=ignore_dates,
+        ignore_save=ignore_save,
+        ignore_append=ignore_append,
+    )
+
+
+def anonymize_path_parts(path: Path | str, mapping_path: Path | str) -> Path:
+    """Apply approved mappings independently to each path component."""
+    path = Path(path)
+    mapping_file = Path(mapping_path)
+    anon_file = anon_path_for_mapping(mapping_file)
+    if not mapping_file.is_file() and not anon_file.is_file():
+        return path
+    mapping = mapping_path_rows(mapping_file)
+    return Path(
+        *(
+            replace_text_parts(((True, part),), mapping)
+            for part in path.parts
+        )
+    )
 
 
 def mapping_matches_text(content: str, mapping_path: Path | str) -> bool:

@@ -139,6 +139,9 @@ metadata require different traversal and preservation logic.
 ### Public functions
 
 - `identify_text_strings(...) -> Path`: create a candidate CSV for Markdown or plain text.
+- `update_text_mapping(...) -> Path`: update the proposal mapping from text.
+- `update_directory_mapping(...) -> Path`: update the proposal mapping from source directory names.
+- `anonymize_path_parts(path, mapping_path) -> Path`: apply approved mappings to each path component.
 - `anonymize_text_content(content, mapping_path) -> str`: apply a validated mapping to text content.
 - `anonymize_text(file_path, mapping_path, ...) -> Path`: write `<stem>_anon.<suffix>` without overwriting the source by default.
 
@@ -153,6 +156,8 @@ such as `line 12; line 48`.
 Markdown candidate detection excludes fenced code blocks, inline code spans,
 link destinations, raw URLs, dates, numbers and blank content. Visible link
 labels remain eligible for replacement while their destinations are preserved.
+Directory-name proposals use the same detector with each source subdirectory
+name as one text fragment.
 
 ### Replacement rules
 

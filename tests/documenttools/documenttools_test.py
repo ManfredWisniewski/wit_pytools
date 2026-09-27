@@ -21,8 +21,10 @@ from wit_pytools.documenttools import (
     pdf_to_markdown,
     pdf_to_markdown_text,
     identify_text_strings,
+    anonymize_path_parts,
     anonymize_text,
     anonymize_text_content,
+    update_directory_mapping,
     update_text_mapping,
     mapping_matches_text,
 )
@@ -489,6 +491,42 @@ def test_all_anonymize_mode_merges_custom_and_presidio(monkeypatch):
             "occurrences": 1,
         },
     ]
+
+
+def test_update_directory_mapping_proposes_source_directory_names(tmp_path):
+    source_dir = tmp_path / "source"
+    nested_dir = source_dir / "Anna Muster" / "Sub Name"
+    nested_dir.mkdir(parents=True)
+    mapping = tmp_path / "customer_mapping.csv"
+
+    update_directory_mapping(source_dir, mapping)
+
+    rows = list(csv.DictReader(mapping.open(encoding="utf-8", newline="")))
+    directory_rows = {
+        row["original_value"]: row for row in rows
+        if row["source_documents"].startswith("directory:")
+    }
+    assert set(directory_rows) == {"Anna Muster", "Sub Name"}
+    assert directory_rows["Anna Muster"]["source_documents"] == (
+        "directory:Anna Muster"
+    )
+    assert directory_rows["Sub Name"]["source_documents"] == (
+        "directory:Anna Muster/Sub Name"
+    )
+
+
+def test_anonymize_path_parts_applies_mapping_to_directories(tmp_path):
+    mapping = tmp_path / "customer_mapping.csv"
+    mapping.write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "anon,Person-abcd,Anna Muster,name,,,\n",
+        encoding="utf-8",
+    )
+
+    assert anonymize_path_parts(
+        Path("Anna Muster") / "Sub Name",
+        mapping,
+    ) == Path("Person-abcd") / "Sub Name"
 
 
 def test_update_text_mapping_creates_new_block_and_approved_rows_are_applied(tmp_path):
