@@ -626,7 +626,14 @@ def test_update_text_mapping_saves_filtered_proposals(tmp_path, monkeypatch):
         csv.DictReader(ignore_path.open(encoding="utf-8", newline=""))
     )
     assert ignore_rows == [
+        {"original_value": "Stale Ignore", "value_type": "string"},
         {"original_value": "Sensitive", "value_type": "string"},
+    ]
+    saved_ignore_path = tmp_path / "customer-anon-ignore-save.csv"
+    saved_ignore_rows = list(
+        csv.DictReader(saved_ignore_path.open(encoding="utf-8", newline=""))
+    )
+    assert saved_ignore_rows == [
         {"original_value": "test@example.com", "value_type": "email"},
         {"original_value": "12345", "value_type": "string"},
         {"original_value": "Garden", "value_type": "string"},
@@ -649,8 +656,10 @@ def test_update_text_mapping_overwrites_saved_ignore_rows(tmp_path, monkeypatch)
 
     update_text_mapping(source, mapping, ignore_emails=True, ignore_save=True)
 
-    ignore_path = tmp_path / "customer-anon-ignore.csv"
-    assert list(csv.DictReader(ignore_path.open(encoding="utf-8", newline=""))) == [
+    saved_ignore_path = tmp_path / "customer-anon-ignore-save.csv"
+    assert list(
+        csv.DictReader(saved_ignore_path.open(encoding="utf-8", newline=""))
+    ) == [
         {"original_value": "first@example.com", "value_type": "email"}
     ]
 
@@ -662,7 +671,9 @@ def test_update_text_mapping_overwrites_saved_ignore_rows(tmp_path, monkeypatch)
 
     update_text_mapping(source, mapping, ignore_emails=True, ignore_save=True)
 
-    assert list(csv.DictReader(ignore_path.open(encoding="utf-8", newline=""))) == [
+    assert list(
+        csv.DictReader(saved_ignore_path.open(encoding="utf-8", newline=""))
+    ) == [
         {"original_value": "second@example.com", "value_type": "email"}
     ]
 

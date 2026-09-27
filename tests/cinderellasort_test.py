@@ -721,7 +721,14 @@ def test_docprep_ignore_save_collects_all_pending_documents(tmp_path):
 
     cinderellasort(str(config_path), dryrun=False)
 
-    rows = list(csv.DictReader(ignore_path.open(encoding="utf-8", newline="")))
+    ignore_rows = list(
+        csv.DictReader(ignore_path.open(encoding="utf-8", newline=""))
+    )
+    assert ignore_rows == [
+        {"original_value": "stale@example.com", "value_type": "email"}
+    ]
+    saved_ignore_path = source_dir / "source-anon-ignore-save.csv"
+    rows = list(csv.DictReader(saved_ignore_path.open(encoding="utf-8", newline="")))
     assert {row["original_value"] for row in rows} == {
         "first@example.com",
         "second@example.com",

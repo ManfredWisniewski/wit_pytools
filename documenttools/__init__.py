@@ -484,9 +484,32 @@ def _write_ignore_rows(ignore_path: Path, rows: List[Dict[str, str]]) -> None:
         writer.writerows(rows)
 
 
-def reset_ignore_file(mapping_path: Path | str) -> Path:
-    """Clear the saved-ignore CSV for a new anonymization run."""
-    ignore_path = _ignore_path_for_mapping(Path(mapping_path))
+def _saved_ignore_path_for_mapping(mapping_path: Path) -> Path:
+    stem = mapping_path.stem
+    for suffix in ("-mapping", "_mapping"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    return mapping_path.with_name(f"{stem}-ignore-save.csv")
+
+
+def _unique_ignore_rows(rows: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    unique_rows = []
+    seen_values = set()
+    for row in rows:
+        original = row["original_value"].strip()
+        if not original or original in seen_values:
+            continue
+        seen_values.add(original)
+        unique_rows.append(
+            {"original_value": original, "value_type": row["value_type"]}
+        )
+    return unique_rows
+
+
+def reset_saved_ignore_file(mapping_path: Path | str) -> Path:
+    """Clear the filtered-proposal CSV for a new anonymization run."""
+    ignore_path = _saved_ignore_path_for_mapping(Path(mapping_path))
     _write_ignore_rows(ignore_path, [])
     return ignore_path
 
@@ -531,11 +554,12 @@ def update_text_mapping(
 
     ignore_path = _ignore_path_for_mapping(mapping_file)
     existing_ignore_rows = _read_ignore_rows(ignore_path)
-    if ignore_save:
-        ignore_rows = list(existing_ignore_rows) if ignore_append else []
-    else:
-        ignore_rows = list(existing_ignore_rows)
+    ignore_rows = list(existing_ignore_rows)
     filtered_ignore_rows = []
+    saved_ignore_rows = []
+    saved_ignore_path = _saved_ignore_path_for_mapping(mapping_file)
+    if ignore_save and ignore_append:
+        saved_ignore_rows = _read_ignore_rows(saved_ignore_path)
     ignored_values = {
         row["original_value"].strip()
         for row in existing_ignore_rows
@@ -734,18 +758,13 @@ def update_text_mapping(
         )
         known.add(candidate["original_value"])
 
-    ignore_rows.extend(filtered_ignore_rows)
-    unique_ignore_rows = []
-    seen_ignore_values = set()
-    for row in ignore_rows:
-        original = row["original_value"].strip()
-        if not original or original in seen_ignore_values:
-            continue
-        seen_ignore_values.add(original)
-        unique_ignore_rows.append(
-            {"original_value": original, "value_type": row["value_type"]}
+    _write_ignore_rows(ignore_path, _unique_ignore_rows(ignore_rows))
+    if ignore_save:
+        saved_ignore_rows.extend(filtered_ignore_rows)
+        _write_ignore_rows(
+            saved_ignore_path,
+            _unique_ignore_rows(saved_ignore_rows),
         )
-    _write_ignore_rows(ignore_path, unique_ignore_rows)
 
     mapping_file.parent.mkdir(parents=True, exist_ok=True)
     with mapping_file.open("w", encoding="utf-8", newline="") as handle:

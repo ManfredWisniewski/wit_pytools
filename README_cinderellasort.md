@@ -114,7 +114,7 @@ anonymize_ignore_dictionary=true
 anonymize_ignore_numbers=true
 anonymize_ignore_emails=true
 anonymize_ignore_dates=true
-# Rewrite <slug>-anon-ignore.csv with values filtered in the current run.
+# Rewrite <slug>-anon-ignore-save.csv with values filtered in the current run.
 anonymize_ignore_save=false
 # Optional; defaults to <sourcedir>/<sourcedir-name>-anon-mapping.csv.
 anonymize_mapping_file=P:\\customers\\customer-anon-mapping.csv
@@ -191,14 +191,14 @@ Presidio recommendations can also be filtered before they enter the mapping:
 - `anonymize_ignore_numbers=true` ignores any recommendation containing a digit.
 - `anonymize_ignore_emails=true` ignores e-mail addresses.
 - `anonymize_ignore_dates=true` ignores date-like and `DATE_TIME` recommendations.
-- `anonymize_ignore_save=true` writes values removed by the filters to the sibling ignore file, such as `Wisniewski-anon-ignore.csv`, and replaces that file's contents on each run.
+- `anonymize_ignore_save=true` writes values removed by the filters to the sibling report file, such as `Wisniewski-anon-ignore-save.csv`, and replaces that file's contents on each run. The report is informational and is not read as an ignore list.
 
 These filters default to `false`; `anonymize_ignore_save` also defaults to `false`.
 
 When a mapping row has `status=keep`, its `original_value` is moved to a
 sibling ignore file such as `Wisniewski-anon-ignore.csv`. The ignore file has
-`original_value` and `value_type` columns and prevents those values from being
-added as new candidates on later runs. Rows with `status=anon` are moved to the
+`original_value` and `value_type` columns, retains existing entries, and prevents
+those values from being added as new candidates on later runs. Rows with `status=anon` are moved to the
 sibling approved mapping file, such as `Wisniewski-anon.csv`; anonymization
 functions read that file automatically. Approved rows retain replacement,
 original, type, and `vip` fields.

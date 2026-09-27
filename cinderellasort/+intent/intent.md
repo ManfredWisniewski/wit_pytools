@@ -110,7 +110,7 @@ continue_on_error=false
 sidecar=true           ; keep <stem>_pdf2md.json beside the original
 anonymize=false
 anonymize_mapping_file=P:\\customers\\customer-anon-mapping.csv ; optional; default: <sourcedir>/<sourcedir-name>-anon-mapping.csv
-anonymize_ignore_save=false ; rewrite <slug>-anon-ignore.csv with filtered proposals
+anonymize_ignore_save=false ; rewrite <slug>-anon-ignore-save.csv with filtered proposals
 anonymize_update=false
 ```
 

@@ -13,7 +13,7 @@ from wit_pytools.documenttools import (
     anonymize_text,
     document_find_regex,
     mapping_matches_text,
-    reset_ignore_file,
+    reset_saved_ignore_file,
     update_text_mapping,
 )
 from eliot import log_message
@@ -932,14 +932,14 @@ def docprep_settings(config_object):
 
 
 def _prepare_docprep_ignore_save(settings):
-    """Reset the saved-ignore CSV before a multi-file anonymization run."""
+    """Reset the filtered-proposal CSV before a multi-file anonymization run."""
     if not (
         settings['anonymize']
         and settings['anonymize_ignore_save']
         and settings['anonymize_mapping_file']
     ):
         return False
-    ignore_path = reset_ignore_file(settings['anonymize_mapping_file'])
+    ignore_path = reset_saved_ignore_file(settings['anonymize_mapping_file'])
     log_message(
         f"Doc_prep anonymization: reset saved-ignore file {ignore_path}",
         level="INFO",
