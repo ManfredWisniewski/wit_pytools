@@ -195,7 +195,7 @@ from the default allow-list.
 
 Presidio recommendations can also be filtered before they enter the mapping:
 
-- `anonymize_ignore_dictionary=true` ignores values containing configured-language dictionary words. With `anonymize_name_countries=de`, this includes German nouns, plurals, articles, pronouns, adjectives, adverbs, conjunctions, subjunctions, prepositions, particles, verbs, numbers, comparatives, superlatives, contractions, interjections, and abbreviations.
+- `anonymize_ignore_dictionary=true` ignores values containing configured-language dictionary words. With `anonymize_name_countries=de`, this includes German nouns, plurals, articles, pronouns, adjectives, adverbs, conjunctions, subjunctions, prepositions, particles, verbs, numbers, comparatives, superlatives, contractions, interjections, and abbreviations. Dictionary substrings must contain at least five characters; candidate tokens containing entries from `anonymization/assets/de/word-exclusions.txt` are skipped.
 - `anonymize_ignore_numbers=true` ignores any recommendation containing a digit.
 - `anonymize_ignore_emails=true` ignores e-mail addresses.
 - `anonymize_ignore_dates=true` ignores date-like and `DATE_TIME` recommendations.

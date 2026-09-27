@@ -198,8 +198,9 @@ also reads dictionary categories `abbreviation.txt`, `adjective.txt`,
 `noun-proper-first-name.txt` and `noun-proper-surname.txt` from the
 `ynsrc/german-categorized-wordlist`
 repository. German dictionary matches exclude candidates and single-token name
-candidates; the German proper-name files add positive first-name and surname
-evidence.
+candidates; substrings must contain at least five characters, and candidate
+tokens containing entries from `assets/de/word-exclusions.txt` are skipped.
+The German proper-name files add positive first-name and surname evidence.
 
 The popular-name data is CC0-licensed. The German wordlist is CC BY 4.0.
 Source repositories and commits are recorded in cache metadata.

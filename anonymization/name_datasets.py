@@ -58,7 +58,8 @@ GERMAN_NAME_FILES = {
 GERMAN_DATASET_FILES = {**GERMAN_DICTIONARY_FILES, **GERMAN_NAME_FILES}
 COUNTRY_PATTERN = re.compile(r"^[A-Z]{2}$")
 TOKEN_PATTERN = re.compile(r"[^\W_]+(?:[-'][^\W_]+)*", re.UNICODE)
-MIN_DICTIONARY_SUBSTRING_LENGTH = 3
+MIN_DICTIONARY_SUBSTRING_LENGTH = 5
+ASSETS_DIR = Path(__file__).parent / "assets"
 DEFAULT_NAME_EXCLUSIONS = frozenset(
     {"and", "contact", "email", "for", "password", "server", "test", "the", "user"}
 )
@@ -77,12 +78,17 @@ class NameCatalog:
     surnames: frozenset[str]
     noun_words: frozenset[str] = frozenset()
     exclusions: frozenset[str] = frozenset()
+    dictionary_exclusions: frozenset[str] = frozenset()
 
     def is_dictionary_word(self, value: str) -> bool:
         if not self.noun_words:
             return False
         tokens = [_normalize(token) for token in TOKEN_PATTERN.findall(value)]
         for token in tokens:
+            if any(
+                exclusion in token for exclusion in self.dictionary_exclusions
+            ):
+                continue
             for start in range(len(token)):
                 for end in range(
                     start + MIN_DICTIONARY_SUBSTRING_LENGTH,
@@ -109,6 +115,20 @@ class NameCatalog:
 
 def _normalize(value: str) -> str:
     return unicodedata.normalize("NFKC", value).casefold().strip()
+
+
+def _dictionary_exclusions(countries: Iterable[str]) -> frozenset[str]:
+    exclusions = set()
+    for country in countries:
+        path = ASSETS_DIR / country.lower() / "word-exclusions.txt"
+        if not path.is_file():
+            continue
+        exclusions.update(
+            _normalize(line)
+            for line in path.read_text(encoding="utf-8-sig").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+    return frozenset(exclusions)
 
 
 def default_cache_dir() -> Path:
@@ -286,6 +306,7 @@ def _catalog_from_csv(
     surnames = set()
     noun_words = set()
     available = set()
+    dictionary_exclusions = _dictionary_exclusions(requested)
 
     for row in csv.DictReader(forenames_csv.splitlines()):
         country = (row.get("Country") or "").strip().upper()
@@ -312,6 +333,7 @@ def _catalog_from_csv(
                 for line in german_contents[dataset].splitlines()
                 if line.strip()
             )
+        noun_words.difference_update(dictionary_exclusions)
         forenames.update(
             _normalize(line)
             for line in german_contents["forenames"].splitlines()
@@ -336,6 +358,7 @@ def _catalog_from_csv(
         frozenset(surnames),
         frozenset(noun_words),
         exclusions,
+        dictionary_exclusions,
     )
 
 

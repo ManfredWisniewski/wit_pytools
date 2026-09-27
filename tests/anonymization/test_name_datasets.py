@@ -25,19 +25,24 @@ DE,Zol,Zol
 """
 GERMAN_NOUNS = """Garten
 Sommer
+Hausschild
+Linde
+Juli
+Schmied
+Mann
 """
 GERMAN_FORENAMES = """Qira
 """
 GERMAN_SURNAMES = """Zol
 """
 GERMAN_TEXTS = {
-    "abbreviations": "Bu\n",
+    "abbreviations": "Betreff\n",
     "adjectives": "online\n",
     "adverbs": "online\n",
     "articles": "der\n",
     "comparatives": "besser\n",
     "conjunctions": "und\n",
-    "contractions": "aufs\n",
+    "contractions": "heutzutage\n",
     "interjections": "hallo\n",
     "noun_plurals": "Einkünfte\nWünsche\n",
     "nouns": GERMAN_NOUNS,
@@ -74,13 +79,52 @@ def test_dictionary_matching_uses_substrings():
         frozenset({"DE"}),
         frozenset(),
         frozenset(),
-        frozenset({"aufname", "monat", "gläubiger", "mitglied", "service", "ag"}),
+        frozenset(
+            {
+                "aufname",
+                "monat",
+                "gläubiger",
+                "mitglied",
+                "service",
+                "vier",
+                "fuenf",
+            }
+        ),
     )
 
     assert catalog.is_dictionary_word("Aufnahme-Monat")
     assert catalog.is_dictionary_word("Gläubiger-Nr")
     assert catalog.is_dictionary_word("Mitgliederservice")
+    assert catalog.is_dictionary_word("fuenf")
+    assert not catalog.is_dictionary_word("vier")
     assert not catalog.is_dictionary_word("ADAC e.V.")
+
+
+def test_german_dictionary_exclusions_do_not_filter_names(tmp_path, monkeypatch):
+    monkeypatch.setattr(name_datasets, "_fetch_commit", lambda: "popular-1")
+    monkeypatch.setattr(name_datasets, "_fetch_german_commit", lambda: "german-1")
+    monkeypatch.setattr(
+        name_datasets,
+        "_fetch_text",
+        lambda dataset: FORENAMES_CSV if dataset == "forenames" else SURNAMES_CSV,
+    )
+    monkeypatch.setattr(
+        name_datasets,
+        "_fetch_german_text",
+        lambda dataset: GERMAN_TEXTS[dataset],
+    )
+
+    catalog = load_name_catalog(["DE"], cache_dir=tmp_path)
+
+    assert catalog is not None
+    for value in (
+        "Herr Hausschild",
+        "Herr Linder",
+        "Julia Wisniewski",
+        "Schmied",
+        "Hoffmann",
+    ):
+        assert not catalog.is_dictionary_word(value)
 
 
 def test_dataset_names_detect_single_and_compound_values():
@@ -168,11 +212,11 @@ def test_load_name_catalog_loads_german_wordlist(tmp_path, monkeypatch):
         "Sobald Ihnen",
         "Meine Einkünfte",
         "Der Online",
-        "Der Bu",
+        "Der Betreff",
         "Und nicht drei",
         "Beim Gehen",
         "Hallo besser",
-        "Aufs Haus",
+        "Heutzutage",
         "Der Brief zufolge",
     ):
         assert catalog.is_dictionary_word(value)
