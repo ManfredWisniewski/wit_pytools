@@ -10,10 +10,12 @@ from wit_pytools.sanitizers import prepregex, cleanfilestring, convert_numerals_
 from wit_pytools.validators import valid_email_address
 from wit_pytools.systools import walklevel, rmemptydir, movefile, copyfile, delfile
 from wit_pytools.documenttools import (
+    anonymize_path_parts,
     anonymize_text,
     document_find_regex,
     mapping_matches_text,
     reset_saved_ignore_file,
+    update_directory_mapping,
     update_text_mapping,
 )
 from eliot import log_message
@@ -947,6 +949,130 @@ def _prepare_docprep_ignore_save(settings):
     return True
 
 
+def _numbered_target_path(path):
+    candidate = path
+    index = 2
+    while candidate.exists():
+        candidate = path.with_name(f"{path.stem}#{index}{path.suffix}")
+        index += 1
+    return candidate
+
+
+def _merge_directory(source, target):
+    for child in sorted(source.iterdir(), key=lambda path: path.name.casefold()):
+        destination = target / child.name
+        if child.is_dir() and destination.is_dir():
+            _merge_directory(child, destination)
+            continue
+        if destination.exists():
+            destination = _numbered_target_path(destination)
+        child.rename(destination)
+    source.rmdir()
+
+
+def _rename_target_directory(targetdir, original, anonymized):
+    """Rename a mirrored source directory to its anonymized target name."""
+    source = Path(targetdir) / original
+    target = Path(targetdir) / anonymized
+    if source == target or not source.exists():
+        return target
+    if not source.is_dir():
+        raise ValueError(f"Cannot anonymize non-directory target {source}")
+    if target.exists() and not target.is_dir():
+        raise FileExistsError(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        _merge_directory(source, target)
+    else:
+        source.rename(target)
+    return target
+
+
+def _prepare_docprep_directories(
+    sourcedir,
+    targetdir,
+    settings,
+    recursive,
+    dryrun,
+    ignore_append,
+):
+    """Update directory proposals and rename matching target directories."""
+    if not (settings['anonymize'] and settings['anonymize_mapping_file']):
+        return
+    if dryrun:
+        return
+    source_root = Path(sourcedir).resolve()
+    update_directory_mapping(
+        source_root,
+        settings['anonymize_mapping_file'],
+        recursive=recursive,
+        countries=settings.get('anonymize_name_countries'),
+        use_name_datasets=settings.get('anonymize_use_name_datasets'),
+        cache_dir=settings.get('anonymize_name_cache_dir'),
+        offline=settings.get('anonymize_name_dataset_offline'),
+        debug=settings.get('anonymize_name_dataset_debug', False),
+        name_exclusions=settings.get('anonymize_name_exclusions'),
+        anonymize_mode=settings.get('anonymize_mode', 'custom'),
+        language=settings.get('language', 'en'),
+        presidio_model=settings.get('anonymize_presidio_model', 'de_core_news_sm'),
+        presidio_score_threshold=settings.get(
+            'anonymize_presidio_score_threshold', 0.5
+        ),
+        presidio_entities=settings.get('anonymize_presidio_entities'),
+        replacement_length=settings.get('anonymize_token_length', 4),
+        ignore_dictionary=settings.get('anonymize_ignore_dictionary', False),
+        ignore_numbers=settings.get('anonymize_ignore_numbers', False),
+        ignore_emails=settings.get('anonymize_ignore_emails', False),
+        ignore_dates=settings.get('anonymize_ignore_dates', False),
+        ignore_save=settings.get('anonymize_ignore_save', False),
+        ignore_append=ignore_append,
+    )
+    if not recursive:
+        return
+    directories = sorted(
+        (
+            path
+            for path in source_root.rglob('*')
+            if path.is_dir()
+        ),
+        key=lambda path: len(path.relative_to(source_root).parts),
+        reverse=True,
+    )
+    for directory in directories:
+        relative_directory = directory.relative_to(source_root)
+        anonymized_directory = anonymize_path_parts(
+            relative_directory,
+            settings['anonymize_mapping_file'],
+        )
+        if anonymized_directory != relative_directory:
+            renamed = _rename_target_directory(
+                targetdir,
+                relative_directory,
+                anonymized_directory,
+            )
+            log_message(
+                f"Doc_prep anonymization: renamed directory "
+                f"{Path(targetdir) / relative_directory} -> {renamed}",
+                level="INFO",
+            )
+
+
+def _docprep_anonymized_relative_path(relative_path, settings):
+    if not (
+        settings['anonymize']
+        and settings['anonymize_mapping_file']
+        and relative_path.parent != Path('.')
+    ):
+        return relative_path
+    return (
+        anonymize_path_parts(
+            relative_path.parent,
+            settings['anonymize_mapping_file'],
+        )
+        / relative_path.name
+    )
+
+
 def _docprep_output_path(targetdir, relative_path, cleaned_name, bowl):
     target_root = Path(targetdir)
     relative_parent = relative_path.parent
@@ -990,6 +1116,7 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
     source_root = Path(config_object['TABLE']['sourcedir']).resolve()
     source = source.resolve()
     relative_path = source.relative_to(source_root)
+    relative_path = _docprep_anonymized_relative_path(relative_path, settings)
     cleaned_name = normalize_spaces(cleanfilename(source.name, clean, clean_nocase, replacements))
     output_path = _docprep_output_path(
         targetdir,
@@ -1509,6 +1636,14 @@ def cinderellasort(
 
     docprep_config = docprep_settings(config_object)
     ignore_append = not dryrun and _prepare_docprep_ignore_save(docprep_config)
+    _prepare_docprep_directories(
+        sourcedir,
+        targetdir,
+        docprep_config,
+        recursive,
+        dryrun,
+        ignore_append,
+    )
 
     # prepare for sort process
     prepsort(config_object, targetdir)
