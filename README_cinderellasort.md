@@ -194,9 +194,10 @@ These filters default to `false`.
 When a mapping row has `status=keep`, its `original_value` is moved to a
 sibling ignore file such as `Wisniewski-anon-ignore.csv`. The ignore file has
 `original_value` and `value_type` columns and prevents those values from being
-added as new candidates on later runs. Approved `anon` rows retain only their
-replacement, original, and type fields; source document and location metadata
-is removed.
+added as new candidates on later runs. Rows with `status=anon` are moved to the
+sibling approved mapping file, such as `Wisniewski-anon.csv`; anonymization
+functions read that file automatically. Approved rows retain replacement,
+original, type, and `vip` fields.
 
 For German Presidio detection, install a German spaCy model in addition to the
 Python dependency, for example:
@@ -249,7 +250,8 @@ Behavior:
 - The customer mapping CSV starts with the `status` column and uses
   `status=anon` for approved replacements, `status=keep` for values that must
   not be replaced, and `status=new` for
-  proposals. Only `anon` rows are applied.
+  proposals. The `vip` column follows `value_type` and defaults to an empty
+  value. Only `anon` rows are applied.
 - In `nc` mode the mirrored target directory is rescanned after conversion.
 - `[BOWLS_DOCPREP]` is merged from the central configuration like `[BOWLS]`;
   `[DOCPREP]` is project-specific.

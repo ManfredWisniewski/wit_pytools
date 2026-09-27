@@ -157,7 +157,9 @@ labels remain eligible for replacement while their destinations are preserved.
 ### Replacement rules
 
 Replacement uses the same mapping validation and containment grouping as XLSX.
-Markdown replacement protects fenced code, inline code, link destinations and
+Approved `anon` rows are stored in the sibling `*-anon.csv` file; mapping
+consumers resolve that file automatically. Markdown replacement protects fenced
+code, inline code, link destinations and
 raw URLs. The source is never modified implicitly. PDF conversion and
 anonymization are separate explicit steps; `pdf_to_markdown` does not invoke
 anonymization automatically.

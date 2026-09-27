@@ -195,6 +195,23 @@ def test_mapping_application_preserves_protected_parts(tmp_path):
     assert result == "Person-001 `Sample Person`"
 
 
+def test_mapping_path_rows_uses_sibling_anon_file(tmp_path):
+    mapping_path = tmp_path / "customer-mapping.csv"
+    mapping_path.write_text(
+        "status,replacement_value,original_value,value_type,vip,source_documents,locations,occurrences\n"
+        "new,Person-002,Other Person,name,,doc.md,line 1,1\n",
+        encoding="utf-8",
+    )
+    anon_path = tmp_path / "customer-anon.csv"
+    anon_path.write_text(
+        "replacement_value,original_value,value_type,vip\n"
+        "Person-001,Sample Person,name,yes\n",
+        encoding="utf-8",
+    )
+
+    assert mapping_path_rows(mapping_path) == {"Sample Person": "Person-001"}
+
+
 def test_mapping_validation_rejects_empty_original(tmp_path):
     mapping_path = tmp_path / "mapping.csv"
     mapping_path.write_text(

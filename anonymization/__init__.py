@@ -10,9 +10,12 @@ from .candidates import (
     value_type_for,
 )
 from .mapping import (
+    ANON_COLUMNS,
     CANDIDATE_COLUMNS,
+    MAPPING_STATUS_COLUMNS,
     CandidateValidationError,
     MappingValidationError,
+    anon_path_for_mapping,
     create_mapping,
     group_contained_rows,
     mapping_path_for_candidates,
@@ -36,16 +39,19 @@ from .presidio import (
 from .text import mapping_matches_parts, replace_text_part, replace_text_parts
 
 __all__ = [
+    "ANON_COLUMNS",
     "CANDIDATE_COLUMNS",
     "DEFAULT_PRESIDIO_ENTITIES",
     "Candidate",
     "CandidateCollector",
     "CandidateValidationError",
     "MappingValidationError",
+    "MAPPING_STATUS_COLUMNS",
     "NameCatalog",
     "NameDatasetUnavailableError",
     "PresidioUnavailableError",
     "VALUE_TYPES",
+    "anon_path_for_mapping",
     "create_mapping",
     "detect_text_candidates",
     "group_contained_rows",

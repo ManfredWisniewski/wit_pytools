@@ -544,9 +544,12 @@ def test_docprep_mapping_updates_from_existing_anonymized_file(tmp_path):
     cs.handle_docprep_anonymization(source, settings, output_path=output, remove_source=False)
 
     rows = list(csv.DictReader(mapping.open(encoding="utf-8", newline="")))
-    originals = [row["original_value"] for row in rows]
-    assert originals.count("Sample Person") == 1
-    assert "New Person" in originals
+    anon_path = tmp_path / "mapping-anon.csv"
+    anon_rows = list(
+        csv.DictReader(anon_path.open(encoding="utf-8", newline=""))
+    )
+    assert [row["original_value"] for row in rows] == ["New Person"]
+    assert [row["original_value"] for row in anon_rows] == ["Sample Person"]
 
 
 def test_docprep_uses_paired_markup_and_keeps_original(tmp_path, monkeypatch):

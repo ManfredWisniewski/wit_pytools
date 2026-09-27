@@ -420,9 +420,10 @@ def test_identify_and_anonymize_markdown(tmp_path):
 
 def test_anonymize_text_content_supports_containment_grouping(tmp_path):
     mapping = tmp_path / "mapping.csv"
-    mapping.write_text(
-        "replacement_value,original_value,value_type\n"
-        "Person-1,Anna;Anna Musterpeter,name\n",
+    anon_mapping = tmp_path / "mapping-anon.csv"
+    anon_mapping.write_text(
+        "replacement_value,original_value,value_type,vip\n"
+        "Person-1,Anna;Anna Musterpeter,name,\n",
         encoding="utf-8",
     )
     assert anonymize_text_content("Anna Musterpeter", mapping) == "Person-1"
@@ -496,10 +497,22 @@ def test_update_text_mapping_creates_new_block_and_approved_rows_are_applied(tmp
     mapping = tmp_path / "customer_mapping.csv"
 
     update_text_mapping(source, mapping)
-    mapping_text = mapping.read_text(encoding="utf-8")
-    assert "status" in mapping_text
-    assert "new" in mapping_text
-    assert "Anna Musterpeter" in mapping_text
+    with mapping.open(encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+    assert reader.fieldnames == [
+        "status",
+        "replacement_value",
+        "original_value",
+        "value_type",
+        "vip",
+        "source_documents",
+        "locations",
+        "occurrences",
+    ]
+    assert {row["status"] for row in rows} == {"new"}
+    assert all(row["vip"] == "" for row in rows)
+    assert "Anna Musterpeter" in {row["original_value"] for row in rows}
     assert not mapping_matches_text(source.read_text(encoding="utf-8"), mapping)
 
     mapping.write_text(
@@ -561,22 +574,57 @@ def test_update_text_mapping_moves_keep_rows_to_ignore_file(tmp_path):
     mapping.write_text(
         "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
         "keep,ignored-replacement,Sensitive,string,doc.md,line 1,1\n"
-        "anon,Person-001,Sample Person,name,doc.md,line 1,1\n",
+        "anon,Person-001,Sample Person,name,doc.md,line 1,1\n"
+        "new,Person-002,Other Person,name,doc.md,line 1,1\n",
         encoding="utf-8",
     )
 
     update_text_mapping(source, mapping)
 
     mapping_rows = list(csv.DictReader(mapping.open(encoding="utf-8", newline="")))
-    assert len(mapping_rows) == 1
-    assert mapping_rows[0]["status"] == "anon"
-    assert mapping_rows[0]["source_documents"] == ""
-    assert mapping_rows[0]["locations"] == ""
-    assert mapping_rows[0]["occurrences"] == ""
+    assert [row["original_value"] for row in mapping_rows] == ["Other Person"]
+    anon_path = tmp_path / "customer-anon.csv"
+    anon_rows = list(csv.DictReader(anon_path.open(encoding="utf-8", newline="")))
+    assert len(anon_rows) == 1
+    assert anon_rows[0]["replacement_value"].startswith("Person-")
+    assert len(anon_rows[0]["replacement_value"].split("Person-", 1)[1]) == 4
+    assert anon_rows[0]["original_value"] == "Sample Person"
+    assert anon_rows[0]["value_type"] == "name"
+    assert anon_rows[0]["vip"] == ""
 
     ignore_path = tmp_path / "customer-ignore.csv"
     ignore_rows = list(csv.DictReader(ignore_path.open(encoding="utf-8", newline="")))
     assert ignore_rows == [{"original_value": "Sensitive", "value_type": "string"}]
+
+
+def test_update_text_mapping_adds_and_preserves_vip_column(tmp_path):
+    source = tmp_path / "document.md"
+    source.write_text("Sample Person", encoding="utf-8")
+    mapping = tmp_path / "mapping.csv"
+    mapping.write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "anon,Person-001,Sample Person,name,doc.md,line 1,1\n",
+        encoding="utf-8",
+    )
+
+    update_text_mapping(source, mapping)
+
+    anon_path = tmp_path / "mapping-anon.csv"
+    row = next(csv.DictReader(anon_path.open(encoding="utf-8", newline="")))
+    assert row["vip"] == ""
+
+    vip_mapping = tmp_path / "vip_mapping.csv"
+    vip_mapping.write_text(
+        "status,replacement_value,original_value,value_type,vip,source_documents,locations,occurrences\n"
+        "anon,Person-001,Sample Person,name,yes,doc.md,line 1,1\n",
+        encoding="utf-8",
+    )
+
+    update_text_mapping(source, vip_mapping)
+
+    vip_anon_path = tmp_path / "vip-anon.csv"
+    row = next(csv.DictReader(vip_anon_path.open(encoding="utf-8", newline="")))
+    assert row["vip"] == "yes"
 
 
 def test_update_text_mapping_regenerates_short_replacements(tmp_path):
@@ -591,7 +639,8 @@ def test_update_text_mapping_regenerates_short_replacements(tmp_path):
 
     update_text_mapping(source, mapping, replacement_length=4)
 
-    row = next(csv.DictReader(mapping.open(encoding="utf-8", newline="")))
+    anon_path = tmp_path / "mapping-anon.csv"
+    row = next(csv.DictReader(anon_path.open(encoding="utf-8", newline="")))
     assert row["replacement_value"].startswith("Person-")
     assert len(row["replacement_value"].split("Person-", 1)[1]) == 4
 

@@ -12,6 +12,7 @@
 - **A08 Markdown adapter** preserves code blocks, inline code, link destinations, and raw URLs.
 - **A09 Output safety** refuses to overwrite source or existing output files unless explicitly requested.
 - **A10 Package isolation** allows the anonymization core to run without document parser dependencies.
+- **A11 Mapping separation** moves approved `anon` rows to the sibling `*-anon.csv` file and mapping consumers resolve that file automatically.
 
 ## Test levels
 

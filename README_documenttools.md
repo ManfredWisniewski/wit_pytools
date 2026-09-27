@@ -215,6 +215,7 @@ Outputs use:
 ```text
 document_candidates.csv
 document_mapping.csv
+document-anon.csv
 document_anon.md
 ```
 
@@ -241,10 +242,12 @@ automatically. They can be added manually to the mapping by combining multiple
 original values in one row with semicolons:
 
 ```csv
-status,replacement_value,original_value,value_type,source_documents,locations,occurrences
-anon,Person-b7d,"Herr Schmidt; Schmidt",name,,,
+status,replacement_value,original_value,value_type,vip,source_documents,locations,occurrences
+anon,Person-b7d,"Herr Schmidt; Schmidt",name,,,,
 ```
 
+On the next mapping update, `anon` rows are moved to the sibling approved file
+`document-anon.csv`; functions that apply mappings use that file automatically.
 This applies the same replacement to both `Mr Schmidt` and `Schmidt`. The mapping
 parser strips whitespace around semicolon-separated values. Names in fenced
 code, inline code, link destinations and raw URLs are not candidates.

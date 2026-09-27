@@ -18,11 +18,13 @@ CANDIDATE_COLUMNS = [
     "occurrences",
 ]
 MAPPING_COLUMNS = ["replacement_value", "original_value", "value_type"]
+ANON_COLUMNS = [*MAPPING_COLUMNS, "vip"]
 MAPPING_STATUS_COLUMNS = [
     "status",
     "replacement_value",
     "original_value",
     "value_type",
+    "vip",
     "source_documents",
     "locations",
     "occurrences",
@@ -52,6 +54,18 @@ def mapping_path_for_candidates(candidate_path: Path) -> Path:
     if stem.endswith(suffix):
         stem = stem[: -len(suffix)]
     return candidate_path.with_name(f"{stem}_mapping.csv")
+
+
+def anon_path_for_mapping(mapping_path: Path) -> Path:
+    """Return the approved mapping path belonging to a proposal mapping."""
+    stem = mapping_path.stem
+    for suffix in ("-mapping", "_mapping"):
+        if stem.endswith(suffix):
+            stem = stem[: -len(suffix)]
+            break
+    if not stem.endswith("-anon"):
+        stem = f"{stem}-anon"
+    return mapping_path.with_name(f"{stem}.csv")
 
 
 def contains_value(container: str, contained: str) -> bool:
@@ -246,6 +260,7 @@ def read_mapping_rows(mapping_path: Path) -> List[Dict[str, str]]:
                 "original_value": original,
                 "value_type": value_type,
                 "status": status,
+                "vip": row.get("vip", "") or "",
                 "source_documents": row.get("source_documents", "") or "",
                 "locations": row.get("locations", "") or "",
                 "occurrences": row.get("occurrences", "") or "",
@@ -255,6 +270,11 @@ def read_mapping_rows(mapping_path: Path) -> List[Dict[str, str]]:
 
 
 def mapping_path_rows(mapping_path: Path) -> Dict[str, str]:
+    """Read approved values, preferring the sibling ``*-anon.csv`` file."""
+    mapping_path = Path(mapping_path)
+    anon_path = anon_path_for_mapping(mapping_path)
+    if anon_path != mapping_path and anon_path.is_file():
+        mapping_path = anon_path
     mapping = {}
     for row in read_mapping_rows(mapping_path):
         if row["status"] != "anon":

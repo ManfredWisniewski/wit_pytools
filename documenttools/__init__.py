@@ -11,14 +11,18 @@ from typing import Any, Dict, List, Optional, Sequence
 from eliot import log_message
 
 from wit_pytools.anonymization import (
+    ANON_COLUMNS,
     CANDIDATE_COLUMNS,
+    MAPPING_STATUS_COLUMNS,
     CandidateCollector,
+    anon_path_for_mapping,
     detect_presidio_candidates,
     detect_text_candidates,
     is_date_string,
     load_name_catalog,
     mapping_matches_parts,
     mapping_path_rows,
+    read_mapping_rows,
     replace_related_values,
     replace_text_parts,
     replacement_for,
@@ -502,11 +506,15 @@ def update_text_mapping(
     mapping_file = Path(mapping_path)
     if not input_path.is_file():
         raise FileNotFoundError(input_path)
-    existing_documents = []
-    if mapping_file.exists():
-        from wit_pytools.anonymization import read_mapping_rows
-
-        existing_documents = read_mapping_rows(mapping_file)
+    anon_file = anon_path_for_mapping(mapping_file)
+    if anon_file.resolve() == mapping_file.resolve():
+        raise ValueError(
+            "The proposal mapping path must not be the anon mapping path"
+        )
+    existing_documents = (
+        read_mapping_rows(mapping_file) if mapping_file.exists() else []
+    )
+    anon_rows = read_mapping_rows(anon_file) if anon_file.exists() else []
 
     ignore_path = _ignore_path_for_mapping(mapping_file)
     ignore_rows = _read_ignore_rows(ignore_path)
@@ -515,7 +523,6 @@ def update_text_mapping(
         for row in ignore_rows
         if row["original_value"].strip()
     }
-    anon_values = set()
     rows = []
     for row in existing_documents:
         originals = {
@@ -535,11 +542,28 @@ def update_text_mapping(
                     ignored_values.add(original)
             continue
         if row["status"] == "anon":
-            anon_values.update(originals)
-            row["source_documents"] = ""
-            row["locations"] = ""
-            row["occurrences"] = ""
+            anon_rows.append(row)
+            continue
         rows.append(row)
+
+    unique_anon_rows = []
+    seen_anon_values = set()
+    for row in anon_rows:
+        originals = []
+        for original in row["original_value"].split(";"):
+            original = original.strip()
+            if original and original not in seen_anon_values:
+                originals.append(original)
+                seen_anon_values.add(original)
+        if not originals:
+            continue
+        row["original_value"] = ";".join(originals)
+        row["source_documents"] = ""
+        row["locations"] = ""
+        row["occurrences"] = ""
+        unique_anon_rows.append(row)
+    anon_rows = unique_anon_rows
+    anon_values = seen_anon_values
 
     rows = [
         row
@@ -552,7 +576,7 @@ def update_text_mapping(
             )
         )
     ]
-    for row in rows:
+    for row in [*anon_rows, *rows]:
         if row["status"] not in {"anon", "new"}:
             continue
         if replacement_token_length(
@@ -578,6 +602,20 @@ def update_text_mapping(
         )
     ignore_rows = unique_ignore_rows
     _write_ignore_rows(ignore_path, ignore_rows)
+    if anon_rows or anon_file.exists():
+        write_csv(
+            anon_file,
+            ANON_COLUMNS,
+            [
+                {
+                    "replacement_value": row["replacement_value"],
+                    "original_value": row["original_value"],
+                    "value_type": row["value_type"],
+                    "vip": row.get("vip", "") or "",
+                }
+                for row in anon_rows
+            ],
+        )
     known = ignored_values | anon_values | {
         original.strip()
         for row in rows
@@ -634,6 +672,7 @@ def update_text_mapping(
                 "original_value": candidate["original_value"],
                 "value_type": candidate["value_type"],
                 "status": "new",
+                "vip": "",
                 "source_documents": candidate["worksheet"],
                 "locations": candidate["cell"],
                 "occurrences": str(candidate["occurrences"]),
@@ -644,15 +683,7 @@ def update_text_mapping(
     with mapping_file.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
             handle,
-            fieldnames=[
-                "status",
-                "replacement_value",
-                "original_value",
-                "value_type",
-                "source_documents",
-                "locations",
-                "occurrences",
-            ],
+            fieldnames=MAPPING_STATUS_COLUMNS,
         )
         writer.writeheader()
         writer.writerows(rows)
@@ -713,7 +744,8 @@ def anonymize_xlsx(
     _require_openpyxl()
     input_path = _xlsx_path(file_path)
     reviewed_mapping_path = Path(mapping_path)
-    if not reviewed_mapping_path.is_file():
+    anon_mapping_path = anon_path_for_mapping(reviewed_mapping_path)
+    if not reviewed_mapping_path.is_file() and not anon_mapping_path.is_file():
         raise FileNotFoundError(reviewed_mapping_path)
     mapping = mapping_path_rows(reviewed_mapping_path)
     anonymized_path = (
