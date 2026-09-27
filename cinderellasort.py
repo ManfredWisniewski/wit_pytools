@@ -13,6 +13,7 @@ from wit_pytools.documenttools import (
     anonymize_text,
     document_find_regex,
     mapping_matches_text,
+    reset_ignore_file,
     update_text_mapping,
 )
 from eliot import log_message
@@ -739,7 +740,12 @@ def _docprep_pdf(source, output_path, settings):
     return output
 
 
-def process_pending_docprep_anonymization(targetdir, settings):
+def process_pending_docprep_anonymization(
+    targetdir,
+    settings,
+    *,
+    ignore_append=False,
+):
     """Anonymize existing target Markdown files that still need processing."""
     if not settings['anonymize']:
         return
@@ -759,7 +765,11 @@ def process_pending_docprep_anonymization(targetdir, settings):
         if anonymized_path.exists() and not settings['anonymize_update']:
             continue
         try:
-            handle_docprep_anonymization(markdown_path, settings)
+            handle_docprep_anonymization(
+                markdown_path,
+                settings,
+                ignore_append=ignore_append,
+            )
         except Exception as e:
             log_message(
                 f"Pending Doc_prep anonymization failed for {markdown_path}: {e}",
@@ -772,6 +782,8 @@ def handle_docprep_anonymization(
     settings,
     output_path=None,
     remove_source=None,
+    *,
+    ignore_append=False,
 ):
     """Collect proposals and optionally apply approved mappings to Markdown."""
     if not settings['anonymize']:
@@ -805,6 +817,8 @@ def handle_docprep_anonymization(
         ignore_numbers=settings.get('anonymize_ignore_numbers', False),
         ignore_emails=settings.get('anonymize_ignore_emails', False),
         ignore_dates=settings.get('anonymize_ignore_dates', False),
+        ignore_save=settings.get('anonymize_ignore_save', False),
+        ignore_append=ignore_append,
     )
     log_message(f"Doc_prep anonymization: updated mapping {mapping_path}", level="INFO")
     print(f"Doc_prep anonymization: updated mapping {mapping_path}")
@@ -904,6 +918,7 @@ def docprep_settings(config_object):
         'anonymize_ignore_numbers': (section.get('anonymize_ignore_numbers', 'false') or 'false').strip().lower() == 'true',
         'anonymize_ignore_emails': (section.get('anonymize_ignore_emails', 'false') or 'false').strip().lower() == 'true',
         'anonymize_ignore_dates': (section.get('anonymize_ignore_dates', 'false') or 'false').strip().lower() == 'true',
+        'anonymize_ignore_save': (section.get('anonymize_ignore_save', 'false') or 'false').strip().lower() == 'true',
         'anonymize_mapping_file': mapping_file or None,
         'anonymize_update': (section.get('anonymize_update', 'false') or 'false').strip().lower() == 'true',
         'anonymize_keep_originals': (section.get('anonymize-keep-originals', 'false') or 'false').strip().lower() == 'true',
@@ -914,6 +929,22 @@ def docprep_settings(config_object):
         'anonymize_name_dataset_debug': (section.get('anonymize_name_dataset_debug', 'false') or 'false').strip().lower() == 'true',
         'anonymize_name_exclusions': csv_values('anonymize_name_exclusions'),
     }
+
+
+def _prepare_docprep_ignore_save(settings):
+    """Reset the saved-ignore CSV before a multi-file anonymization run."""
+    if not (
+        settings['anonymize']
+        and settings['anonymize_ignore_save']
+        and settings['anonymize_mapping_file']
+    ):
+        return False
+    ignore_path = reset_ignore_file(settings['anonymize_mapping_file'])
+    log_message(
+        f"Doc_prep anonymization: reset saved-ignore file {ignore_path}",
+        level="INFO",
+    )
+    return True
 
 
 def _docprep_output_path(targetdir, relative_path, cleaned_name, bowl):
@@ -951,7 +982,7 @@ def _find_existing_docprep_markup(targetdir, output_path, relative_path, bowl):
     return None
 
 
-def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
+def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, *, ignore_append=False):
     """Create Markdown in targetdir while preserving source documents."""
     settings = docprep_settings(config_object)
     source = file if isinstance(file, Path) else Path(os.path.join(sourcedir, str(file)))
@@ -995,6 +1026,7 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
                         settings,
                         output_path=anonymized_output,
                         remove_source=True,
+                        ignore_append=ignore_append,
                     )
                 return True
 
@@ -1026,6 +1058,7 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
                     settings,
                     output_path=anonymized_output,
                     remove_source=not settings.get('anonymize_keep_originals', False),
+                    ignore_append=ignore_append,
                 )
             except Exception as e:
                 message = f"Doc_prep anonymization failed for {paired_markup.name}: {e}"
@@ -1070,6 +1103,7 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
                 output_path,
                 settings,
                 remove_source=keep_originals,
+                ignore_append=ignore_append,
             )
         except Exception as e:
             message = f"Doc_prep anonymization failed for {output_path.name}: {e}"
@@ -1232,7 +1266,7 @@ def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
             log_message(f"Error handling PDF file {file.name}: {e}", level="ERROR")
     return
 
-def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None, skip_unmatched=True, check_content=False):
+def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None, skip_unmatched=True, check_content=False, ignore_append=False):
     # First check if the file matches any of the specified file types
     file_matches_type = False
     file_ext = ''
@@ -1253,7 +1287,20 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
         docprep_bowl = bowldir_docprep(nfile, config_object)
         if docprep_bowl:
             print("Handle Doc_prep Bowls")
-            handle_docprep(file, sourcedir, targetdir, docprep_bowl, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite)
+            handle_docprep(
+                file,
+                sourcedir,
+                targetdir,
+                docprep_bowl,
+                clean,
+                clean_nocase,
+                config_object,
+                filemode,
+                replacements,
+                dryrun,
+                overwrite,
+                ignore_append=ignore_append,
+            )
             return
 
     ## Handle image generation bowls (prompt files) ##
@@ -1358,6 +1405,21 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                 movefile(sourcedir, file, targetdir, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
 
 ## MAIN cinderellasort execution ##
+def _validate_source_target_dirs(sourcedir, targetdir):
+    """Reject source and target directory combinations that allow reprocessing."""
+    source_path = Path(sourcedir).resolve()
+    target_path = Path(targetdir).resolve()
+
+    if source_path == target_path:
+        raise ValueError('sourcedir and targetdir must not be the same directory')
+
+    try:
+        target_path.relative_to(source_path)
+    except ValueError:
+        return
+    raise ValueError('targetdir must not be inside sourcedir')
+
+
 def _walk_source(sourcedir, recursive):
     """Yield source directory contents recursively or at one level."""
     if recursive:
@@ -1391,6 +1453,7 @@ def cinderellasort(
     # Normalize path separators in source and target directories
     sourcedir = str(table["sourcedir"]).replace('\\', '/').replace('//', '/')
     targetdir = str(table["targetdir"]).replace('\\', '/').replace('//', '/')
+    _validate_source_target_dirs(sourcedir, targetdir)
     ftype_sort = (table["ftype_sort"].casefold())
     ftype_delete = (table["ftype_delete"].casefold()) if "ftype_delete" in table else "NOTdefined"
     clean = (table["clean"]) if "clean" in table else "NOTdefined"
@@ -1444,6 +1507,9 @@ def cinderellasort(
 
     # ADD unzip
 
+    docprep_config = docprep_settings(config_object)
+    ignore_append = not dryrun and _prepare_docprep_ignore_save(docprep_config)
+
     # prepare for sort process
     prepsort(config_object, targetdir)
 
@@ -1457,7 +1523,7 @@ def cinderellasort(
         file_path = Path(os.path.join(file_dir, file_name))
         
         if file_path.is_file():
-            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, skip_unmatched=skip_unmatched, check_content=check_content)
+            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, skip_unmatched=skip_unmatched, check_content=check_content, ignore_append=ignore_append)
     else:
         # First pass: delete unwanted files in directories with valid sorts
         print("Running cinderellasort in all-files mode")
@@ -1539,7 +1605,7 @@ def cinderellasort(
                 # Get directory name and file count for this file
                 dirname = os.path.basename(root) if use_directory_name else None
                 dir_count = dir_file_counts.get(root, 0) if use_directory_name else None
-                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname, skip_unmatched, check_content=check_content)
+                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname, skip_unmatched, check_content=check_content, ignore_append=ignore_append)
                 processed_files += 1
         log_message(f"Processed {processed_files} files in {sourcedir} and subdirectories")
         
@@ -1583,7 +1649,11 @@ def cinderellasort(
         else:
             print(' #  No valid sort found!') 
 
-    process_pending_docprep_anonymization(targetdir, docprep_settings(config_object))
+    process_pending_docprep_anonymization(
+        targetdir,
+        docprep_config,
+        ignore_append=ignore_append,
+    )
 
     print(f"\n## Removing empty directories:")
     rmemptydir(sourcedir,dryrun)
