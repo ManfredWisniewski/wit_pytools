@@ -29,11 +29,33 @@ DATASET_FILES = {
     "forenames": "common-forenames-by-country.csv",
     "surnames": "common-surnames-by-country.csv",
 }
-GERMAN_DATASET_FILES = {
+GERMAN_DICTIONARY_FILES = {
+    "abbreviations": "abbreviation.txt",
+    "adjectives": "adjective.txt",
+    "adverbs": "adverb.txt",
+    "articles": "article.txt",
+    "comparatives": "comparative.txt",
+    "conjunctions": "conjunction.txt",
+    "contractions": "contraction.txt",
+    "interjections": "interjection.txt",
+    "noun_plurals": "noun-plural.txt",
     "nouns": "noun.txt",
+    "numbers": "number.txt",
+    "particle_answers": "particle-antwort.txt",
+    "particles": "particle.txt",
+    "postpositions": "postposition.txt",
+    "preposition_articles": "preposition-with-article.txt",
+    "prepositions": "preposition.txt",
+    "pronouns": "pronoun.txt",
+    "subjunctions": "subjunction.txt",
+    "superlatives": "superlative.txt",
+    "verbs": "verb.txt",
+}
+GERMAN_NAME_FILES = {
     "forenames": "noun-proper-first-name.txt",
     "surnames": "noun-proper-surname.txt",
 }
+GERMAN_DATASET_FILES = {**GERMAN_DICTIONARY_FILES, **GERMAN_NAME_FILES}
 COUNTRY_PATTERN = re.compile(r"^[A-Z]{2}$")
 TOKEN_PATTERN = re.compile(r"[^\W_]+(?:[-'][^\W_]+)*", re.UNICODE)
 MIN_DICTIONARY_SUBSTRING_LENGTH = 3
@@ -48,7 +70,7 @@ class NameDatasetUnavailableError(RuntimeError):
 
 @dataclass(frozen=True)
 class NameCatalog:
-    """Normalized forename and surname sets for selected countries."""
+    """Normalized name and dictionary sets for selected countries."""
 
     countries: frozenset[str]
     forenames: frozenset[str]
@@ -169,11 +191,9 @@ def _cache_files(cache_dir: Path) -> tuple[Path, Path, Path]:
     )
 
 
-def _german_cache_files(cache_dir: Path) -> tuple[Path, Path, Path]:
-    return (
-        cache_dir / GERMAN_DATASET_FILES["nouns"],
-        cache_dir / GERMAN_DATASET_FILES["forenames"],
-        cache_dir / GERMAN_DATASET_FILES["surnames"],
+def _german_cache_files(cache_dir: Path) -> tuple[Path, ...]:
+    return tuple(
+        cache_dir / filename for filename in GERMAN_DATASET_FILES.values()
     )
 
 
@@ -196,10 +216,13 @@ def _load_cache(
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     german_contents = None
     if german:
-        german_contents = tuple(
-            path.read_text(encoding="utf-8-sig")
-            for path in _german_cache_files(cache_dir)
-        )
+        german_contents = {
+            dataset: path.read_text(encoding="utf-8-sig")
+            for dataset, path in zip(
+                GERMAN_DATASET_FILES,
+                _german_cache_files(cache_dir),
+            )
+        }
     catalog = _catalog_from_csv(
         forenames_path.read_text(encoding="utf-8-sig"),
         surnames_path.read_text(encoding="utf-8-sig"),
@@ -222,15 +245,18 @@ def _write_cache(
     forenames: str,
     surnames: str,
     german_commit: Optional[str] = None,
-    german_contents: Optional[tuple[str, str, str]] = None,
+    german_contents: Optional[dict[str, str]] = None,
 ) -> None:
     cache_dir.mkdir(parents=True, exist_ok=True)
     forenames_path, surnames_path, metadata_path = _cache_files(cache_dir)
     forenames_path.write_text(forenames, encoding="utf-8")
     surnames_path.write_text(surnames, encoding="utf-8")
     if german_contents is not None:
-        for path, content in zip(_german_cache_files(cache_dir), german_contents):
-            path.write_text(content, encoding="utf-8")
+        for dataset, path in zip(
+            GERMAN_DATASET_FILES,
+            _german_cache_files(cache_dir),
+        ):
+            path.write_text(german_contents[dataset], encoding="utf-8")
     metadata_path.write_text(
         json.dumps(
             {
@@ -253,7 +279,7 @@ def _catalog_from_csv(
     surnames_csv: str,
     countries: tuple[str, ...],
     exclusions: frozenset[str] = DEFAULT_NAME_EXCLUSIONS,
-    german_contents: Optional[tuple[str, str, str]] = None,
+    german_contents: Optional[dict[str, str]] = None,
 ) -> NameCatalog:
     requested = set(countries)
     forenames = set()
@@ -280,20 +306,20 @@ def _catalog_from_csv(
                     surnames.add(_normalize(value))
 
     if german_contents is not None and "DE" in requested:
-        noun_text, german_forenames, german_surnames = german_contents
-        noun_words.update(
-            _normalize(line)
-            for line in noun_text.splitlines()
-            if line.strip()
-        )
+        for dataset in GERMAN_DICTIONARY_FILES:
+            noun_words.update(
+                _normalize(line)
+                for line in german_contents[dataset].splitlines()
+                if line.strip()
+            )
         forenames.update(
             _normalize(line)
-            for line in german_forenames.splitlines()
+            for line in german_contents["forenames"].splitlines()
             if line.strip()
         )
         surnames.update(
             _normalize(line)
-            for line in german_surnames.splitlines()
+            for line in german_contents["surnames"].splitlines()
             if line.strip()
         )
         available.add("DE")
@@ -383,10 +409,10 @@ def load_name_catalog(
         surnames = _fetch_text("surnames")
         german_contents = None
         if german_enabled:
-            german_contents = tuple(
-                _fetch_german_text(dataset)
-                for dataset in ("nouns", "forenames", "surnames")
-            )
+            german_contents = {
+                dataset: _fetch_german_text(dataset)
+                for dataset in GERMAN_DATASET_FILES
+            }
         _write_cache(
             target_dir,
             commit,

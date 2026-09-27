@@ -128,6 +128,7 @@ def test_presidio_recommendation_filters(monkeypatch):
         frozenset({"garden"}),
     )
 
+    ignored_candidates = []
     candidates = detect_presidio_candidates(
         content,
         "sample.md",
@@ -136,9 +137,18 @@ def test_presidio_recommendation_filters(monkeypatch):
         ignore_numbers=True,
         ignore_emails=True,
         ignore_dates=True,
+        ignored_candidates=ignored_candidates,
     )
 
     assert candidates == []
+    assert [
+        candidate.original_value for candidate in ignored_candidates
+    ] == [
+        "test@example.com",
+        "12345",
+        "Garden",
+        "12.03.2025",
+    ]
 
 
 def test_replacement_proposals_are_deterministic():

@@ -30,6 +30,30 @@ GERMAN_FORENAMES = """Qira
 """
 GERMAN_SURNAMES = """Zol
 """
+GERMAN_TEXTS = {
+    "abbreviations": "Bu\n",
+    "adjectives": "online\n",
+    "adverbs": "online\n",
+    "articles": "der\n",
+    "comparatives": "besser\n",
+    "conjunctions": "und\n",
+    "contractions": "aufs\n",
+    "interjections": "hallo\n",
+    "noun_plurals": "Einkünfte\nWünsche\n",
+    "nouns": GERMAN_NOUNS,
+    "numbers": "drei\n",
+    "particle_answers": "bitte\n",
+    "particles": "nicht\n",
+    "postpositions": "zufolge\n",
+    "preposition_articles": "beim\n",
+    "prepositions": "mit\n",
+    "pronouns": "unser\nsie\nihre\nihnen\nmeine\n",
+    "subjunctions": "sobald\n",
+    "superlatives": "besten\n",
+    "verbs": "gehen\n",
+    "forenames": GERMAN_FORENAMES,
+    "surnames": GERMAN_SURNAMES,
+}
 
 
 def test_german_nouns_filter_single_name_candidates():
@@ -128,11 +152,7 @@ def test_load_name_catalog_loads_german_wordlist(tmp_path, monkeypatch):
     monkeypatch.setattr(
         name_datasets,
         "_fetch_german_text",
-        lambda dataset: {
-            "nouns": GERMAN_NOUNS,
-            "forenames": GERMAN_FORENAMES,
-            "surnames": GERMAN_SURNAMES,
-        }[dataset],
+        lambda dataset: GERMAN_TEXTS[dataset],
     )
 
     catalog = load_name_catalog(["DE"], cache_dir=tmp_path)
@@ -141,6 +161,30 @@ def test_load_name_catalog_loads_german_wordlist(tmp_path, monkeypatch):
     assert catalog.is_name("Qira")
     assert catalog.is_name("Qira Zol")
     assert not catalog.is_name("Sommer")
+    for value in (
+        "Unser Online",
+        "Sie Ihre Einkünfte",
+        "Ihre Wünsche",
+        "Sobald Ihnen",
+        "Meine Einkünfte",
+        "Der Online",
+        "Der Bu",
+        "Und nicht drei",
+        "Beim Gehen",
+        "Hallo besser",
+        "Aufs Haus",
+        "Der Brief zufolge",
+    ):
+        assert catalog.is_dictionary_word(value)
+
+    monkeypatch.setattr(
+        name_datasets,
+        "_fetch_german_text",
+        lambda dataset: (_ for _ in ()).throw(AssertionError("downloaded again")),
+    )
+    cached = load_name_catalog(["DE"], cache_dir=tmp_path)
+    assert cached is not None
+    assert cached.is_dictionary_word("Sie Ihre Einkünfte")
 
 
 def test_load_name_catalog_fails_without_cache(monkeypatch, tmp_path):

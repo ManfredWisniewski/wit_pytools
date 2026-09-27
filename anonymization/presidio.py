@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Iterable, List, Optional, Sequence, Tuple
 
-from .candidates import CandidateCollector, is_date_string
+from .candidates import CandidateCollector, is_date_string, replacement_for
 from .models import Candidate
 
 
@@ -73,6 +73,7 @@ def detect_presidio_candidates(
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
     ignore_dates: bool = False,
+    ignored_candidates: Optional[List[Candidate]] = None,
 ) -> List[Candidate]:
     """Detect PII with Presidio and return the common candidate model."""
     analyzer = _create_engine(language, model_name)
@@ -98,14 +99,6 @@ def detect_presidio_candidates(
         if "person-" in value.casefold():
             continue
         entity_type = result.entity_type.upper()
-        if ignore_emails and (entity_type == "EMAIL_ADDRESS" or "@" in value):
-            continue
-        if ignore_numbers and any(character.isdigit() for character in value):
-            continue
-        if ignore_dates and (entity_type == "DATE_TIME" or is_date_string(value)):
-            continue
-        if ignore_dictionary and name_catalog is not None and name_catalog.is_dictionary_word(value):
-            continue
         if entity_type in {"EMAIL_ADDRESS"}:
             value_type = "email"
         elif entity_type in {"URL"}:
@@ -114,6 +107,30 @@ def detect_presidio_candidates(
             value_type = "name"
         else:
             value_type = "string"
+        ignored = (
+            (ignore_emails and (entity_type == "EMAIL_ADDRESS" or "@" in value))
+            or (ignore_numbers and any(character.isdigit() for character in value))
+            or (ignore_dates and (entity_type == "DATE_TIME" or is_date_string(value)))
+            or (
+                ignore_dictionary
+                and name_catalog is not None
+                and name_catalog.is_dictionary_word(value)
+            )
+        )
         line_number = content.count("\n", 0, start) + 1
+        if ignored:
+            if ignored_candidates is not None:
+                candidate = Candidate(
+                    original_value=value,
+                    replacement_value=replacement_for(
+                        value,
+                        value_type,
+                        replacement_length,
+                    ),
+                    value_type=value_type,
+                )
+                candidate.add_location(source_document, f"line {line_number}")
+                ignored_candidates.append(candidate)
+            continue
         collector.add(value, source_document, f"line {line_number}", value_type=value_type)
     return collector.values()

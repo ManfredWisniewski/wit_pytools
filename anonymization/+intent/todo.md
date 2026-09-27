@@ -12,3 +12,8 @@
 
 - [ ] Document the cache location and recovery procedure for users.
 - [ ] Add explicit attribution output or documentation for the CC BY 4.0 German wordlist.
+
+
+## anonymize_ignore_ settings
+- more testing with the ignore settings off to validate efficiency
+- check if the data types from presidio really work, examples only show string and name

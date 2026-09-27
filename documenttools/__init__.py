@@ -328,6 +328,7 @@ def _text_candidate_rows(
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
     ignore_dates: bool = False,
+    ignored_candidates: Optional[List[Any]] = None,
 ) -> List[Dict[str, Any]]:
     protected_spans = _markdown_protected_spans(content)
     if anonymize_mode == "custom":
@@ -352,6 +353,7 @@ def _text_candidate_rows(
             ignore_numbers=ignore_numbers,
             ignore_emails=ignore_emails,
             ignore_dates=ignore_dates,
+            ignored_candidates=ignored_candidates,
         )
         if anonymize_mode == "all":
             candidates = _merge_candidates(
@@ -367,10 +369,9 @@ def _text_candidate_rows(
             candidates = presidio_candidates
     else:
         raise ValueError(f"Unsupported anonymize mode: {anonymize_mode!r}")
-    candidates = [
-        candidate
-        for candidate in candidates
-        if not _candidate_is_ignored(
+    filtered_candidates = []
+    for candidate in candidates:
+        if _candidate_is_ignored(
             candidate.original_value,
             candidate.value_type,
             name_catalog,
@@ -378,9 +379,12 @@ def _text_candidate_rows(
             ignore_numbers=ignore_numbers,
             ignore_emails=ignore_emails,
             ignore_dates=ignore_dates,
-        )
-    ]
-    return _candidate_rows(candidates)
+        ):
+            if ignored_candidates is not None:
+                ignored_candidates.append(candidate)
+            continue
+        filtered_candidates.append(candidate)
+    return _candidate_rows(filtered_candidates)
 
 
 def identify_text_strings(
@@ -480,6 +484,13 @@ def _write_ignore_rows(ignore_path: Path, rows: List[Dict[str, str]]) -> None:
         writer.writerows(rows)
 
 
+def reset_ignore_file(mapping_path: Path | str) -> Path:
+    """Clear the saved-ignore CSV for a new anonymization run."""
+    ignore_path = _ignore_path_for_mapping(Path(mapping_path))
+    _write_ignore_rows(ignore_path, [])
+    return ignore_path
+
+
 def update_text_mapping(
     file_path: Path | str,
     mapping_path: Path | str,
@@ -500,6 +511,8 @@ def update_text_mapping(
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
     ignore_dates: bool = False,
+    ignore_save: bool = False,
+    ignore_append: bool = False,
 ) -> Path:
     """Add newly found text candidates with status ``new``."""
     input_path = Path(file_path)
@@ -517,10 +530,15 @@ def update_text_mapping(
     anon_rows = read_mapping_rows(anon_file) if anon_file.exists() else []
 
     ignore_path = _ignore_path_for_mapping(mapping_file)
-    ignore_rows = _read_ignore_rows(ignore_path)
+    existing_ignore_rows = _read_ignore_rows(ignore_path)
+    if ignore_save:
+        ignore_rows = list(existing_ignore_rows) if ignore_append else []
+    else:
+        ignore_rows = list(existing_ignore_rows)
+    filtered_ignore_rows = []
     ignored_values = {
         row["original_value"].strip()
-        for row in ignore_rows
+        for row in existing_ignore_rows
         if row["original_value"].strip()
     }
     rows = []
@@ -565,17 +583,30 @@ def update_text_mapping(
     anon_rows = unique_anon_rows
     anon_values = seen_anon_values
 
-    rows = [
-        row
-        for row in rows
-        if not (
-            row["status"] == "new"
-            and any(
-                original in ignored_values or original in anon_values
-                for original in row["original_value"].split(";")
+    filtered_rows = []
+    for row in rows:
+        if row["status"] != "new":
+            filtered_rows.append(row)
+            continue
+        originals = [
+            original.strip()
+            for original in row["original_value"].split(";")
+            if original.strip()
+        ]
+        ignored_originals = [
+            original for original in originals if original in ignored_values
+        ]
+        if ignore_save:
+            filtered_ignore_rows.extend(
+                {"original_value": original, "value_type": row["value_type"]}
+                for original in ignored_originals
             )
-        )
-    ]
+        if ignored_originals or any(
+            original in anon_values for original in originals
+        ):
+            continue
+        filtered_rows.append(row)
+    rows = filtered_rows
     for row in [*anon_rows, *rows]:
         if row["status"] not in {"anon", "new"}:
             continue
@@ -590,18 +621,6 @@ def update_text_mapping(
             replacement_length,
         )
 
-    unique_ignore_rows = []
-    seen_ignore_values = set()
-    for row in ignore_rows:
-        original = row["original_value"].strip()
-        if not original or original in seen_ignore_values:
-            continue
-        seen_ignore_values.add(original)
-        unique_ignore_rows.append(
-            {"original_value": original, "value_type": row["value_type"]}
-        )
-    ignore_rows = unique_ignore_rows
-    _write_ignore_rows(ignore_path, ignore_rows)
     if anon_rows or anon_file.exists():
         write_csv(
             anon_file,
@@ -630,13 +649,21 @@ def update_text_mapping(
         debug=debug,
         name_exclusions=name_exclusions,
     )
-    rows = [
-        row
-        for row in rows
-        if row["status"] != "new"
-        or not any(
-            _candidate_is_ignored(
-                original.strip(),
+    filtered_rows = []
+    for row in rows:
+        if row["status"] != "new":
+            filtered_rows.append(row)
+            continue
+        originals = [
+            original.strip()
+            for original in row["original_value"].split(";")
+            if original.strip()
+        ]
+        ignored_originals = [
+            original
+            for original in originals
+            if _candidate_is_ignored(
+                original,
                 row["value_type"],
                 name_catalog,
                 ignore_dictionary=ignore_dictionary,
@@ -644,10 +671,21 @@ def update_text_mapping(
                 ignore_emails=ignore_emails,
                 ignore_dates=ignore_dates,
             )
-            for original in row["original_value"].split(";")
-            if original.strip()
-        )
-    ]
+        ]
+        if ignored_originals:
+            if ignore_save:
+                filtered_ignore_rows.extend(
+                    {
+                        "original_value": original,
+                        "value_type": row["value_type"],
+                    }
+                    for original in ignored_originals
+                )
+            continue
+        filtered_rows.append(row)
+    rows = filtered_rows
+
+    ignored_candidates = []
     candidates = _text_candidate_rows(
         input_path.read_text(encoding="utf-8"),
         input_path.name,
@@ -662,9 +700,25 @@ def update_text_mapping(
         ignore_numbers=ignore_numbers,
         ignore_emails=ignore_emails,
         ignore_dates=ignore_dates,
+        ignored_candidates=ignored_candidates if ignore_save else None,
     )
+    if ignore_save:
+        filtered_ignore_rows.extend(
+            {
+                "original_value": candidate.original_value,
+                "value_type": candidate.value_type,
+            }
+            for candidate in ignored_candidates
+        )
     for candidate in candidates:
         if candidate["original_value"] in known:
+            if ignore_save and candidate["original_value"] in ignored_values:
+                filtered_ignore_rows.append(
+                    {
+                        "original_value": candidate["original_value"],
+                        "value_type": candidate["value_type"],
+                    }
+                )
             continue
         rows.append(
             {
@@ -679,6 +733,20 @@ def update_text_mapping(
             }
         )
         known.add(candidate["original_value"])
+
+    ignore_rows.extend(filtered_ignore_rows)
+    unique_ignore_rows = []
+    seen_ignore_values = set()
+    for row in ignore_rows:
+        original = row["original_value"].strip()
+        if not original or original in seen_ignore_values:
+            continue
+        seen_ignore_values.add(original)
+        unique_ignore_rows.append(
+            {"original_value": original, "value_type": row["value_type"]}
+        )
+    _write_ignore_rows(ignore_path, unique_ignore_rows)
+
     mapping_file.parent.mkdir(parents=True, exist_ok=True)
     with mapping_file.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(

@@ -565,6 +565,106 @@ def test_update_text_mapping_removes_existing_ignored_recommendations(tmp_path, 
     )
 
     assert list(csv.DictReader(mapping.open(encoding="utf-8", newline=""))) == []
+    ignore_rows = list(
+        csv.DictReader(
+            (tmp_path / "customer-ignore.csv").open(
+                encoding="utf-8", newline=""
+            )
+        )
+    )
+    assert ignore_rows == []
+
+
+def test_update_text_mapping_saves_filtered_proposals(tmp_path, monkeypatch):
+    source = tmp_path / "document.md"
+    source.write_text(
+        "Valid Person test@example.com Garden",
+        encoding="utf-8",
+    )
+    mapping = tmp_path / "customer-anon-mapping.csv"
+    mapping.write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "keep,ignored-replacement,Sensitive,string,doc.md,line 1,1\n"
+        "new,person-001,test@example.com,email,doc.md,line 1,1\n"
+        "new,value-002,12345,string,doc.md,line 1,1\n"
+        "new,value-003,Garden,string,doc.md,line 1,1\n"
+        "new,value-004,12.03.2025,string,doc.md,line 1,1\n"
+        "new,Person-005,Valid Person,name,doc.md,line 1,1\n",
+        encoding="utf-8",
+    )
+    ignore_path = tmp_path / "customer-anon-ignore.csv"
+    ignore_path.write_text(
+        "original_value,value_type\nStale Ignore,string\n",
+        encoding="utf-8",
+    )
+
+    class Catalog:
+        def is_dictionary_word(self, value):
+            return value.casefold() == "garden"
+
+        def is_name(self, value):
+            return value == "Garden"
+
+    monkeypatch.setattr(
+        "wit_pytools.documenttools.load_name_catalog",
+        lambda *args, **kwargs: Catalog(),
+    )
+
+    update_text_mapping(
+        source,
+        mapping,
+        ignore_dictionary=True,
+        ignore_numbers=True,
+        ignore_emails=True,
+        ignore_dates=True,
+        ignore_save=True,
+    )
+
+    mapping_rows = list(csv.DictReader(mapping.open(encoding="utf-8", newline="")))
+    assert [row["original_value"] for row in mapping_rows] == ["Valid Person"]
+    ignore_rows = list(
+        csv.DictReader(ignore_path.open(encoding="utf-8", newline=""))
+    )
+    assert ignore_rows == [
+        {"original_value": "Sensitive", "value_type": "string"},
+        {"original_value": "test@example.com", "value_type": "email"},
+        {"original_value": "12345", "value_type": "string"},
+        {"original_value": "Garden", "value_type": "string"},
+        {"original_value": "12.03.2025", "value_type": "string"},
+    ]
+
+
+def test_update_text_mapping_overwrites_saved_ignore_rows(tmp_path, monkeypatch):
+    source = tmp_path / "document.md"
+    source.write_text("first@example.com", encoding="utf-8")
+    mapping = tmp_path / "customer-anon-mapping.csv"
+    header = (
+        "status,replacement_value,original_value,value_type,"
+        "source_documents,locations,occurrences\n"
+    )
+    mapping.write_text(
+        header + "new,person-001,first@example.com,email,doc.md,line 1,1\n",
+        encoding="utf-8",
+    )
+
+    update_text_mapping(source, mapping, ignore_emails=True, ignore_save=True)
+
+    ignore_path = tmp_path / "customer-anon-ignore.csv"
+    assert list(csv.DictReader(ignore_path.open(encoding="utf-8", newline=""))) == [
+        {"original_value": "first@example.com", "value_type": "email"}
+    ]
+
+    source.write_text("second@example.com", encoding="utf-8")
+    mapping.write_text(
+        header + "new,person-002,second@example.com,email,doc.md,line 1,1\n",
+        encoding="utf-8",
+    )
+
+    update_text_mapping(source, mapping, ignore_emails=True, ignore_save=True)
+
+    assert list(csv.DictReader(ignore_path.open(encoding="utf-8", newline=""))) == [
+        {"original_value": "second@example.com", "value_type": "email"}
+    ]
 
 
 def test_update_text_mapping_moves_keep_rows_to_ignore_file(tmp_path):

@@ -134,6 +134,49 @@ def test_recursive_false_processes_only_source_root(tmp_path):
     assert (nested / "nested.txt").is_file()
 
 
+def _write_path_safety_config(tmp_path, source_dir, target_dir):
+    config = ConfigParser()
+    config.optionxform = str
+    config["TABLE"] = {
+        "sourcedir": str(source_dir),
+        "targetdir": str(target_dir),
+        "ftype_sort": ".txt",
+        "filemode": "win",
+    }
+    config["SETTINGS"] = {}
+    config_path = tmp_path / "path-safety.ini"
+    with config_path.open("w", encoding="utf-8") as fp:
+        config.write(fp)
+    return config_path
+
+
+def test_same_source_and_target_directory_fails(tmp_path):
+    source_dir = tmp_path / "source"
+    source_dir.mkdir()
+    source_file = source_dir / "sample.txt"
+    source_file.write_text("data", encoding="utf-8")
+    config_path = _write_path_safety_config(tmp_path, source_dir, source_dir)
+
+    with pytest.raises(ValueError, match="must not be the same directory"):
+        cinderellasort(str(config_path), dryrun=False)
+
+    assert source_file.is_file()
+
+
+def test_target_inside_source_directory_fails(tmp_path):
+    source_dir = tmp_path / "source"
+    target_dir = source_dir / "target"
+    target_dir.mkdir(parents=True)
+    source_file = source_dir / "sample.txt"
+    source_file.write_text("data", encoding="utf-8")
+    config_path = _write_path_safety_config(tmp_path, source_dir, target_dir)
+
+    with pytest.raises(ValueError, match="must not be inside sourcedir"):
+        cinderellasort(str(config_path), dryrun=False)
+
+    assert source_file.is_file()
+
+
 def test_ftype_delete_applies_in_nested_directories(tmp_path):
     sourcedir = tmp_path / "source"
     sourcedir.mkdir()
@@ -657,6 +700,34 @@ def test_docprep_pending_anonymization_scans_existing_target_markdown(tmp_path):
     assert (source_dir / "source-anon.csv").is_file()
 
 
+def test_docprep_ignore_save_collects_all_pending_documents(tmp_path):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        docprep_section={
+            "anonymize": "true",
+            "anonymize_ignore_emails": "true",
+            "anonymize_ignore_save": "true",
+            "anonymize-keep-originals": "true",
+        },
+    )
+    (source_dir / "Rechnung 2026.pdf").unlink()
+    (target_dir / "first.md").write_text("first@example.com", encoding="utf-8")
+    (target_dir / "second.md").write_text("second@example.com", encoding="utf-8")
+    ignore_path = source_dir / "source-anon-ignore.csv"
+    ignore_path.write_text(
+        "original_value,value_type\nstale@example.com,email\n",
+        encoding="utf-8",
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    rows = list(csv.DictReader(ignore_path.open(encoding="utf-8", newline="")))
+    assert {row["original_value"] for row in rows} == {
+        "first@example.com",
+        "second@example.com",
+    }
+
+
 def test_docprep_settings_defaults(tmp_path):
     config = ConfigParser()
     config.optionxform = str
@@ -667,6 +738,7 @@ def test_docprep_settings_defaults(tmp_path):
     assert settings["anonymize_mode"] == "custom"
     assert settings["anonymize_use_name_datasets"] is None
     assert settings["anonymize_keep_originals"] is False
+    assert settings["anonymize_ignore_save"] is False
     assert settings["anonymize_mapping_file"] is None
     config["TABLE"] = {"sourcedir": str(tmp_path / "source")}
     config["DOCPREP"] = {
@@ -678,6 +750,7 @@ def test_docprep_settings_defaults(tmp_path):
         "anonymize_name_exclusions": "common, word",
         "anonymize-keep-originals": "true",
         "anonymize-mode": "all",
+        "anonymize_ignore_save": "true",
         "anonymize_presidio_score_threshold": "0.7",
     }
     settings = cs.docprep_settings(config)
@@ -689,6 +762,7 @@ def test_docprep_settings_defaults(tmp_path):
     assert settings["anonymize_name_exclusions"] == ("common", "word")
     assert settings["anonymize_keep_originals"] is True
     assert settings["anonymize_mode"] == "all"
+    assert settings["anonymize_ignore_save"] is True
     assert settings["anonymize_presidio_score_threshold"] == 0.7
     assert "DATE_TIME" not in settings["anonymize_presidio_entities"]
     assert "URL" not in settings["anonymize_presidio_entities"]
@@ -697,8 +771,10 @@ def test_docprep_settings_defaults(tmp_path):
     )
     custom_mapping = tmp_path / "custom-mapping.csv"
     config["DOCPREP"]["anonymize_mapping_file"] = str(custom_mapping)
+    config["DOCPREP"]["anonymize_ignore_save"] = "false"
     settings = cs.docprep_settings(config)
     assert settings["anonymize_mapping_file"] == str(custom_mapping)
+    assert settings["anonymize_ignore_save"] is False
 
 
 def test_gen_img_ignore_max_cost_setting():

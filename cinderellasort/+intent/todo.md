@@ -23,6 +23,9 @@
   Markdown. No `_anon.md` file is created when there is no match.
 - `anonymize_update=false` preserves an existing anonymized output;
   `anonymize_update=true` refreshes it using the current approved mapping.
+- `anonymize_ignore_save=false` is off by default; when true, values filtered
+  from proposals are written to `<slug>-anon-ignore.csv`, which is rewritten on
+  each run.
 - JSON mapping support is a future UI-oriented option; CSV remains the current
   manually editable format.
 
