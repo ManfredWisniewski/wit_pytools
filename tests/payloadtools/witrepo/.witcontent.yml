@@ -1,0 +1,17 @@
+collection: pages
+media_collection: media
+include_glob: "**/*_webtext*.md"
+status_regex: "_webtext(?P<sep>[-_])(?P<status>[a-z-]+)$"
+publishable_statuses: [locked, locked-online, online-locked]
+slug_prefixes: [SEOP_]
+route:
+  strip_dir_prefixes: [kategorie_, produkt_, _kategorie_, _produkt_]
+  strip_dir_suffixes: [_produkt]
+  strip_leading_underscore: true
+  overrides:
+    home_webtext_locked.md: /
+meta:
+  briefing_glob: "SEO_*"
+transforms:
+  - pattern: '\[Button:\s*(.+?)\]'
+    replacement: '<button>\1</button>'
