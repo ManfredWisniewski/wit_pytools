@@ -1,0 +1,3 @@
+# Widget
+
+Product index page.

@@ -18,7 +18,9 @@ from wit_pytools.payloadtools.scan import (
 )
 
 REPO = Path(__file__).parent / "payloadtools" / "witrepo"
+DIR_REPO = Path(__file__).parent / "payloadtools" / "dirrepo"
 STATUS_RE = r"_webtext(?P<sep>[-_])(?P<status>[a-z-]+)$"
+DIR_STATUS_RE = r"webtext(?P<sep>[-_])(?P<status>[a-z-]+)$"
 PUBLISHABLE = ["locked", "locked-online", "online-locked"]
 
 
@@ -107,3 +109,33 @@ def test_build_route_index_excludes_skipped():
     assert "notes_webtext_entwurf.md" not in index
     assert index["home_webtext_locked.md"] == "/"
     assert index["kategorie_products/prod_webtext_locked.md"] == "/products/prod"
+
+
+def test_parse_stem_webtext_only_marker():
+    assert parse_stem("webtext-locked", DIR_STATUS_RE) == ("", "locked")
+    assert parse_stem("webtext_online-locked", DIR_STATUS_RE) == (
+        "", "online-locked",
+    )
+    assert parse_stem("webtext", DIR_STATUS_RE) == ("", None)
+
+
+def test_derive_route_empty_slug_uses_directories():
+    route_cfg = load_config(DIR_REPO).route
+    assert derive_route("mdm/webtext-locked.md", "", route_cfg) == "/mdm"
+    assert derive_route("webtext-locked.md", "", route_cfg) == "/"
+    assert derive_route(
+        "produkt_widget/webtext-locked.md", "", route_cfg
+    ) == "/widget"
+
+
+def test_scan_repo_directory_routes():
+    entries = {e.relpath: e for e in scan_repo(load_config(DIR_REPO))}
+    assert len(entries) == 4
+    mdm = entries["mdm/webtext-online-locked.md"]
+    assert mdm.route == "/mdm"
+    assert mdm.slug == "mdm"
+    root = entries["webtext-locked.md"]
+    assert root.route == "/"
+    assert root.slug == "index"
+    assert entries["produkt_widget/webtext-locked-online.md"].route == "/widget"
+    assert entries["drafts/webtext-entwurf.md"].publishable is False

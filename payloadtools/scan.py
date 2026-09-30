@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-WEBTEXT_MARKER = "_webtext"
+WEBTEXT_MARKERS = ("_webtext", "webtext")
 
 
 @dataclass
@@ -27,8 +27,9 @@ def parse_stem(stem, status_pattern):
     match = status_pattern.search(stem)
     if match:
         return stem[: match.start()], match.group("status")
-    if stem.endswith(WEBTEXT_MARKER):
-        return stem[: -len(WEBTEXT_MARKER)], None
+    for marker in WEBTEXT_MARKERS:
+        if stem.endswith(marker):
+            return stem[: -len(marker)], None
     return stem, None
 
 
@@ -68,7 +69,8 @@ def derive_route(relpath, slug, route_cfg):
         for cleaned in (_clean_dirname(d, route_cfg) for d in dirnames)
         if cleaned
     ]
-    return "/" + "/".join([*segments, slug])
+    parts = [*segments, slug] if slug else segments
+    return "/" + "/".join(parts)
 
 
 def scan_repo(config):
@@ -81,13 +83,16 @@ def scan_repo(config):
         relpath = path.relative_to(config.repo).as_posix()
         base, status = parse_stem(path.stem, status_pattern)
         slug = derive_slug(base, config.slug_prefixes)
+        route = derive_route(relpath, slug, config.route)
+        if not slug:
+            slug = PurePosixPath(route).name or "index"
         entries.append(ScanEntry(
             relpath=relpath,
             path=path,
             slug=slug,
             status=status,
             publishable=is_publishable(status, config.publishable_statuses),
-            route=derive_route(relpath, slug, config.route),
+            route=route,
         ))
     return entries
 
