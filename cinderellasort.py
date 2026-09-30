@@ -743,12 +743,18 @@ def _docprep_pdf(source, output_path, settings):
 
 
 def process_pending_docprep_anonymization(
+    sourcedir,
     targetdir,
+    config_object,
     settings,
+    clean,
+    clean_nocase,
+    replacements,
+    recursive,
     *,
     ignore_append=False,
 ):
-    """Anonymize existing target Markdown files that still need processing."""
+    """Anonymize existing source and target Markdown files needing processing."""
     if not settings['anonymize']:
         return
     if not settings['anonymize_mapping_file']:
@@ -756,20 +762,52 @@ def process_pending_docprep_anonymization(
         log_message(message, level='WARNING')
         print(message)
         return
-    markdown_files = sorted(Path(targetdir).rglob('*.md'))
-    message = f'Doc_prep anonymization: scanning {targetdir}; found {len(markdown_files)} Markdown file(s)'
-    log_message(message, level='INFO')
-    print(message)
-    for markdown_path in markdown_files:
+    pending = []
+    for markdown_path in sorted(Path(targetdir).rglob('*.md')):
         if markdown_path.name.endswith('_anon.md'):
             continue
         anonymized_path = markdown_path.with_name(f"{markdown_path.stem}_anon.md")
         if anonymized_path.exists() and not settings['anonymize_update']:
             continue
+        pending.append((markdown_path, anonymized_path, None))
+    source_root = Path(sourcedir).resolve()
+    for root, _, files in _walk_source(sourcedir, recursive):
+        for filename in sorted(files):
+            lower_name = filename.casefold()
+            if not lower_name.endswith('.md') or lower_name.endswith('_anon.md'):
+                continue
+            markdown_path = Path(root) / filename
+            relative_path = markdown_path.resolve().relative_to(source_root)
+            relative_path = _docprep_anonymized_relative_path(
+                relative_path,
+                settings,
+            )
+            cleaned_name = normalize_spaces(
+                cleanfilename(filename, clean, clean_nocase, replacements)
+            )
+            bowl = bowldir_docprep(cleaned_name, config_object)
+            output_path = _docprep_output_path(
+                targetdir,
+                relative_path,
+                cleaned_name,
+                bowl,
+            )
+            anonymized_path = output_path.with_name(
+                f"{output_path.stem}_anon{output_path.suffix}"
+            )
+            if anonymized_path.exists() and not settings['anonymize_update']:
+                continue
+            pending.append((markdown_path, anonymized_path, False))
+    message = f'Doc_prep anonymization: scanning {sourcedir} and {targetdir}; found {len(pending)} Markdown file(s)'
+    log_message(message, level='INFO')
+    print(message)
+    for markdown_path, anonymized_path, remove_source in pending:
         try:
             handle_docprep_anonymization(
                 markdown_path,
                 settings,
+                output_path=anonymized_path,
+                remove_source=remove_source,
                 ignore_append=ignore_append,
             )
         except Exception as e:
@@ -1931,8 +1969,14 @@ def cinderellasort(
             print(' #  No valid sort found!') 
 
     process_pending_docprep_anonymization(
+        sourcedir,
         targetdir,
+        config_object,
         docprep_config,
+        clean,
+        clean_nocase,
+        replacements,
+        recursive,
         ignore_append=ignore_append,
     )
 

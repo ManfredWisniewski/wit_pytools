@@ -269,7 +269,9 @@ Behavior:
   with `status=anon` are applied. Set `status=anon` to approve a value or
   `status=keep` to explicitly preserve it.
 - After normal sorting, the anonymization pass scans all existing Markdown files
-  below `targetdir` that do not have an `_anon.md` output yet. With
+  below `targetdir` that do not have an `_anon.md` output yet. Markdown files
+  below `sourcedir` are scanned as well and anonymized to their computed target
+  path; source-side Markdown is never removed. With
   `anonymize_update=true`, it also revisits existing anonymized files.
 - After a successful anonymization, the original Markdown file is removed and
   only `_anon.md` remains. `anonymize_update=false` preserves an existing
