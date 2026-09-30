@@ -34,6 +34,12 @@ Design context: `wit-obs-strategy-trurl/team/trurl/plan-payload-website.md` and
 - **Theme global**: a Payload global (`theme`) holding compiled CSS variables
   (`cssLight`, `cssDark`) injected by the frontend on `:root`. Pushed via API
   like content; site styling is data, not code.
+- **Structure document**: a YAML file under `<site>/structure/` (e.g.
+  `structure/navigation.yml`) synced into the generic `structures`
+  collection: filename stem → `name`, parsed YAML → `data` (JSON),
+  `sourcePath`/`sourceRepo` as with pages. Generic by design — `menu`,
+  `navigation`, `footer`, `header`, … all work by filename convention without
+  schema changes. Frontend consumers interpret `data` per `name`.
 
 ## Payload API contract (server side, already agreed)
 
@@ -41,7 +47,8 @@ Design context: `wit-obs-strategy-trurl/team/trurl/plan-payload-website.md` and
   `Authorization: users API-Key <key>` on a dedicated `content-bot` user.
 - Collection `pages` fields used: `title`, `slug`, `path`, `markdownRaw`
   (textarea — we send plain markdown; conversion to Lexical happens
-  server-side), `sourcePath`, `sourceRepo`, `meta.title`, `meta.description`.
+  server-side), `sourcePath`, `sourceRepo`, `template` (renderer name, empty
+  = default), `meta.title`, `meta.description`.
 - Collection `media` fields used: `file` (upload), `alt`, `caption`,
   `sourceHash`, `sourcePath`.
 - Endpoints:
@@ -52,6 +59,9 @@ Design context: `wit-obs-strategy-trurl/team/trurl/plan-payload-website.md` and
     `_payload` containing a JSON string with `alt`, `caption`, `sourceHash`,
     `sourcePath`
   - `PATCH /api/globals/theme` — theme CSS push
+  - `GET  /api/structures?where[sourcePath][equals]=<path>&limit=1` — find
+  - `POST /api/structures?draft=true` / `PATCH /api/structures/<id>?draft=true`
+    — structure upsert (same draft-only rules as pages)
 - The `content-bot` API key must not be able to publish or delete. Treat any
   server response indicating otherwise as a configuration error and report it.
 
@@ -93,8 +103,9 @@ transforms:
 1. Scan `include_glob`; parse slug + status from filename; skip non-publishable
    statuses with an explicit `skipped` result.
 2. Derive `route` from directory rules or `overrides`; derive `slug`.
-3. Extract `meta` (front matter if present, else companion briefing per config;
-   title fallback = first `#`/`##` heading).
+3. Extract `meta` + `template` (front matter or `key: value` lines, else
+   companion briefing per config; title fallback = first `#`/`##` heading,
+   template has no fallback).
 4. Rewrite image refs: for each `![alt](relpath)`, resolve against the file's
    directory, sha256 the file, `GET` media by `sourceHash`, upload if absent,
    replace with `![media:<id>]()` preserving the alt text.
@@ -104,6 +115,10 @@ transforms:
 7. Upsert: `GET` by `sourcePath` → `PATCH` existing or `POST` new with
    `draft=true`; never send `_status`.
 8. Emit a per-file result line: `created|updated|unchanged|skipped|failed`.
+
+After the webtext pass, `structure/*.yml` files get the same upsert treatment
+into `structures` (steps 7–8 semantics; no status/route/media/link handling).
+Skipped entirely in the `media` pass; `--file` applies to both.
 
 ## CLI
 

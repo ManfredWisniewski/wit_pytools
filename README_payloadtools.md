@@ -1,6 +1,6 @@
 # payloadtools
 
-`payloadtools` synchronizes markdown webtexts, media files, and site theme CSS from a content repository to a Payload CMS 3.x instance via its REST API. The content repository is the single source of truth; the Payload database is a derived read model.
+`payloadtools` synchronizes markdown webtexts, media files, site structure documents, and site theme CSS from a content repository to a Payload CMS 3.x instance via its REST API. The content repository is the single source of truth; the Payload database is a derived read model.
 
 All synced content is written as **drafts**. A human reviews and publishes in the Payload admin panel. The tool never publishes, never deletes, and never modifies source files.
 
@@ -73,7 +73,7 @@ failed     kategorie_products/broken_webtext_locked.md  (missing image img/missi
 
 1. Scan `include_glob`; parse status from filename; non-publishable files are `skipped`.
 2. Derive route and slug.
-3. Extract `meta.title`/`meta.description` (front matter, then `SEO_*` briefing, then first `#`/`##` heading).
+3. Extract `meta.title`/`meta.description`/`template` (front matter or `key: value` lines, then `SEO_*` briefing; title falls back to the first `#`/`##` heading). `template` names a frontend render variant — empty means default.
 4. Rewrite `![alt](relpath)` to `![media:<docId>]()` — the image is sha256-hashed, looked up via `sourceHash`, and uploaded only if absent. The alt text is preserved on the Media document.
 5. Rewrite internal `…file.md` links to their derived `/route` via an index of the whole scan set.
 6. Apply configured `transforms` regex rules.
@@ -81,6 +81,25 @@ failed     kategorie_products/broken_webtext_locked.md  (missing image img/missi
 8. Emit the per-file result line.
 
 The `media` command runs steps 1 and 4 only (upload/dedup, no page writes).
+
+## Structure documents
+
+`sync` and `check` also process `structure/*.yml` / `structure/*.yaml` under
+the site directory (`media` skips them). Each file maps to one document in the
+`structures` collection: the filename stem becomes `name`, the parsed YAML
+lands verbatim in `data`, and upserts key on `sourcePath` — same draft-only
+rules as pages. Example `structure/navigation.yml`:
+
+```yaml
+items:
+  - {label: Start, path: /}
+  - {label: MDM, path: /mdm}
+```
+
+The frontend reads `structures` doc `navigation` and renders
+`data.items[*].label/path` as the header menu. Future documents (`footer`,
+`header`, …) work by filename convention without schema changes. `--file`
+accepts structure paths too (`--file structure/navigation.yml`).
 
 ## Errors and safety
 

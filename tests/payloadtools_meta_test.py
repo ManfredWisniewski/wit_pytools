@@ -18,6 +18,7 @@ def test_front_matter_meta():
     assert meta == {
         "title": "Widget Detail",
         "description": "All about the widget.",
+        "template": "",
     }
 
 
@@ -26,6 +27,22 @@ def test_key_value_lines_meta():
     meta = extract_meta(text, REPO)
     assert meta["title"] == "KV Title"
     assert meta["description"] == "KV desc."
+
+
+def test_template_from_front_matter():
+    text = "---\ntemplate: landing\ntitle: T\n---\nBody.\n"
+    meta = extract_meta(text, REPO)
+    assert meta["template"] == "landing"
+
+
+def test_template_from_key_value_line():
+    meta = extract_meta("Intro.\n\ntemplate: landing\n", REPO)
+    assert meta["template"] == "landing"
+
+
+def test_template_absent_defaults_empty():
+    meta = extract_meta("Just text.\n", REPO)
+    assert meta["template"] == ""
 
 
 def test_briefing_fallback():
