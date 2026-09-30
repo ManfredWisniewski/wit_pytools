@@ -132,7 +132,7 @@ class PayloadClient:
         return str(media_id)
 
     def update_global(self, slug, payload):
-        """PATCH a global (e.g. theme CSS)."""
+        """Update a global (e.g. theme CSS). Globals use POST, not PATCH."""
         return _json(
-            self._request("PATCH", f"globals/{slug}", json_body=payload)
+            self._request("POST", f"globals/{slug}", json_body=payload)
         )

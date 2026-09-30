@@ -58,7 +58,7 @@ Design context: `wit-obs-strategy-trurl/team/trurl/plan-payload-website.md` and
   - `POST /api/media` — `multipart/form-data`: field `file` plus field
     `_payload` containing a JSON string with `alt`, `caption`, `sourceHash`,
     `sourcePath`
-  - `PATCH /api/globals/theme` — theme CSS push
+  - `POST /api/globals/theme` — theme CSS push
   - `GET  /api/structures?where[sourcePath][equals]=<path>&limit=1` — find
   - `POST /api/structures?draft=true` / `PATCH /api/structures/<id>?draft=true`
     — structure upsert (same draft-only rules as pages)
@@ -125,7 +125,7 @@ Skipped entirely in the `media` pass; `--file` applies to both.
 ```text
 witcontent sync   [--repo DIR] [--file PATH] [--dry-run] [-v]
 witcontent media  [--repo DIR]                      # media pass only
-witcontent theme  --css-light FILE [--css-dark FILE] # PATCH /api/globals/theme
+witcontent theme  --css-light FILE [--css-dark FILE] # POST /api/globals/theme
 witcontent check  [--repo DIR]                      # dry validation, no writes
 ```
 

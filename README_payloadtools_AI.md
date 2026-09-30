@@ -86,7 +86,7 @@ Payload body: `{title, slug, path, markdownRaw, sourcePath, sourceRepo, meta:{ti
 - `POST /api/pages?draft=true` / `PATCH /api/pages/<id>?draft=true`
 - `GET  /api/media?where[sourceHash][equals]=<sha256>&limit=1`
 - `POST /api/media` — multipart `file` + `_payload` JSON (`alt`, `caption`, `sourceHash`, `sourcePath`)
-- `PATCH /api/globals/theme` — `{cssLight, cssDark}`
+- `POST /api/globals/theme` — `{cssLight, cssDark}`
 - Auth header: `Authorization: users API-Key <key>` (dedicated `content-bot` user; no publish/delete permission)
 
 ## Conventions to keep
