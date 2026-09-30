@@ -1,4 +1,4 @@
-"""Configuration loading for payloadtools (.witcontent.yml + environment)."""
+"""Configuration loading for payloadtools (.arrcontent.yml + environment)."""
 
 import os
 import re
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-CONFIG_FILENAME = ".witcontent.yml"
+CONFIG_FILENAME = ".arrcontent.yml"
 DEFAULT_STATUS_REGEX = r"_webtext(?P<sep>[-_])(?P<status>[a-z-]+)$"
 
 
@@ -38,9 +38,22 @@ class Config:
     source_repo: str = ""
 
 
-def load_config(repo) -> Config:
-    """Load .witcontent.yml from the content repository root."""
-    repo = Path(repo).resolve()
+def resolve_repo(repo_arg=None):
+    """Resolve the content repo: --repo arg, else ARRCONTENT_REPO, else cwd."""
+    if repo_arg:
+        return Path(repo_arg).resolve()
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+    except ImportError:
+        pass
+    return Path(os.environ.get("ARRCONTENT_REPO") or ".").resolve()
+
+
+def load_config(repo=None) -> Config:
+    """Load .arrcontent.yml from the content repository root."""
+    repo = resolve_repo(repo)
     config_path = repo / CONFIG_FILENAME
     if not config_path.is_file():
         raise PayloadConfigError(f"Missing {CONFIG_FILENAME} in {repo}")

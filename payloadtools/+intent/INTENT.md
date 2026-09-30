@@ -66,7 +66,7 @@ PAYLOAD_BASE_URL=https://payload.witconsult.de
 PAYLOAD_API_KEY=<key>
 ```
 
-`.witcontent.yml` at the content repository root (all paths relative to it):
+`.arrcontent.yml` at the content repository root (all paths relative to it):
 
 ```yaml
 collection: pages

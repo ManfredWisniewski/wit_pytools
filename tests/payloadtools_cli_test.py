@@ -93,7 +93,7 @@ def test_theme_missing_css_exit_2(monkeypatch, tmp_path):
 
 
 def test_invalid_status_regex_exit_2(tmp_path):
-    (tmp_path / ".witcontent.yml").write_text(
+    (tmp_path / ".arrcontent.yml").write_text(
         'status_regex: "([bad"\n', encoding="utf-8"
     )
     code = cli.main(
@@ -104,7 +104,7 @@ def test_invalid_status_regex_exit_2(tmp_path):
 
 
 def test_malformed_config_exit_2(tmp_path):
-    (tmp_path / ".witcontent.yml").write_text(
+    (tmp_path / ".arrcontent.yml").write_text(
         "collection: [unclosed\n", encoding="utf-8"
     )
     code = cli.main(

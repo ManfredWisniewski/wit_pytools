@@ -14,12 +14,13 @@ Environment variables:
 | ------------------ | -------- | -------------------------------------------------------------------- |
 | `PAYLOAD_BASE_URL` | yes      | Payload instance base URL, e.g. `https://payload.witconsult.de`       |
 | `PAYLOAD_API_KEY`  | yes      | API key of the dedicated `content-bot` user. Never stored in files.   |
+| `ARRCONTENT_REPO`  | no       | Path to the content repository; `--repo` overrides it (default `.`).  |
 
 The `content-bot` API key must not be allowed to publish or delete. A 401/403 response aborts the run.
 
 ## Configuration
 
-`.witcontent.yml` at the content repository root controls eligibility, routing, meta extraction, and transforms:
+`.arrcontent.yml` at the content repository root controls eligibility, routing, meta extraction, and transforms:
 
 ```yaml
 collection: pages

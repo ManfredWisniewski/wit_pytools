@@ -21,13 +21,13 @@ def _build_parser():
     sub = parser.add_subparsers(dest="command", required=True)
 
     sync_p = sub.add_parser("sync", help="full sync pass")
-    sync_p.add_argument("--repo", default=".")
+    sync_p.add_argument("--repo")
     sync_p.add_argument("--file", help="sync a single repo-relative file")
     sync_p.add_argument("--dry-run", action="store_true")
     sync_p.add_argument("-v", "--verbose", action="store_true")
 
     media_p = sub.add_parser("media", help="media upload pass only")
-    media_p.add_argument("--repo", default=".")
+    media_p.add_argument("--repo")
     media_p.add_argument("--dry-run", action="store_true")
     media_p.add_argument("-v", "--verbose", action="store_true")
 
@@ -36,7 +36,7 @@ def _build_parser():
     theme_p.add_argument("--css-dark")
 
     check_p = sub.add_parser("check", help="dry validation, no writes")
-    check_p.add_argument("--repo", default=".")
+    check_p.add_argument("--repo")
     check_p.add_argument("-v", "--verbose", action="store_true")
     return parser
 

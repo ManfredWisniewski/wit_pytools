@@ -23,14 +23,14 @@ wit_pytools/payloadtools/
   +intent/          INTENT.md
 wit_pytools/tests/payloadtools_{scan,meta,media,links,sync,cli}_test.py
 wit_pytools/tests/payloadtools_fakes.py     FakeClient (no _test suffix -> not collected)
-wit_pytools/tests/payloadtools/witrepo/     fixture content repo (.witcontent.yml + webtexts)
+wit_pytools/tests/payloadtools/witrepo/     fixture content repo (.arrcontent.yml + webtexts)
 ```
 
 ## Contracts
 
 ```python
 load_config(repo) -> Config
-# reads <repo>/.witcontent.yml; repo resolved to absolute; validates status_regex
+# reads <repo>/.arrcontent.yml; repo resolved to absolute; validates status_regex
 # (re.error) and YAML errors -> PayloadConfigError.
 
 load_credentials() -> (base_url, api_key)
