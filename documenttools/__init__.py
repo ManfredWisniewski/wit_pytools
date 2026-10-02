@@ -919,6 +919,25 @@ def mapping_matches_text(content: str, mapping_path: Path | str) -> bool:
     return mapping_matches_parts(_markdown_editable_parts(content), mapping)
 
 
+def mapping_requires_anonymization(content: str, mapping_path: Path | str) -> bool:
+    """Return whether non-keep mapping rows match editable Markdown/text."""
+    mapping_file = Path(mapping_path)
+    values = set()
+    for path in (mapping_file, anon_path_for_mapping(mapping_file)):
+        if not path.is_file():
+            continue
+        for row in read_mapping_rows(path):
+            if row["status"] == "keep":
+                continue
+            values.update(
+                original.strip()
+                for original in row["original_value"].split(";")
+                if original.strip()
+            )
+    pending = {value: value for value in values}
+    return mapping_matches_parts(_markdown_editable_parts(content), pending)
+
+
 def anonymize_text_content(content: str, mapping_path: Path | str) -> str:
     """Apply a mapping to editable Markdown/text content."""
     mapping = mapping_path_rows(Path(mapping_path))

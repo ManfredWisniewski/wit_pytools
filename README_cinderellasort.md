@@ -132,6 +132,8 @@ anonymize_ignore_save=false
 anonymize_mapping_file=P:\\customers\\customer-anon-mapping.csv
 anonymize_update=false
 anonymize-keep-originals=false
+# Publish source .md to target even when unapproved candidates match.
+anonymize_publish_without_review=false
 # Optional country-aware name detection.
 anonymize_name_countries=de,us
 anonymize_use_name_datasets=true
@@ -271,7 +273,10 @@ Behavior:
 - After normal sorting, the anonymization pass scans all existing Markdown files
   below `targetdir` that do not have an `_anon.md` output yet. Markdown files
   below `sourcedir` are scanned as well and anonymized to their computed target
-  path; source-side Markdown is never removed. With
+  path; source-side Markdown is never removed. A source Markdown that requires
+  no anonymization (no `anon` or `new` mapping row matches) is copied to its
+  target path instead; `anonymize_publish_without_review=true` also copies
+  files with unapproved `new` candidates. With
   `anonymize_update=true`, it also revisits existing anonymized files.
 - After a successful anonymization, the original Markdown file is removed and
   only `_anon.md` remains. `anonymize_update=false` preserves an existing

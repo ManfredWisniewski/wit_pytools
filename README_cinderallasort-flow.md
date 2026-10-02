@@ -25,7 +25,7 @@ flowchart TD
     K --> L{"extension in DOCPREP_CONVERTERS<br/>(.pdf) and bowldir_docprep() matches?"}
     L -- yes --> M["handle_docprep()<br/>see per-document flow"]
     L -- no --> N["other bowls (PDF, email, GPS, sort, ...)"]
-    M --> O["process_pending_docprep_anonymization()<br/>scan targetdir for *.md without _anon.md<br/>scan sourcedir for *.md → anonymize to computed<br/>target path (source .md is never removed)<br/>(or all .md if anonymize_update=true)"]
+    M --> O["process_pending_docprep_anonymization()<br/>scan targetdir for *.md without _anon.md<br/>scan sourcedir for *.md → anonymize to computed<br/>target path; if no anon/new mapping row matches,<br/>publish plaintext copy instead<br/>(anonymize_publish_without_review=true also<br/>publishes files with unapproved candidates)<br/>(or all .md if anonymize_update=true)"]
     N --> O
 ```
 
@@ -115,6 +115,7 @@ flowchart TD
 | `anonymize_update` | `false` | regenerate existing `_anon.md` (still requires a mapping match) |
 | `anonymize-sync-deletes` | `true` | delete `_anon.md` when source document is gone |
 | `anonymize-keep-originals` | `false` | keep unanonymized `.md` next to the source PDF |
+| `anonymize_publish_without_review` | `false` | publish source `.md` even when unapproved candidates match |
 | `anonymize_presidio_model` | `de_core_news_sm` | spaCy model for presidio mode |
 | `anonymize_presidio_score_threshold` | `0.5` | presidio confidence cutoff |
 | `anonymize_presidio_entities` | built-in list (`all` = registry) | entity allow-list |

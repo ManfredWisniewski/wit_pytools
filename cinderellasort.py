@@ -14,6 +14,7 @@ from wit_pytools.documenttools import (
     anonymize_text,
     document_find_regex,
     mapping_matches_text,
+    mapping_requires_anonymization,
     reset_saved_ignore_file,
     update_directory_mapping,
     update_text_mapping,
@@ -769,14 +770,17 @@ def process_pending_docprep_anonymization(
         anonymized_path = markdown_path.with_name(f"{markdown_path.stem}_anon.md")
         if anonymized_path.exists() and not settings['anonymize_update']:
             continue
-        pending.append((markdown_path, anonymized_path, None))
+        pending.append((markdown_path, anonymized_path, None, None))
     source_root = Path(sourcedir).resolve()
+    target_root = Path(targetdir).resolve()
     for root, _, files in _walk_source(sourcedir, recursive):
         for filename in sorted(files):
             lower_name = filename.casefold()
             if not lower_name.endswith('.md') or lower_name.endswith('_anon.md'):
                 continue
             markdown_path = Path(root) / filename
+            if markdown_path.resolve().is_relative_to(target_root):
+                continue
             relative_path = markdown_path.resolve().relative_to(source_root)
             relative_path = _docprep_anonymized_relative_path(
                 relative_path,
@@ -797,24 +801,74 @@ def process_pending_docprep_anonymization(
             )
             if anonymized_path.exists() and not settings['anonymize_update']:
                 continue
-            pending.append((markdown_path, anonymized_path, False))
+            pending.append((markdown_path, anonymized_path, False, output_path))
     message = f'Doc_prep anonymization: scanning {sourcedir} and {targetdir}; found {len(pending)} Markdown file(s)'
     log_message(message, level='INFO')
     print(message)
-    for markdown_path, anonymized_path, remove_source in pending:
+    for markdown_path, anonymized_path, remove_source, publish_target in pending:
         try:
-            handle_docprep_anonymization(
+            result = handle_docprep_anonymization(
                 markdown_path,
                 settings,
                 output_path=anonymized_path,
                 remove_source=remove_source,
                 ignore_append=ignore_append,
             )
+            if publish_target is not None:
+                _publish_docprep_markup(
+                    markdown_path,
+                    publish_target,
+                    settings,
+                    anonymized=result is not None,
+                )
         except Exception as e:
             log_message(
                 f"Pending Doc_prep anonymization failed for {markdown_path}: {e}",
                 level="ERROR",
             )
+
+
+def _remove_published_docprep_copy(markdown_path, publish_target, reason):
+    """Remove a plaintext copy that is identical to the source Markdown."""
+    if (
+        publish_target.exists()
+        and publish_target.read_bytes() == Path(markdown_path).read_bytes()
+    ):
+        publish_target.unlink()
+        log_message(
+            f"Doc_prep: removed plaintext {publish_target} ({reason})",
+            level="INFO",
+        )
+
+
+def _publish_docprep_markup(markdown_path, publish_target, settings, *, anonymized):
+    """Publish or retract a source Markdown copy in the target directory."""
+    if anonymized:
+        _remove_published_docprep_copy(
+            markdown_path,
+            publish_target,
+            'superseded by anonymized output',
+        )
+        return
+    requires_review = not settings['anonymize_publish_without_review'] and (
+        mapping_requires_anonymization(
+            Path(markdown_path).read_text(encoding='utf-8'),
+            settings['anonymize_mapping_file'],
+        )
+    )
+    if requires_review:
+        _remove_published_docprep_copy(
+            markdown_path,
+            publish_target,
+            'anonymization pending review',
+        )
+        return
+    publish_target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(markdown_path, publish_target)
+    log_message(
+        f"Doc_prep: published {markdown_path} to {publish_target}",
+        level="INFO",
+    )
 
 
 def handle_docprep_anonymization(
@@ -964,6 +1018,7 @@ def docprep_settings(config_object):
         'anonymize_update': (section.get('anonymize_update', 'false') or 'false').strip().lower() == 'true',
         'anonymize_sync_deletes': (section.get('anonymize-sync-deletes', 'true') or 'true').strip().lower() == 'true',
         'anonymize_keep_originals': (section.get('anonymize-keep-originals', 'false') or 'false').strip().lower() == 'true',
+        'anonymize_publish_without_review': (section.get('anonymize_publish_without_review', 'false') or 'false').strip().lower() == 'true',
         'anonymize_name_countries': csv_values('anonymize_name_countries'),
         'anonymize_use_name_datasets': optional_bool('anonymize_use_name_datasets'),
         'anonymize_name_cache_dir': (section.get('anonymize_name_cache_dir', '') or '').strip() or None,
