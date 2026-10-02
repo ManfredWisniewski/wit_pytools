@@ -10,18 +10,28 @@ from wit_pytools.sanitizers import prepregex, cleanfilestring, convert_numerals_
 from wit_pytools.validators import valid_email_address
 from wit_pytools.systools import walklevel, rmemptydir, movefile, copyfile, delfile
 from wit_pytools.documenttools import (
+    anon_path_for_mapping,
     anonymize_path_parts,
     anonymize_text,
     changed_anonymization_values,
+    detect_text_candidate_rows,
     document_find_regex,
+    load_name_catalog,
     mapping_family_paths,
+    mapping_matches_parts,
     mapping_matches_text,
+    mapping_path_rows,
     mapping_requires_anonymization,
+    merge_text_mapping_candidates,
+    read_mapping_rows,
+    replace_text_parts,
     reset_saved_ignore_file,
     text_contains_values,
+    text_editable_parts,
     update_anonymization_lastmap,
     update_directory_mapping,
     update_text_mapping,
+    update_texts_mapping,
 )
 from eliot import log_message
 import gettext
@@ -44,6 +54,26 @@ def setup_translations(language='de'):
 _ = setup_translations()
 
 dryrun = (True)
+
+# Nextcloud rescans are deferred so a run issues one files:scan per
+# directory instead of one per converted/generated file.
+_NC_RESCAN_DIRS = set()
+
+
+def _queue_nc_rescan(directory):
+    """Defer a Nextcloud rescan of a directory to the end of the run."""
+    _NC_RESCAN_DIRS.add(str(directory))
+
+
+def _flush_nc_rescans():
+    """Run all queued Nextcloud directory rescans once."""
+    if not _NC_RESCAN_DIRS:
+        return
+    from wit_pytools import nctools
+    for directory in sorted(_NC_RESCAN_DIRS):
+        nctools.ncscandir(nctools.getncpath(directory))
+    _NC_RESCAN_DIRS.clear()
+
 
 # check for valid searches in subdirectories of the target directory
 def isvalidsort(sourcedir, ftype_sort):
@@ -769,6 +799,81 @@ def _docprep_pdf(source, output_path, settings):
     return output
 
 
+def _anonymize_single_file(
+    file_path,
+    file_dir,
+    sourcedir,
+    targetdir,
+    config_object,
+    settings,
+    clean,
+    clean_nocase,
+    replacements,
+    dryrun,
+    ignore_append,
+):
+    """Anonymize one bowl-matched source file without scanning the tree."""
+    if not bowllist_anonymize(config_object):
+        return
+    if not settings['mapping_file']:
+        return
+    source_path = Path(file_path)
+    if not source_path.is_file():
+        # Moved by an earlier bowl; anonymize bowls do not see it.
+        return
+    filename = source_path.name
+    if source_path.stem.casefold().endswith('_anon'):
+        return
+    if filename.casefold().endswith('_pdf2md.json'):
+        return
+    if source_path.resolve() in mapping_family_paths(settings['mapping_file']):
+        return
+    cleaned_name = normalize_spaces(
+        cleanfilename(filename, clean, clean_nocase, replacements)
+    )
+    if not bowldir_anonymize(cleaned_name, config_object):
+        return
+    suffix = source_path.suffix.lower()
+    if suffix in ANONYMIZE_PLANNED_EXTENSIONS:
+        message = f'Anonymize: {suffix} files are not supported yet'
+        log_message(message, level='WARNING')
+        print(message)
+        return
+    if suffix not in ANONYMIZE_TEXT_EXTENSIONS:
+        message = f'Anonymize: {suffix} files are not supported'
+        log_message(message, level='WARNING')
+        print(message)
+        return
+    resolved = source_path.resolve()
+    target_root = Path(targetdir).resolve()
+    if resolved.is_relative_to(target_root):
+        return
+    try:
+        relative_path = resolved.relative_to(Path(sourcedir).resolve())
+    except ValueError:
+        relative_path = Path(filename)
+    run = None if dryrun else _AnonymizeRun(settings, ignore_append)
+    if run is None:
+        parent = _anonymized_relative_parent(relative_path.parent, settings)
+    else:
+        parent = run.approved_path(relative_path.parent)
+    output_dir = _mirrored_target_dir(target_root, parent)
+    cleaned = Path(cleaned_name)
+    anonymized_path = output_dir / f"{cleaned.stem}_anon{cleaned.suffix}"
+    publish_target = output_dir / cleaned.name
+    handle_anonymization(
+        source_path,
+        settings,
+        output_path=anonymized_path,
+        publish_target=publish_target,
+        dryrun=dryrun,
+        ignore_append=ignore_append,
+        run=run,
+    )
+    if run is not None:
+        run.flush()
+
+
 def process_pending_anonymization(
     sourcedir,
     targetdir,
@@ -798,6 +903,7 @@ def process_pending_anonymization(
     mapping_family = mapping_family_paths(settings['mapping_file'])
     source_root = Path(sourcedir).resolve()
     target_root = Path(targetdir).resolve()
+    run = None if dryrun else _AnonymizeRun(settings, ignore_append)
     for root, _, files in _walk_source(sourcedir, recursive):
         for filename in sorted(files):
             source_path = Path(root) / filename
@@ -833,9 +939,12 @@ def process_pending_anonymization(
             if resolved.is_relative_to(target_root):
                 continue
             relative_path = resolved.relative_to(source_root)
-            parent = _anonymized_relative_parent(
-                relative_path.parent, settings
-            )
+            if run is None:
+                parent = _anonymized_relative_parent(
+                    relative_path.parent, settings
+                )
+            else:
+                parent = run.approved_path(relative_path.parent)
             output_dir = _mirrored_target_dir(target_root, parent)
             cleaned = Path(cleaned_name)
             anonymized_path = (
@@ -859,12 +968,15 @@ def process_pending_anonymization(
                 publish_target=publish_target,
                 dryrun=dryrun,
                 ignore_append=ignore_append,
+                run=run,
             )
         except Exception as e:
             log_message(
                 f"Anonymization failed for {source_path}: {e}",
                 level="ERROR",
             )
+    if run is not None:
+        run.flush()
     if settings['sync_deletes']:
         for anon_path in sorted(Path(targetdir).rglob('*_anon.*')):
             if not anon_path.stem.casefold().endswith('_anon'):
@@ -883,11 +995,15 @@ def process_pending_anonymization(
             )
 
 
-def _remove_published_copy(source_path, publish_target, reason):
+def _remove_published_copy(
+    source_path, publish_target, reason, source_bytes=None
+):
     """Remove a plaintext copy that is identical to the source file."""
+    if source_bytes is None:
+        source_bytes = Path(source_path).read_bytes()
     if (
         publish_target.exists()
-        and publish_target.read_bytes() == Path(source_path).read_bytes()
+        and publish_target.read_bytes() == source_bytes
     ):
         publish_target.unlink()
         log_message(
@@ -896,29 +1012,47 @@ def _remove_published_copy(source_path, publish_target, reason):
         )
 
 
-def _publish_plaintext(source_path, publish_target, settings, *, anonymized):
+def _publish_plaintext(
+    source_path,
+    publish_target,
+    settings,
+    *,
+    anonymized,
+    run=None,
+    content=None,
+):
     """Publish or retract a plaintext copy in the target directory."""
     if publish_target is None:
         return
+    if content is None:
+        content = Path(source_path).read_text(encoding='utf-8')
+    source_bytes = None
     if anonymized:
         _remove_published_copy(
             source_path,
             publish_target,
             'superseded by anonymized output',
+            source_bytes=content.encode('utf-8'),
         )
         return
-    requires_review = not settings['publish_without_review'] and (
-        mapping_requires_anonymization(
-            Path(source_path).read_text(encoding='utf-8'),
-            settings['mapping_file'],
-            suffix=Path(source_path).suffix,
+    if run is None:
+        requires_review = not settings['publish_without_review'] and (
+            mapping_requires_anonymization(
+                content,
+                settings['mapping_file'],
+                suffix=Path(source_path).suffix,
+            )
         )
-    )
+    else:
+        requires_review = run.requires_review(
+            content, Path(source_path).suffix
+        )
     if requires_review:
         _remove_published_copy(
             source_path,
             publish_target,
             'anonymization pending review',
+            source_bytes=content.encode('utf-8'),
         )
         return
     publish_target.parent.mkdir(parents=True, exist_ok=True)
@@ -945,6 +1079,189 @@ def _write_anonymize_lastmap(settings, dryrun):
         print(message)
 
 
+class _AnonymizeRun:
+    """Per-run anonymization state shared across bowl-matched files.
+
+    Caches the name catalog and the parsed mapping views once per flush
+    interval instead of once per file, and buffers detected candidate rows
+    so the mapping CSV is rewritten in batches rather than per file.
+    """
+
+    def __init__(self, settings, ignore_append=False, flush_every=200):
+        self.settings = settings
+        self.ignore_append = ignore_append
+        self.flush_every = max(1, int(flush_every))
+        self.mapping_path = Path(settings['mapping_file'])
+        self._catalog = None
+        self._catalog_loaded = False
+        self._approved = None
+        self._nonkeep_values = None
+        self._changed = None
+        self._pending_rows = []
+        self._pending_ignored = []
+        self._pending_new_values = set()
+
+    def catalog(self):
+        """Load the name catalog once per run."""
+        if not self._catalog_loaded:
+            self._catalog = load_name_catalog(
+                self.settings.get('name_countries'),
+                use_name_datasets=self.settings.get('use_name_datasets'),
+                cache_dir=self.settings.get('name_cache_dir'),
+                offline=self.settings.get('name_dataset_offline'),
+                debug=self.settings.get('name_dataset_debug', False),
+                name_exclusions=self.settings.get('name_exclusions'),
+            )
+            self._catalog_loaded = True
+        return self._catalog
+
+    def _detection_kwargs(self):
+        settings = self.settings
+        return {
+            'name_catalog': self.catalog(),
+            'anonymize_mode': settings.get('mode', 'custom'),
+            'language': settings.get('language', 'en'),
+            'presidio_model': settings.get(
+                'presidio_model', 'de_core_news_sm'
+            ),
+            'presidio_score_threshold': settings.get(
+                'presidio_score_threshold', 0.5
+            ),
+            'presidio_entities': settings.get('presidio_entities'),
+            'replacement_length': settings.get('token_length', 4),
+            'ignore_dictionary': settings.get('ignore_dictionary', False),
+            'ignore_numbers': settings.get('ignore_numbers', False),
+            'ignore_emails': settings.get('ignore_emails', False),
+            'ignore_dates': settings.get('ignore_dates', False),
+        }
+
+    def submit(self, candidate_source):
+        """Detect candidates for one file and buffer them for the flush."""
+        candidate_source = Path(candidate_source)
+        ignored = (
+            [] if self.settings.get('ignore_save', False) else None
+        )
+        rows = detect_text_candidate_rows(
+            candidate_source.read_text(encoding='utf-8'),
+            candidate_source.name,
+            ignored_candidates=ignored,
+            protect_markup=(
+                candidate_source.suffix.lower() == '.md'
+            ),
+            **self._detection_kwargs(),
+        )
+        self._pending_rows.extend(rows)
+        if ignored:
+            self._pending_ignored.extend(ignored)
+        for row in rows:
+            self._pending_new_values.update(
+                part.strip()
+                for part in (row.get('original_value') or '').split(';')
+                if part.strip()
+            )
+        if (
+            len(self._pending_rows) + len(self._pending_ignored)
+            >= self.flush_every
+        ):
+            self.flush()
+        return rows
+
+    def flush(self):
+        """Merge buffered candidate rows into the mapping CSV once."""
+        if self._pending_rows or self._pending_ignored:
+            merge_text_mapping_candidates(
+                self.mapping_path,
+                self._pending_rows,
+                self._pending_ignored,
+                name_catalog=self.catalog(),
+                replacement_length=self.settings.get('token_length', 4),
+                ignore_dictionary=self.settings.get(
+                    'ignore_dictionary', False
+                ),
+                ignore_numbers=self.settings.get('ignore_numbers', False),
+                ignore_emails=self.settings.get('ignore_emails', False),
+                ignore_dates=self.settings.get('ignore_dates', False),
+                ignore_save=self.settings.get('ignore_save', False),
+                ignore_append=True,
+            )
+            self._pending_rows = []
+            self._pending_ignored = []
+            # Buffered values are now persisted; caches recompute on demand.
+            self._pending_new_values.clear()
+            self._refresh()
+
+    def _refresh(self):
+        self._approved = None
+        self._nonkeep_values = None
+        self._changed = None
+
+    def approved(self):
+        """Approved original→replacement mapping, cached per flush."""
+        if self._approved is None:
+            mapping_file = self.mapping_path
+            if not (
+                mapping_file.is_file()
+                or anon_path_for_mapping(mapping_file).is_file()
+            ):
+                self._approved = {}
+            else:
+                self._approved = mapping_path_rows(mapping_file)
+        return self._approved
+
+    def approved_match(self, content, suffix):
+        return mapping_matches_parts(
+            text_editable_parts(content, suffix), self.approved()
+        )
+
+    def approved_path(self, relative_parent):
+        """Apply approved mappings to a relative path, cached per flush."""
+        if relative_parent == Path('.'):
+            return relative_parent
+        return Path(
+            *(
+                replace_text_parts(((True, part),), self.approved())
+                for part in relative_parent.parts
+            )
+        )
+
+    def nonkeep_values(self):
+        """All non-keep mapping originals, cached per flush."""
+        if self._nonkeep_values is None:
+            values = set()
+            for path in (
+                self.mapping_path,
+                anon_path_for_mapping(self.mapping_path),
+            ):
+                if not path.is_file():
+                    continue
+                for row in read_mapping_rows(path):
+                    if row['status'] == 'keep':
+                        continue
+                    values.update(
+                        original.strip()
+                        for original in row['original_value'].split(';')
+                        if original.strip()
+                    )
+            self._nonkeep_values = values
+        return self._nonkeep_values
+
+    def changed_values(self):
+        """Lastmap diff, cached per flush."""
+        if self._changed is None:
+            self._changed = changed_anonymization_values(self.mapping_path)
+        return self._changed
+
+    def requires_review(self, content, suffix):
+        """Whether unapproved mapping rows or fresh candidates match."""
+        if self.settings['publish_without_review']:
+            return False
+        return text_contains_values(
+            content,
+            self.nonkeep_values() | self._pending_new_values,
+            suffix=suffix,
+        )
+
+
 def handle_anonymization(
     input_path,
     settings,
@@ -953,6 +1270,7 @@ def handle_anonymization(
     *,
     dryrun=False,
     ignore_append=False,
+    run=None,
 ):
     """Collect proposals and apply approved mappings to a text file."""
     if not settings['enabled']:
@@ -972,41 +1290,59 @@ def handle_anonymization(
         print(f"  Anonymize (dryrun): {input_path} -> {output_path}")
         return None
     candidate_source = output_path if output_path.exists() else input_path
-    update_text_mapping(
-        candidate_source,
-        mapping_path,
-        countries=settings.get('name_countries'),
-        use_name_datasets=settings.get('use_name_datasets'),
-        cache_dir=settings.get('name_cache_dir'),
-        offline=settings.get('name_dataset_offline'),
-        debug=settings.get('name_dataset_debug', False),
-        name_exclusions=settings.get('name_exclusions'),
-        anonymize_mode=settings.get('mode', 'custom'),
-        language=settings.get('language', 'en'),
-        presidio_model=settings.get('presidio_model', 'de_core_news_sm'),
-        presidio_score_threshold=settings.get('presidio_score_threshold', 0.5),
-        presidio_entities=settings.get('presidio_entities'),
-        replacement_length=settings.get('token_length', 4),
-        ignore_dictionary=settings.get('ignore_dictionary', False),
-        ignore_numbers=settings.get('ignore_numbers', False),
-        ignore_emails=settings.get('ignore_emails', False),
-        ignore_dates=settings.get('ignore_dates', False),
-        ignore_save=settings.get('ignore_save', False),
-        ignore_append=ignore_append,
-    )
+    if run is None:
+        update_text_mapping(
+            candidate_source,
+            mapping_path,
+            countries=settings.get('name_countries'),
+            use_name_datasets=settings.get('use_name_datasets'),
+            cache_dir=settings.get('name_cache_dir'),
+            offline=settings.get('name_dataset_offline'),
+            debug=settings.get('name_dataset_debug', False),
+            name_exclusions=settings.get('name_exclusions'),
+            anonymize_mode=settings.get('mode', 'custom'),
+            language=settings.get('language', 'en'),
+            presidio_model=settings.get('presidio_model', 'de_core_news_sm'),
+            presidio_score_threshold=settings.get(
+                'presidio_score_threshold', 0.5
+            ),
+            presidio_entities=settings.get('presidio_entities'),
+            replacement_length=settings.get('token_length', 4),
+            ignore_dictionary=settings.get('ignore_dictionary', False),
+            ignore_numbers=settings.get('ignore_numbers', False),
+            ignore_emails=settings.get('ignore_emails', False),
+            ignore_dates=settings.get('ignore_dates', False),
+            ignore_save=settings.get('ignore_save', False),
+            ignore_append=ignore_append,
+        )
+    else:
+        run.submit(candidate_source)
     log_message(f"Anonymization: updated mapping {mapping_path}", level="INFO")
     content = input_path.read_text(encoding='utf-8')
-    if not mapping_matches_text(content, mapping_path, suffix=suffix):
+    if run is None:
+        matched = mapping_matches_text(content, mapping_path, suffix=suffix)
+    else:
+        matched = run.approved_match(content, suffix)
+    if not matched:
         log_message(
             f"Anonymization: no approved mapping matches {input_path.name}",
             level="INFO",
         )
         _publish_plaintext(
-            input_path, publish_target, settings, anonymized=False
+            input_path,
+            publish_target,
+            settings,
+            anonymized=False,
+            run=run,
+            content=content,
         )
         return None
     if output_path.exists() and not settings['force_update']:
-        changed_values = changed_anonymization_values(mapping_path)
+        changed_values = (
+            changed_anonymization_values(mapping_path)
+            if run is None
+            else run.changed_values()
+        )
         stale = bool(changed_values) and text_contains_values(
             content, changed_values, suffix=suffix
         )
@@ -1016,7 +1352,12 @@ def handle_anonymization(
                 level="INFO",
             )
             _publish_plaintext(
-                input_path, publish_target, settings, anonymized=True
+                input_path,
+                publish_target,
+                settings,
+                anonymized=True,
+                run=run,
+                content=content,
             )
             return output_path
         log_message(
@@ -1027,8 +1368,16 @@ def handle_anonymization(
     result = anonymize_text(
         input_path, mapping_path, output_path, overwrite=True
     )
-    _publish_plaintext(input_path, publish_target, settings, anonymized=True)
+    _publish_plaintext(
+        input_path,
+        publish_target,
+        settings,
+        anonymized=True,
+        run=run,
+        content=content,
+    )
     return result
+
 
 
 # Converter registry: extension -> (page counter, converter). Only PDF for now.
@@ -1227,6 +1576,31 @@ def _rename_target_directory(targetdir, original, anonymized):
     return target
 
 
+def _anonymize_mapping_kwargs(settings):
+    """Detection/update kwargs shared by the mapping update helpers."""
+    return {
+        'countries': settings.get('name_countries'),
+        'use_name_datasets': settings.get('use_name_datasets'),
+        'cache_dir': settings.get('name_cache_dir'),
+        'offline': settings.get('name_dataset_offline'),
+        'debug': settings.get('name_dataset_debug', False),
+        'name_exclusions': settings.get('name_exclusions'),
+        'anonymize_mode': settings.get('mode', 'custom'),
+        'language': settings.get('language', 'en'),
+        'presidio_model': settings.get('presidio_model', 'de_core_news_sm'),
+        'presidio_score_threshold': settings.get(
+            'presidio_score_threshold', 0.5
+        ),
+        'presidio_entities': settings.get('presidio_entities'),
+        'replacement_length': settings.get('token_length', 4),
+        'ignore_dictionary': settings.get('ignore_dictionary', False),
+        'ignore_numbers': settings.get('ignore_numbers', False),
+        'ignore_emails': settings.get('ignore_emails', False),
+        'ignore_dates': settings.get('ignore_dates', False),
+        'ignore_save': settings.get('ignore_save', False),
+    }
+
+
 def _prepare_anonymize_directories(
     sourcedir,
     targetdir,
@@ -1234,6 +1608,7 @@ def _prepare_anonymize_directories(
     recursive,
     dryrun,
     ignore_append,
+    restrict_to=None,
 ):
     """Update directory proposals and rename matching target directories."""
     if not (settings['enabled'] and settings['mapping_file']):
@@ -1241,30 +1616,50 @@ def _prepare_anonymize_directories(
     if dryrun:
         return
     source_root = Path(sourcedir).resolve()
+    if restrict_to is not None:
+        # Single mode: only the file's ancestor chain is relevant.
+        ancestors = []
+        current = Path(restrict_to)
+        while current != Path('.'):
+            ancestors.append(current)
+            current = current.parent
+        if ancestors:
+            sources = [
+                (
+                    ancestor.name,
+                    f"directory:{ancestor.as_posix()}",
+                )
+                for ancestor in ancestors
+            ]
+            update_texts_mapping(
+                sources,
+                settings['mapping_file'],
+                ignore_append=ignore_append,
+                **_anonymize_mapping_kwargs(settings),
+            )
+            for relative_directory in ancestors:
+                anonymized_directory = anonymize_path_parts(
+                    relative_directory,
+                    settings['mapping_file'],
+                )
+                if anonymized_directory != relative_directory:
+                    renamed = _rename_target_directory(
+                        targetdir,
+                        relative_directory,
+                        anonymized_directory,
+                    )
+                    log_message(
+                        f"Anonymization: renamed directory "
+                        f"{Path(targetdir) / relative_directory} -> {renamed}",
+                        level="INFO",
+                    )
+        return
     update_directory_mapping(
         source_root,
         settings['mapping_file'],
         recursive=recursive,
-        countries=settings.get('name_countries'),
-        use_name_datasets=settings.get('use_name_datasets'),
-        cache_dir=settings.get('name_cache_dir'),
-        offline=settings.get('name_dataset_offline'),
-        debug=settings.get('name_dataset_debug', False),
-        name_exclusions=settings.get('name_exclusions'),
-        anonymize_mode=settings.get('mode', 'custom'),
-        language=settings.get('language', 'en'),
-        presidio_model=settings.get('presidio_model', 'de_core_news_sm'),
-        presidio_score_threshold=settings.get(
-            'presidio_score_threshold', 0.5
-        ),
-        presidio_entities=settings.get('presidio_entities'),
-        replacement_length=settings.get('token_length', 4),
-        ignore_dictionary=settings.get('ignore_dictionary', False),
-        ignore_numbers=settings.get('ignore_numbers', False),
-        ignore_emails=settings.get('ignore_emails', False),
-        ignore_dates=settings.get('ignore_dates', False),
-        ignore_save=settings.get('ignore_save', False),
         ignore_append=ignore_append,
+        **_anonymize_mapping_kwargs(settings),
     )
     if not recursive:
         return
@@ -1432,8 +1827,7 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
         return False
 
     if filemode == 'nc':
-        from wit_pytools import nctools
-        nctools.ncscandir(nctools.getncpath(str(output_path.parent)))
+        _queue_nc_rescan(output_path.parent)
     return True
 
 
@@ -1566,8 +1960,7 @@ def handle_gen_img(file, sourcedir, targetdir, bowl, config_object, filemode, dr
         return False
 
     if filemode == 'nc':
-        from wit_pytools import nctools
-        nctools.ncscandir(nctools.getncpath(str(bowl_dir)))
+        _queue_nc_rescan(bowl_dir)
     return True
 
 
@@ -1851,6 +2244,17 @@ def cinderellasort(
     ignore_append = not dryrun and _prepare_anonymize_ignore_save(
         anonymize_config
     )
+    single_relative_parent = None
+    if single:
+        from witnctools import getncabsdir, getncfilename
+        single_dir = getncabsdir(single)
+        try:
+            single_relative_parent = (
+                Path(single_dir).resolve()
+                .relative_to(Path(sourcedir).resolve())
+            )
+        except ValueError:
+            single_relative_parent = None
     _prepare_anonymize_directories(
         sourcedir,
         targetdir,
@@ -1858,14 +2262,17 @@ def cinderellasort(
         recursive,
         dryrun,
         ignore_append,
+        restrict_to=single_relative_parent if single else None,
     )
-    _sync_docprep_deletes(
-        sourcedir,
-        config_object,
-        docprep_config,
-        recursive,
-        dryrun,
-    )
+    if not single:
+        # Maintenance pass; skipped in single mode (runs on batch runs).
+        _sync_docprep_deletes(
+            sourcedir,
+            config_object,
+            docprep_config,
+            recursive,
+            dryrun,
+        )
 
     # prepare for sort process
     prepsort(config_object, targetdir)
@@ -1881,6 +2288,19 @@ def cinderellasort(
         
         if file_path.is_file():
             handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, skip_unmatched=skip_unmatched, check_content=check_content, ignore_append=ignore_append)
+        _anonymize_single_file(
+            file_path,
+            file_dir,
+            sourcedir,
+            targetdir,
+            config_object,
+            anonymize_config,
+            clean,
+            clean_nocase,
+            replacements,
+            dryrun,
+            ignore_append,
+        )
     else:
         # First pass: delete unwanted files in directories with valid sorts
         print("Running cinderellasort in all-files mode")
@@ -1968,7 +2388,7 @@ def cinderellasort(
         
     # Get list of all subdirectories for additional processing if needed
     dirlist = []
-    if recursive:
+    if recursive and not single:
         dirlist = [f for f in Path(sourcedir).resolve().glob('**/*') if f.is_dir()]
     print([str(d) for d in dirlist])
     for maindir in dirlist:
@@ -2006,19 +2426,21 @@ def cinderellasort(
         else:
             print(' #  No valid sort found!') 
 
-    process_pending_anonymization(
-        sourcedir,
-        targetdir,
-        config_object,
-        anonymize_config,
-        clean,
-        clean_nocase,
-        replacements,
-        recursive,
-        dryrun,
-        ignore_append=ignore_append,
-    )
+    if not single:
+        process_pending_anonymization(
+            sourcedir,
+            targetdir,
+            config_object,
+            anonymize_config,
+            clean,
+            clean_nocase,
+            replacements,
+            recursive,
+            dryrun,
+            ignore_append=ignore_append,
+        )
     _write_anonymize_lastmap(anonymize_config, dryrun)
+    _flush_nc_rescans()
 
     if clear_empty_directories:
         print(f"\n## Removing empty directories:")

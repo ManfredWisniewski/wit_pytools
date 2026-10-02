@@ -1,5 +1,6 @@
 """Presidio-backed candidate detection."""
 
+from bisect import bisect_right
 from functools import lru_cache
 from typing import Iterable, List, Optional, Sequence, Tuple
 
@@ -85,6 +86,10 @@ def detect_presidio_candidates(
     )
     spans = tuple(protected_spans)
     collector = CandidateCollector(replacement_length=replacement_length)
+    # Newline offsets once: line_number lookup becomes O(log n) per result
+    newline_offsets = [
+        index for index, char in enumerate(content) if char == "\n"
+    ]
     for result in results:
         if any(result.start < end and result.end > start for start, end in spans):
             continue
@@ -117,7 +122,7 @@ def detect_presidio_candidates(
                 and name_catalog.is_dictionary_word(value)
             )
         )
-        line_number = content.count("\n", 0, start) + 1
+        line_number = bisect_right(newline_offsets, start - 1) + 1
         if ignored:
             if ignored_candidates is not None:
                 candidate = Candidate(

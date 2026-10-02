@@ -304,6 +304,11 @@ def _editable_parts(content: str, suffix: str = ".md"):
     return ((True, content),)
 
 
+def text_editable_parts(content: str, suffix: str = ".md"):
+    """Return ``(editable, text)`` parts; protected spans only for Markdown."""
+    return _editable_parts(content, suffix)
+
+
 def _merge_candidates(primary, secondary):
     merged = {candidate.original_value: candidate for candidate in primary}
     ordered = list(primary)
@@ -543,21 +548,12 @@ def reset_saved_ignore_file(mapping_path: Path | str) -> Path:
     return ignore_path
 
 
-def _update_text_mapping_sources(
-    text_sources: Sequence[tuple[str, str]],
-    mapping_path: Path | str,
+def _merge_mapping_candidates(
+    mapping_file: Path,
+    candidates: Sequence[Dict[str, Any]],
+    ignored_candidates: Sequence[Any],
     *,
-    countries: Optional[Sequence[str]] = None,
-    use_name_datasets: Optional[bool] = None,
-    cache_dir: Optional[Path | str] = None,
-    offline: Optional[bool] = None,
-    debug: bool = False,
-    name_exclusions: Optional[Sequence[str]] = None,
-    anonymize_mode: str = "custom",
-    language: str = "en",
-    presidio_model: str = "de_core_news_sm",
-    presidio_score_threshold: float = 0.5,
-    presidio_entities: Optional[Sequence[str]] = None,
+    name_catalog=None,
     replacement_length: int = 4,
     ignore_dictionary: bool = False,
     ignore_numbers: bool = False,
@@ -565,10 +561,8 @@ def _update_text_mapping_sources(
     ignore_dates: bool = False,
     ignore_save: bool = False,
     ignore_append: bool = False,
-    protect_markup: bool = True,
 ) -> Path:
-    """Add candidates from ``(content, source_name)`` pairs."""
-    mapping_file = Path(mapping_path)
+    """Merge detected candidate rows into the proposal mapping CSV."""
     anon_file = anon_path_for_mapping(mapping_file)
     if anon_file.resolve() == mapping_file.resolve():
         raise ValueError(
@@ -696,14 +690,6 @@ def _update_text_mapping_sources(
         for original in row["original_value"].split(";")
         if original.strip()
     }
-    name_catalog = load_name_catalog(
-        countries,
-        use_name_datasets=use_name_datasets,
-        cache_dir=cache_dir,
-        offline=offline,
-        debug=debug,
-        name_exclusions=name_exclusions,
-    )
     filtered_rows = []
     for row in rows:
         if row["status"] != "new":
@@ -740,32 +726,6 @@ def _update_text_mapping_sources(
         filtered_rows.append(row)
     rows = filtered_rows
 
-    ignored_candidates = []
-    candidates = []
-    for content, source_name in text_sources:
-        source_ignored_candidates = []
-        candidates.extend(
-            _text_candidate_rows(
-                content,
-                source_name,
-                name_catalog=name_catalog,
-                anonymize_mode=anonymize_mode,
-                language=language,
-                presidio_model=presidio_model,
-                presidio_score_threshold=presidio_score_threshold,
-                presidio_entities=presidio_entities,
-                replacement_length=replacement_length,
-                ignore_dictionary=ignore_dictionary,
-                ignore_numbers=ignore_numbers,
-                ignore_emails=ignore_emails,
-                ignore_dates=ignore_dates,
-                ignored_candidates=(
-                    source_ignored_candidates if ignore_save else None
-                ),
-                protect_markup=protect_markup,
-            )
-        )
-        ignored_candidates.extend(source_ignored_candidates)
     if ignore_save:
         filtered_ignore_rows.extend(
             {
@@ -818,6 +778,180 @@ def _update_text_mapping_sources(
     return mapping_file
 
 
+def detect_text_candidate_rows(
+    content: str,
+    source_name: str,
+    *,
+    name_catalog=None,
+    anonymize_mode: str = "custom",
+    language: str = "en",
+    presidio_model: str = "de_core_news_sm",
+    presidio_score_threshold: float = 0.5,
+    presidio_entities: Optional[Sequence[str]] = None,
+    replacement_length: int = 4,
+    ignore_dictionary: bool = False,
+    ignore_numbers: bool = False,
+    ignore_emails: bool = False,
+    ignore_dates: bool = False,
+    ignored_candidates: Optional[List[Any]] = None,
+    protect_markup: bool = True,
+) -> List[Dict[str, Any]]:
+    """Detect candidate rows for one text source with a shared catalog."""
+    return _text_candidate_rows(
+        content,
+        source_name,
+        name_catalog=name_catalog,
+        anonymize_mode=anonymize_mode,
+        language=language,
+        presidio_model=presidio_model,
+        presidio_score_threshold=presidio_score_threshold,
+        presidio_entities=presidio_entities,
+        replacement_length=replacement_length,
+        ignore_dictionary=ignore_dictionary,
+        ignore_numbers=ignore_numbers,
+        ignore_emails=ignore_emails,
+        ignore_dates=ignore_dates,
+        ignored_candidates=ignored_candidates,
+        protect_markup=protect_markup,
+    )
+
+
+def merge_text_mapping_candidates(
+    mapping_path: Path | str,
+    candidate_rows: Sequence[Dict[str, Any]],
+    ignored_candidates: Optional[Sequence[Any]] = None,
+    *,
+    countries: Optional[Sequence[str]] = None,
+    use_name_datasets: Optional[bool] = None,
+    cache_dir: Optional[Path | str] = None,
+    offline: Optional[bool] = None,
+    debug: bool = False,
+    name_exclusions: Optional[Sequence[str]] = None,
+    name_catalog=None,
+    replacement_length: int = 4,
+    ignore_dictionary: bool = False,
+    ignore_numbers: bool = False,
+    ignore_emails: bool = False,
+    ignore_dates: bool = False,
+    ignore_save: bool = False,
+    ignore_append: bool = False,
+) -> Path:
+    """Merge pre-detected candidate rows into the proposal mapping CSV."""
+    mapping_file = Path(mapping_path)
+    if name_catalog is None:
+        name_catalog = load_name_catalog(
+            countries,
+            use_name_datasets=use_name_datasets,
+            cache_dir=cache_dir,
+            offline=offline,
+            debug=debug,
+            name_exclusions=name_exclusions,
+        )
+    return _merge_mapping_candidates(
+        mapping_file,
+        candidate_rows,
+        ignored_candidates or [],
+        name_catalog=name_catalog,
+        replacement_length=replacement_length,
+        ignore_dictionary=ignore_dictionary,
+        ignore_numbers=ignore_numbers,
+        ignore_emails=ignore_emails,
+        ignore_dates=ignore_dates,
+        ignore_save=ignore_save,
+        ignore_append=ignore_append,
+    )
+
+
+def update_texts_mapping(
+    text_sources: Sequence[tuple[str, str]],
+    mapping_path: Path | str,
+    **kwargs,
+) -> Path:
+    """Add candidates from ``(content, source_name)`` pairs.
+
+    Batch variant of :func:`update_text_mapping`; accepts the same keyword
+    arguments plus ``protect_markup`` and ``name_catalog``.
+    """
+    return _update_text_mapping_sources(text_sources, mapping_path, **kwargs)
+
+
+def _update_text_mapping_sources(
+    text_sources: Sequence[tuple[str, str]],
+    mapping_path: Path | str,
+    *,
+    countries: Optional[Sequence[str]] = None,
+    use_name_datasets: Optional[bool] = None,
+    cache_dir: Optional[Path | str] = None,
+    offline: Optional[bool] = None,
+    debug: bool = False,
+    name_exclusions: Optional[Sequence[str]] = None,
+    anonymize_mode: str = "custom",
+    language: str = "en",
+    presidio_model: str = "de_core_news_sm",
+    presidio_score_threshold: float = 0.5,
+    presidio_entities: Optional[Sequence[str]] = None,
+    replacement_length: int = 4,
+    ignore_dictionary: bool = False,
+    ignore_numbers: bool = False,
+    ignore_emails: bool = False,
+    ignore_dates: bool = False,
+    ignore_save: bool = False,
+    ignore_append: bool = False,
+    protect_markup: bool = True,
+    name_catalog=None,
+) -> Path:
+    """Add candidates from ``(content, source_name)`` pairs."""
+    mapping_file = Path(mapping_path)
+    if name_catalog is None:
+        name_catalog = load_name_catalog(
+            countries,
+            use_name_datasets=use_name_datasets,
+            cache_dir=cache_dir,
+            offline=offline,
+            debug=debug,
+            name_exclusions=name_exclusions,
+        )
+    ignored_candidates = []
+    candidates = []
+    for content, source_name in text_sources:
+        source_ignored_candidates = []
+        candidates.extend(
+            detect_text_candidate_rows(
+                content,
+                source_name,
+                name_catalog=name_catalog,
+                anonymize_mode=anonymize_mode,
+                language=language,
+                presidio_model=presidio_model,
+                presidio_score_threshold=presidio_score_threshold,
+                presidio_entities=presidio_entities,
+                replacement_length=replacement_length,
+                ignore_dictionary=ignore_dictionary,
+                ignore_numbers=ignore_numbers,
+                ignore_emails=ignore_emails,
+                ignore_dates=ignore_dates,
+                ignored_candidates=(
+                    source_ignored_candidates if ignore_save else None
+                ),
+                protect_markup=protect_markup,
+            )
+        )
+        ignored_candidates.extend(source_ignored_candidates)
+    return _merge_mapping_candidates(
+        mapping_file,
+        candidates,
+        ignored_candidates,
+        name_catalog=name_catalog,
+        replacement_length=replacement_length,
+        ignore_dictionary=ignore_dictionary,
+        ignore_numbers=ignore_numbers,
+        ignore_emails=ignore_emails,
+        ignore_dates=ignore_dates,
+        ignore_save=ignore_save,
+        ignore_append=ignore_append,
+    )
+
+
 def update_text_mapping(
     file_path: Path | str,
     mapping_path: Path | str,
@@ -840,6 +974,7 @@ def update_text_mapping(
     ignore_dates: bool = False,
     ignore_save: bool = False,
     ignore_append: bool = False,
+    name_catalog=None,
 ) -> Path:
     """Add newly found text candidates with status ``new``."""
     input_path = Path(file_path)
@@ -848,6 +983,7 @@ def update_text_mapping(
     return _update_text_mapping_sources(
         [(input_path.read_text(encoding="utf-8"), input_path.name)],
         mapping_path,
+        name_catalog=name_catalog,
         protect_markup=input_path.suffix.lower() == ".md",
         countries=countries,
         use_name_datasets=use_name_datasets,
@@ -893,6 +1029,7 @@ def update_directory_mapping(
     ignore_dates: bool = False,
     ignore_save: bool = False,
     ignore_append: bool = False,
+    name_catalog=None,
 ) -> Path:
     """Add candidates found in source directory names."""
     source_root = Path(sourcedir).resolve()
@@ -931,6 +1068,7 @@ def update_directory_mapping(
         ignore_dates=ignore_dates,
         ignore_save=ignore_save,
         ignore_append=ignore_append,
+        name_catalog=name_catalog,
     )
 
 
