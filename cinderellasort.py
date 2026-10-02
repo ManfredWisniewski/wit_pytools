@@ -14,6 +14,7 @@ from wit_pytools.documenttools import (
     anonymize_text,
     changed_anonymization_values,
     document_find_regex,
+    mapping_family_paths,
     mapping_matches_text,
     mapping_requires_anonymization,
     reset_saved_ignore_file,
@@ -76,7 +77,10 @@ def merge_common_rules(config_object, common_configfile):
     common_config.optionxform = str
     common_config.read(common_configfile, encoding='utf-8')
 
-    for section in ('BOWLS', 'BOWLS_EMAIL', 'BOWLS_DOCPREP', 'BOWLS_GEN_IMG'):
+    for section in (
+        'BOWLS', 'BOWLS_EMAIL', 'BOWLS_DOCPREP', 'BOWLS_ANONYMIZE',
+        'BOWLS_GEN_IMG',
+    ):
         if not common_config.has_section(section):
             continue
 
@@ -166,6 +170,25 @@ def bowldir_docprep(file, config_object=''):
     if not (config_object and len(config_object) > 0 and config_object.has_section("BOWLS_DOCPREP")):
         return ''
     for (bowl, critlist) in config_object.items("BOWLS_DOCPREP", raw=True):
+        for crit in critlist.split(','):
+            crit = crit.strip()
+            if crit and crit in file:
+                return '/' + bowl
+    return ''
+
+# list all anonymization bowls
+def bowllist_anonymize(config_object=''):
+    bowls = []
+    if config_object and len(config_object) > 0 and config_object.has_section("BOWLS_ANONYMIZE"):
+        for bowl, _ in config_object.items("BOWLS_ANONYMIZE", raw=True):
+            bowls.append(bowl)
+    return bowls
+
+# check if file matches a criteria for an anonymization bowl and return the corresponding bowl
+def bowldir_anonymize(file, config_object=''):
+    if not (config_object and len(config_object) > 0 and config_object.has_section("BOWLS_ANONYMIZE")):
+        return ''
+    for (bowl, critlist) in config_object.items("BOWLS_ANONYMIZE", raw=True):
         for crit in critlist.split(','):
             crit = crit.strip()
             if crit and crit in file:
@@ -746,7 +769,7 @@ def _docprep_pdf(source, output_path, settings):
     return output
 
 
-def process_pending_docprep_anonymization(
+def process_pending_anonymization(
     sourcedir,
     targetdir,
     config_object,
@@ -759,224 +782,252 @@ def process_pending_docprep_anonymization(
     *,
     ignore_append=False,
 ):
-    """Anonymize existing source and target Markdown files needing processing."""
-    if not settings['anonymize']:
+    """Anonymize bowl-matched source files and clean up stale outputs."""
+    if not bowllist_anonymize(config_object):
         return
-    if not settings['anonymize_mapping_file']:
-        message = 'Doc_prep anonymization skipped: anonymize_mapping_file is not configured'
+    if not settings['mapping_file']:
+        message = (
+            'Anonymization skipped: [ANONYMIZE] mapping_file is not configured'
+        )
         log_message(message, level='WARNING')
         print(message)
         return
     covered_anon = set()
     pending = []
-    for markdown_path in sorted(Path(targetdir).rglob('*.md')):
-        if markdown_path.name.endswith('_anon.md'):
-            continue
-        anonymized_path = markdown_path.with_name(f"{markdown_path.stem}_anon.md")
-        covered_anon.add(anonymized_path.resolve())
-        if anonymized_path.exists() and not settings['anonymize_update']:
-            continue
-        pending.append((markdown_path, anonymized_path, None, None))
+    warned_types = set()
+    mapping_family = mapping_family_paths(settings['mapping_file'])
     source_root = Path(sourcedir).resolve()
     target_root = Path(targetdir).resolve()
     for root, _, files in _walk_source(sourcedir, recursive):
         for filename in sorted(files):
-            lower_name = filename.casefold()
-            if not lower_name.endswith('.md') or lower_name.endswith('_anon.md'):
+            source_path = Path(root) / filename
+            if source_path.stem.casefold().endswith('_anon'):
                 continue
-            markdown_path = Path(root) / filename
-            if markdown_path.resolve().is_relative_to(target_root):
+            if filename.casefold().endswith('_pdf2md.json'):
                 continue
-            relative_path = markdown_path.resolve().relative_to(source_root)
-            relative_path = _docprep_anonymized_relative_path(
-                relative_path,
-                settings,
-            )
+            if source_path.resolve() in mapping_family:
+                continue
             cleaned_name = normalize_spaces(
                 cleanfilename(filename, clean, clean_nocase, replacements)
             )
-            bowl = bowldir_docprep(cleaned_name, config_object)
-            output_path = _docprep_output_path(
-                targetdir,
-                relative_path,
-                cleaned_name,
-                bowl,
-            )
-            anonymized_path = output_path.with_name(
-                f"{output_path.stem}_anon{output_path.suffix}"
-            )
-            covered_anon.add(anonymized_path.resolve())
-            if anonymized_path.exists() and not settings['anonymize_update']:
+            if not bowldir_anonymize(cleaned_name, config_object):
                 continue
-            pending.append((markdown_path, anonymized_path, False, output_path))
-    message = f'Doc_prep anonymization: scanning {sourcedir} and {targetdir}; found {len(pending)} Markdown file(s)'
+            suffix = source_path.suffix.lower()
+            if suffix in ANONYMIZE_PLANNED_EXTENSIONS:
+                if suffix not in warned_types:
+                    warned_types.add(suffix)
+                    message = (
+                        f'Anonymize: {suffix} files are not supported yet'
+                    )
+                    log_message(message, level='WARNING')
+                    print(message)
+                continue
+            if suffix not in ANONYMIZE_TEXT_EXTENSIONS:
+                if suffix not in warned_types:
+                    warned_types.add(suffix)
+                    message = f'Anonymize: {suffix} files are not supported'
+                    log_message(message, level='WARNING')
+                    print(message)
+                continue
+            resolved = source_path.resolve()
+            if resolved.is_relative_to(target_root):
+                continue
+            relative_path = resolved.relative_to(source_root)
+            parent = _anonymized_relative_parent(
+                relative_path.parent, settings
+            )
+            output_dir = _mirrored_target_dir(target_root, parent)
+            cleaned = Path(cleaned_name)
+            anonymized_path = (
+                output_dir / f"{cleaned.stem}_anon{cleaned.suffix}"
+            )
+            publish_target = output_dir / cleaned.name
+            covered_anon.add(anonymized_path.resolve())
+            pending.append((source_path, anonymized_path, publish_target))
+    message = (
+        f'Anonymization: found {len(pending)} bowl-matched file(s)'
+        f' in {sourcedir}'
+    )
     log_message(message, level='INFO')
     print(message)
-    for markdown_path, anonymized_path, remove_source, publish_target in pending:
+    for source_path, anonymized_path, publish_target in pending:
         try:
-            result = handle_docprep_anonymization(
-                markdown_path,
+            handle_anonymization(
+                source_path,
                 settings,
                 output_path=anonymized_path,
-                remove_source=remove_source,
+                publish_target=publish_target,
+                dryrun=dryrun,
                 ignore_append=ignore_append,
             )
-            if publish_target is not None:
-                _publish_docprep_markup(
-                    markdown_path,
-                    publish_target,
-                    settings,
-                    anonymized=result is not None,
-                )
         except Exception as e:
             log_message(
-                f"Pending Doc_prep anonymization failed for {markdown_path}: {e}",
+                f"Anonymization failed for {source_path}: {e}",
                 level="ERROR",
             )
-    if settings['anonymize_sync_deletes']:
-        for anon_path in sorted(Path(targetdir).rglob('*_anon.md')):
+    if settings['sync_deletes']:
+        for anon_path in sorted(Path(targetdir).rglob('*_anon.*')):
+            if not anon_path.stem.casefold().endswith('_anon'):
+                continue
             if anon_path.resolve() in covered_anon:
+                continue
+            plaintext = anon_path.with_name(
+                f"{anon_path.stem[: -len('_anon')]}{anon_path.suffix}"
+            )
+            if plaintext.exists():
                 continue
             delfile(anon_path.parent, anon_path.name, dryrun)
             log_message(
-                f"Doc_prep anonymization: removed {anon_path} (no plaintext Markdown)",
+                f"Anonymization: removed {anon_path} (no plaintext source)",
                 level="INFO",
             )
 
 
-def _remove_published_docprep_copy(markdown_path, publish_target, reason):
-    """Remove a plaintext copy that is identical to the source Markdown."""
+def _remove_published_copy(source_path, publish_target, reason):
+    """Remove a plaintext copy that is identical to the source file."""
     if (
         publish_target.exists()
-        and publish_target.read_bytes() == Path(markdown_path).read_bytes()
+        and publish_target.read_bytes() == Path(source_path).read_bytes()
     ):
         publish_target.unlink()
         log_message(
-            f"Doc_prep: removed plaintext {publish_target} ({reason})",
+            f"Anonymize: removed plaintext {publish_target} ({reason})",
             level="INFO",
         )
 
 
-def _publish_docprep_markup(markdown_path, publish_target, settings, *, anonymized):
-    """Publish or retract a source Markdown copy in the target directory."""
+def _publish_plaintext(source_path, publish_target, settings, *, anonymized):
+    """Publish or retract a plaintext copy in the target directory."""
+    if publish_target is None:
+        return
     if anonymized:
-        _remove_published_docprep_copy(
-            markdown_path,
+        _remove_published_copy(
+            source_path,
             publish_target,
             'superseded by anonymized output',
         )
         return
-    requires_review = not settings['anonymize_publish_without_review'] and (
+    requires_review = not settings['publish_without_review'] and (
         mapping_requires_anonymization(
-            Path(markdown_path).read_text(encoding='utf-8'),
-            settings['anonymize_mapping_file'],
+            Path(source_path).read_text(encoding='utf-8'),
+            settings['mapping_file'],
+            suffix=Path(source_path).suffix,
         )
     )
     if requires_review:
-        _remove_published_docprep_copy(
-            markdown_path,
+        _remove_published_copy(
+            source_path,
             publish_target,
             'anonymization pending review',
         )
         return
     publish_target.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(markdown_path, publish_target)
+    shutil.copy2(source_path, publish_target)
     log_message(
-        f"Doc_prep: published {markdown_path} to {publish_target}",
+        f"Anonymize: published {source_path} to {publish_target}",
         level="INFO",
     )
 
 
-def _write_docprep_lastmap(settings, dryrun):
+def _write_anonymize_lastmap(settings, dryrun):
     """Snapshot the applied mapping so changed replacements can be detected."""
-    if dryrun or not (
-        settings['anonymize'] and settings['anonymize_mapping_file']
-    ):
+    if dryrun or not (settings['enabled'] and settings['mapping_file']):
         return
     removed = update_anonymization_lastmap(
-        Path(settings['anonymize_mapping_file'])
+        Path(settings['mapping_file'])
     )
     for replacement in removed:
         message = (
-            f"Doc_prep anonymization: replacement {replacement} was removed "
+            f"Anonymization: replacement {replacement} was removed "
             f"from the mapping; existing anonymized files may contain it"
         )
         log_message(message, level="WARNING")
         print(message)
 
 
-def handle_docprep_anonymization(
-    markdown_path,
+def handle_anonymization(
+    input_path,
     settings,
     output_path=None,
-    remove_source=None,
+    publish_target=None,
     *,
+    dryrun=False,
     ignore_append=False,
 ):
-    """Collect proposals and optionally apply approved mappings to Markdown."""
-    if not settings['anonymize']:
+    """Collect proposals and apply approved mappings to a text file."""
+    if not settings['enabled']:
         return None
-    if not settings['anonymize_mapping_file']:
-        raise ValueError('DOCPREP anonymize=true requires anonymize_mapping_file')
+    if not settings['mapping_file']:
+        raise ValueError('BOWLS_ANONYMIZE requires [ANONYMIZE] mapping_file')
 
-    mapping_path = Path(settings['anonymize_mapping_file'])
+    input_path = Path(input_path)
+    suffix = input_path.suffix.lower()
+    mapping_path = Path(settings['mapping_file'])
     output_path = (
         Path(output_path)
         if output_path is not None
-        else Path(markdown_path).with_name(f"{Path(markdown_path).stem}_anon.md")
+        else input_path.with_name(f"{input_path.stem}_anon{suffix}")
     )
-    candidate_source = output_path if output_path.exists() else Path(markdown_path)
+    if dryrun:
+        print(f"  Anonymize (dryrun): {input_path} -> {output_path}")
+        return None
+    candidate_source = output_path if output_path.exists() else input_path
     update_text_mapping(
         candidate_source,
         mapping_path,
-        countries=settings.get('anonymize_name_countries'),
-        use_name_datasets=settings.get('anonymize_use_name_datasets'),
-        cache_dir=settings.get('anonymize_name_cache_dir'),
-        offline=settings.get('anonymize_name_dataset_offline'),
-        debug=settings.get('anonymize_name_dataset_debug', False),
-        name_exclusions=settings.get('anonymize_name_exclusions'),
-        anonymize_mode=settings.get('anonymize_mode', 'custom'),
+        countries=settings.get('name_countries'),
+        use_name_datasets=settings.get('use_name_datasets'),
+        cache_dir=settings.get('name_cache_dir'),
+        offline=settings.get('name_dataset_offline'),
+        debug=settings.get('name_dataset_debug', False),
+        name_exclusions=settings.get('name_exclusions'),
+        anonymize_mode=settings.get('mode', 'custom'),
         language=settings.get('language', 'en'),
-        presidio_model=settings.get('anonymize_presidio_model', 'de_core_news_sm'),
-        presidio_score_threshold=settings.get('anonymize_presidio_score_threshold', 0.5),
-        presidio_entities=settings.get('anonymize_presidio_entities'),
-        replacement_length=settings.get('anonymize_token_length', 4),
-        ignore_dictionary=settings.get('anonymize_ignore_dictionary', False),
-        ignore_numbers=settings.get('anonymize_ignore_numbers', False),
-        ignore_emails=settings.get('anonymize_ignore_emails', False),
-        ignore_dates=settings.get('anonymize_ignore_dates', False),
-        ignore_save=settings.get('anonymize_ignore_save', False),
+        presidio_model=settings.get('presidio_model', 'de_core_news_sm'),
+        presidio_score_threshold=settings.get('presidio_score_threshold', 0.5),
+        presidio_entities=settings.get('presidio_entities'),
+        replacement_length=settings.get('token_length', 4),
+        ignore_dictionary=settings.get('ignore_dictionary', False),
+        ignore_numbers=settings.get('ignore_numbers', False),
+        ignore_emails=settings.get('ignore_emails', False),
+        ignore_dates=settings.get('ignore_dates', False),
+        ignore_save=settings.get('ignore_save', False),
         ignore_append=ignore_append,
     )
-    log_message(f"Doc_prep anonymization: updated mapping {mapping_path}", level="INFO")
-    print(f"Doc_prep anonymization: updated mapping {mapping_path}")
-    content = Path(markdown_path).read_text(encoding='utf-8')
-    if not mapping_matches_text(content, mapping_path):
-        log_message(f"Doc_prep anonymization: no approved mapping matches {markdown_path.name}", level="INFO")
-        return None
-
-    keep_originals = settings.get('anonymize_keep_originals', False)
-    if remove_source is None:
-        remove_source = not keep_originals
-    if output_path.exists() and not settings['anonymize_update']:
-        changed_values = changed_anonymization_values(mapping_path)
-        stale = bool(changed_values) and text_contains_values(
-            content, changed_values
-        )
-        if not stale:
-            log_message(f"Doc_prep anonymization: {output_path.name} exists, skipping", level="INFO")
-            if remove_source and Path(markdown_path).exists():
-                Path(markdown_path).unlink()
-                log_message(f"Doc_prep anonymization: removed source {markdown_path}", level="INFO")
-            return output_path
+    log_message(f"Anonymization: updated mapping {mapping_path}", level="INFO")
+    content = input_path.read_text(encoding='utf-8')
+    if not mapping_matches_text(content, mapping_path, suffix=suffix):
         log_message(
-            f"Doc_prep anonymization: mapping values changed, regenerating {output_path.name}",
+            f"Anonymization: no approved mapping matches {input_path.name}",
             level="INFO",
         )
-    result = anonymize_text(markdown_path, mapping_path, output_path, overwrite=True)
-    if remove_source:
-        Path(markdown_path).unlink()
-        log_message(f"Doc_prep anonymization: removed source {markdown_path}", level="INFO")
+        _publish_plaintext(
+            input_path, publish_target, settings, anonymized=False
+        )
+        return None
+    if output_path.exists() and not settings['force_update']:
+        changed_values = changed_anonymization_values(mapping_path)
+        stale = bool(changed_values) and text_contains_values(
+            content, changed_values, suffix=suffix
+        )
+        if not stale:
+            log_message(
+                f"Anonymization: {output_path.name} exists, skipping",
+                level="INFO",
+            )
+            _publish_plaintext(
+                input_path, publish_target, settings, anonymized=True
+            )
+            return output_path
+        log_message(
+            f"Anonymization: mapping values changed,"
+            f" regenerating {output_path.name}",
+            level="INFO",
+        )
+    result = anonymize_text(
+        input_path, mapping_path, output_path, overwrite=True
+    )
+    _publish_plaintext(input_path, publish_target, settings, anonymized=True)
     return result
 
 
@@ -985,38 +1036,73 @@ DOCPREP_CONVERTERS = {
     '.pdf': (_pdf_page_count, _docprep_pdf),
 }
 
+# Text extensions anonymized via plain replacement in ANONYMIZE bowls.
+ANONYMIZE_TEXT_EXTENSIONS = {'.md', '.txt', '.json', '.csv', '.log'}
+# Structured formats with a planned adapter; warned about until implemented.
+ANONYMIZE_PLANNED_EXTENSIONS = {'.xls', '.xlsx'}
 
-def _default_docprep_mapping_file(sourcedir):
+
+def _default_mapping_file(sourcedir):
     source_path = Path(str(sourcedir).replace('\\', '/').replace('//', '/'))
     slug = source_path.name or 'documents'
     return source_path / f"{slug}-anon-mapping.csv"
 
 
+def _section_bool(section, key):
+    value = section.get(key)
+    if value is None or not value.strip():
+        return None
+    normalized = value.strip().lower()
+    if normalized not in {'true', 'false'}:
+        raise ValueError(f'{key} must be true or false')
+    return normalized == 'true'
+
+
+def _section_csv(section, key):
+    return tuple(
+        value.strip()
+        for value in (section.get(key, '') or '').split(',')
+        if value.strip()
+    )
+
+
 def docprep_settings(config_object):
     """Read the [DOCPREP] section with defaults."""
-    section = config_object['DOCPREP'] if config_object.has_section('DOCPREP') else {}
-    language = (section.get('language', 'en') or 'en').strip().lower()
+    section = (
+        config_object['DOCPREP']
+        if config_object.has_section('DOCPREP')
+        else {}
+    )
+    return {
+        'mode': (section.get('mode', 'vision') or 'vision').strip().lower(),
+        'model': (section.get('model', '') or '').strip() or None,
+        'language': (section.get('language', 'en') or 'en').strip().lower(),
+        'dpi': int(section.get('dpi', '150')),
+        'max_pages': int(section.get('max_pages', '50')),
+        'retry_times': int(section.get('retry_times', '3')),
+        'continue_on_error': (
+            section.get('continue_on_error', 'false') or 'false'
+        ).strip().lower() == 'true',
+        'sidecar': (
+            section.get('sidecar', 'true') or 'true'
+        ).strip().lower() == 'true',
+        'sync_deletes': (
+            section.get('sync-deletes', 'false') or 'false'
+        ).strip().lower() == 'true',
+    }
 
-    def optional_bool(key):
-        value = section.get(key)
-        if value is None or not value.strip():
-            return None
-        normalized = value.strip().lower()
-        if normalized not in {'true', 'false'}:
-            raise ValueError(f'{key} must be true or false')
-        return normalized == 'true'
 
-    def csv_values(key):
-        return tuple(
-            value.strip()
-            for value in (section.get(key, '') or '').split(',')
-            if value.strip()
-        )
-
-    anonymize_mode = (section.get('anonymize-mode', 'custom') or 'custom').strip().lower()
-    if anonymize_mode not in {'custom', 'presidio', 'all'}:
-        raise ValueError('anonymize-mode must be custom, presidio, or all')
-    presidio_entities = csv_values('anonymize_presidio_entities')
+def anonymize_settings(config_object):
+    """Read the [ANONYMIZE] section with defaults."""
+    section = (
+        config_object['ANONYMIZE']
+        if config_object.has_section('ANONYMIZE')
+        else {}
+    )
+    mode = (section.get('mode', 'custom') or 'custom').strip().lower()
+    if mode not in {'custom', 'presidio', 'all'}:
+        raise ValueError('mode must be custom, presidio, or all')
+    presidio_entities = _section_csv(section, 'presidio_entities')
     if presidio_entities == ('all',):
         presidio_entities = None
     elif not presidio_entities:
@@ -1025,63 +1111,78 @@ def docprep_settings(config_object):
             'ORGANIZATION', 'IP_ADDRESS', 'CREDIT_CARD', 'CRYPTO',
             'IBAN_CODE', 'NRP', 'MEDICAL_LICENSE',
         )
-    replacement_length = int(
-        section.get('anonymize_token_length', '4') or '3'
-    )
-    if replacement_length < 1:
-        raise ValueError('anonymize_token_length must be at least 1')
-    mapping_file = (section.get('anonymize_mapping_file', '') or '').strip()
+    token_length = int(section.get('token_length', '4') or '4')
+    if token_length < 1:
+        raise ValueError('token_length must be at least 1')
+    mapping_file = (section.get('mapping_file', '') or '').strip()
     if not mapping_file and config_object.has_section('TABLE'):
         mapping_file = str(
-            _default_docprep_mapping_file(config_object['TABLE'].get('sourcedir', '.'))
+            _default_mapping_file(config_object['TABLE'].get('sourcedir', '.'))
         )
-
     return {
-        'mode': (section.get('mode', 'vision') or 'vision').strip().lower(),
-        'model': (section.get('model', '') or '').strip() or None,
-        'language': language,
-        'dpi': int(section.get('dpi', '150')),
-        'max_pages': int(section.get('max_pages', '50')),
-        'retry_times': int(section.get('retry_times', '3')),
-        'continue_on_error': (section.get('continue_on_error', 'false') or 'false').strip().lower() == 'true',
-        'sidecar': (section.get('sidecar', 'true') or 'true').strip().lower() == 'true',
-        'sync_deletes': (section.get('sync-deletes', 'false') or 'false').strip().lower() == 'true',
-        'anonymize': (section.get('anonymize', 'false') or 'false').strip().lower() == 'true',
-        'anonymize_mode': anonymize_mode,
-        'anonymize_presidio_model': (section.get('anonymize_presidio_model', 'de_core_news_sm') or 'de_core_news_sm').strip(),
-        'anonymize_presidio_score_threshold': float(section.get('anonymize_presidio_score_threshold', '0.5') or '0.5'),
-        'anonymize_presidio_entities': presidio_entities,
-        'anonymize_token_length': replacement_length,
-        'anonymize_ignore_dictionary': (section.get('anonymize_ignore_dictionary', 'false') or 'false').strip().lower() == 'true',
-        'anonymize_ignore_numbers': (section.get('anonymize_ignore_numbers', 'false') or 'false').strip().lower() == 'true',
-        'anonymize_ignore_emails': (section.get('anonymize_ignore_emails', 'false') or 'false').strip().lower() == 'true',
-        'anonymize_ignore_dates': (section.get('anonymize_ignore_dates', 'false') or 'false').strip().lower() == 'true',
-        'anonymize_ignore_save': (section.get('anonymize_ignore_save', 'false') or 'false').strip().lower() == 'true',
-        'anonymize_mapping_file': mapping_file or None,
-        'anonymize_update': (section.get('anonymize_update', 'false') or 'false').strip().lower() == 'true',
-        'anonymize_sync_deletes': (section.get('anonymize-sync-deletes', 'true') or 'true').strip().lower() == 'true',
-        'anonymize_keep_originals': (section.get('anonymize-keep-originals', 'false') or 'false').strip().lower() == 'true',
-        'anonymize_publish_without_review': (section.get('anonymize_publish_without_review', 'false') or 'false').strip().lower() == 'true',
-        'anonymize_name_countries': csv_values('anonymize_name_countries'),
-        'anonymize_use_name_datasets': optional_bool('anonymize_use_name_datasets'),
-        'anonymize_name_cache_dir': (section.get('anonymize_name_cache_dir', '') or '').strip() or None,
-        'anonymize_name_dataset_offline': optional_bool('anonymize_name_dataset_offline'),
-        'anonymize_name_dataset_debug': (section.get('anonymize_name_dataset_debug', 'false') or 'false').strip().lower() == 'true',
-        'anonymize_name_exclusions': csv_values('anonymize_name_exclusions'),
+        'enabled': bool(bowllist_anonymize(config_object)),
+        'mapping_file': mapping_file or None,
+        'mode': mode,
+        'language': (section.get('language', 'en') or 'en').strip().lower(),
+        'force_update': (
+            section.get('force_update', 'false') or 'false'
+        ).strip().lower() == 'true',
+        'sync_deletes': (
+            section.get('sync-deletes', 'true') or 'true'
+        ).strip().lower() == 'true',
+        'publish_without_review': (
+            section.get('publish_without_review', 'false') or 'false'
+        ).strip().lower() == 'true',
+        'presidio_model': (
+            section.get('presidio_model', 'de_core_news_sm')
+            or 'de_core_news_sm'
+        ).strip(),
+        'presidio_score_threshold': float(
+            section.get('presidio_score_threshold', '0.5') or '0.5'
+        ),
+        'presidio_entities': presidio_entities,
+        'token_length': token_length,
+        'ignore_dictionary': (
+            section.get('ignore_dictionary', 'false') or 'false'
+        ).strip().lower() == 'true',
+        'ignore_numbers': (
+            section.get('ignore_numbers', 'false') or 'false'
+        ).strip().lower() == 'true',
+        'ignore_emails': (
+            section.get('ignore_emails', 'false') or 'false'
+        ).strip().lower() == 'true',
+        'ignore_dates': (
+            section.get('ignore_dates', 'false') or 'false'
+        ).strip().lower() == 'true',
+        'ignore_save': (
+            section.get('ignore_save', 'false') or 'false'
+        ).strip().lower() == 'true',
+        'name_countries': _section_csv(section, 'name_countries'),
+        'use_name_datasets': _section_bool(section, 'use_name_datasets'),
+        'name_cache_dir': (
+            section.get('name_cache_dir', '') or ''
+        ).strip() or None,
+        'name_dataset_offline': _section_bool(
+            section, 'name_dataset_offline'
+        ),
+        'name_dataset_debug': (
+            section.get('name_dataset_debug', 'false') or 'false'
+        ).strip().lower() == 'true',
+        'name_exclusions': _section_csv(section, 'name_exclusions'),
     }
 
 
-def _prepare_docprep_ignore_save(settings):
+def _prepare_anonymize_ignore_save(settings):
     """Reset the filtered-proposal CSV before a multi-file anonymization run."""
     if not (
-        settings['anonymize']
-        and settings['anonymize_ignore_save']
-        and settings['anonymize_mapping_file']
+        settings['enabled']
+        and settings['ignore_save']
+        and settings['mapping_file']
     ):
         return False
-    ignore_path = reset_saved_ignore_file(settings['anonymize_mapping_file'])
+    ignore_path = reset_saved_ignore_file(settings['mapping_file'])
     log_message(
-        f"Doc_prep anonymization: reset saved-ignore file {ignore_path}",
+        f"Anonymization: reset saved-ignore file {ignore_path}",
         level="INFO",
     )
     return True
@@ -1126,7 +1227,7 @@ def _rename_target_directory(targetdir, original, anonymized):
     return target
 
 
-def _prepare_docprep_directories(
+def _prepare_anonymize_directories(
     sourcedir,
     targetdir,
     settings,
@@ -1135,34 +1236,34 @@ def _prepare_docprep_directories(
     ignore_append,
 ):
     """Update directory proposals and rename matching target directories."""
-    if not (settings['anonymize'] and settings['anonymize_mapping_file']):
+    if not (settings['enabled'] and settings['mapping_file']):
         return
     if dryrun:
         return
     source_root = Path(sourcedir).resolve()
     update_directory_mapping(
         source_root,
-        settings['anonymize_mapping_file'],
+        settings['mapping_file'],
         recursive=recursive,
-        countries=settings.get('anonymize_name_countries'),
-        use_name_datasets=settings.get('anonymize_use_name_datasets'),
-        cache_dir=settings.get('anonymize_name_cache_dir'),
-        offline=settings.get('anonymize_name_dataset_offline'),
-        debug=settings.get('anonymize_name_dataset_debug', False),
-        name_exclusions=settings.get('anonymize_name_exclusions'),
-        anonymize_mode=settings.get('anonymize_mode', 'custom'),
+        countries=settings.get('name_countries'),
+        use_name_datasets=settings.get('use_name_datasets'),
+        cache_dir=settings.get('name_cache_dir'),
+        offline=settings.get('name_dataset_offline'),
+        debug=settings.get('name_dataset_debug', False),
+        name_exclusions=settings.get('name_exclusions'),
+        anonymize_mode=settings.get('mode', 'custom'),
         language=settings.get('language', 'en'),
-        presidio_model=settings.get('anonymize_presidio_model', 'de_core_news_sm'),
+        presidio_model=settings.get('presidio_model', 'de_core_news_sm'),
         presidio_score_threshold=settings.get(
-            'anonymize_presidio_score_threshold', 0.5
+            'presidio_score_threshold', 0.5
         ),
-        presidio_entities=settings.get('anonymize_presidio_entities'),
-        replacement_length=settings.get('anonymize_token_length', 4),
-        ignore_dictionary=settings.get('anonymize_ignore_dictionary', False),
-        ignore_numbers=settings.get('anonymize_ignore_numbers', False),
-        ignore_emails=settings.get('anonymize_ignore_emails', False),
-        ignore_dates=settings.get('anonymize_ignore_dates', False),
-        ignore_save=settings.get('anonymize_ignore_save', False),
+        presidio_entities=settings.get('presidio_entities'),
+        replacement_length=settings.get('token_length', 4),
+        ignore_dictionary=settings.get('ignore_dictionary', False),
+        ignore_numbers=settings.get('ignore_numbers', False),
+        ignore_emails=settings.get('ignore_emails', False),
+        ignore_dates=settings.get('ignore_dates', False),
+        ignore_save=settings.get('ignore_save', False),
         ignore_append=ignore_append,
     )
     if not recursive:
@@ -1180,7 +1281,7 @@ def _prepare_docprep_directories(
         relative_directory = directory.relative_to(source_root)
         anonymized_directory = anonymize_path_parts(
             relative_directory,
-            settings['anonymize_mapping_file'],
+            settings['mapping_file'],
         )
         if anonymized_directory != relative_directory:
             renamed = _rename_target_directory(
@@ -1189,46 +1290,36 @@ def _prepare_docprep_directories(
                 anonymized_directory,
             )
             log_message(
-                f"Doc_prep anonymization: renamed directory "
+                f"Anonymization: renamed directory "
                 f"{Path(targetdir) / relative_directory} -> {renamed}",
                 level="INFO",
             )
 
 
-def _docprep_anonymized_relative_path(relative_path, settings):
+def _anonymized_relative_parent(relative_parent, settings):
+    """Apply directory anonymization to a source-relative parent path."""
     if not (
-        settings['anonymize']
-        and settings['anonymize_mapping_file']
-        and relative_path.parent != Path('.')
+        settings['enabled']
+        and settings['mapping_file']
+        and relative_parent != Path('.')
     ):
-        return relative_path
-    return (
-        anonymize_path_parts(
-            relative_path.parent,
-            settings['anonymize_mapping_file'],
-        )
-        / relative_path.name
+        return relative_parent
+    return anonymize_path_parts(
+        relative_parent, settings['mapping_file']
     )
 
 
-def _docprep_output_path(targetdir, relative_path, cleaned_name, bowl):
-    target_root = Path(targetdir)
-    relative_parent = relative_path.parent
-    bowl_path = Path(str(bowl).replace('\\', '/').strip('/'))
-    target_prefix_matches = (
+def _mirrored_target_dir(target_root, relative_parent):
+    """Mirror a source-relative directory under the target root."""
+    target_root = Path(target_root)
+    if (
         relative_parent.parts
         and target_root.name.casefold() == relative_parent.parts[0].casefold()
-    )
-    bowl_prefix_matches = (
-        bowl_path != Path('.')
-        and target_root.parts[-len(bowl_path.parts):] == bowl_path.parts
-        and relative_parent.parts[:len(bowl_path.parts)] == bowl_path.parts
-    )
-    if target_prefix_matches:
-        relative_parent = relative_parent.relative_to(relative_parent.parts[0])
-    elif bowl_prefix_matches:
-        relative_parent = relative_parent.relative_to(bowl_path)
-    return target_root / relative_parent / f"{Path(cleaned_name).stem}.md"
+    ):
+        relative_parent = relative_parent.relative_to(
+            relative_parent.parts[0]
+        )
+    return target_root / relative_parent
 
 
 def _docprep_source_has_document(markdown_path):
@@ -1238,222 +1329,87 @@ def _docprep_source_has_document(markdown_path):
     )
 
 
-def _docprep_expected_markdown_paths(
-    sourcedir,
-    targetdir,
-    config_object,
-    settings,
-    clean,
-    clean_nocase,
-    replacements,
-    recursive,
-):
-    """Calculate Markdown outputs belonging to registered source documents."""
-    source_root = Path(sourcedir).resolve()
-    expected_source = set()
-    expected_target = set()
-    for root, _, files in _walk_source(sourcedir, recursive):
-        for filename in files:
-            source_path = Path(root) / filename
-            if source_path.suffix.lower() not in DOCPREP_CONVERTERS:
-                continue
-            expected_source.add(source_path.with_suffix(".md").resolve())
-            relative_path = source_path.resolve().relative_to(source_root)
-            relative_path = _docprep_anonymized_relative_path(
-                relative_path,
-                settings,
-            )
-            cleaned_name = normalize_spaces(
-                cleanfilename(filename, clean, clean_nocase, replacements)
-            )
-            bowl = bowldir_docprep(cleaned_name, config_object)
-            expected_target.add(
-                _docprep_output_path(
-                    targetdir,
-                    relative_path,
-                    cleaned_name,
-                    bowl,
-                ).resolve()
-            )
-    return expected_source, expected_target
-
-
 def _sync_docprep_deletes(
     sourcedir,
-    targetdir,
     config_object,
     settings,
-    clean,
-    clean_nocase,
-    replacements,
     recursive,
     dryrun,
 ):
-    """Remove Markdown outputs whose registered source document is gone."""
-    if not bowllist_docprep(config_object):
+    """Remove derived Markdown and sidecars whose source document is gone."""
+    if not bowllist_docprep(config_object) or not settings['sync_deletes']:
         return
-    if not (
-        settings["sync_deletes"] or settings["anonymize_sync_deletes"]
-    ):
-        return
-    expected_source, expected_target = _docprep_expected_markdown_paths(
-        sourcedir,
-        targetdir,
-        config_object,
-        settings,
-        clean,
-        clean_nocase,
-        replacements,
-        recursive,
-    )
+    for root, _, files in _walk_source(sourcedir, recursive):
+        for filename in files:
+            name = filename.casefold()
+            path = Path(root) / filename
+            if name.endswith('_pdf2md.json'):
+                base = path.with_name(filename[: -len('_pdf2md.json')])
+                if not _docprep_source_has_document(base):
+                    delfile(path.parent, path.name, dryrun)
+            elif name.endswith('.md') and not name.endswith('_anon.md'):
+                if not _docprep_source_has_document(path):
+                    delfile(path.parent, path.name, dryrun)
 
-    def delete(path):
-        delfile(path.parent, path.name, dryrun)
 
-    def markdown_files(root):
-        paths = root.rglob("*") if recursive else root.glob("*")
-        return (
-            path
-            for path in paths
-            if path.is_file() and path.suffix.casefold() == ".md"
+def _find_existing_docprep_markup(targetdir, relative_path, bowl, names):
+    """Find an existing Markdown copy of a document inside targetdir."""
+    target_root = Path(targetdir)
+    bowl_path = Path(str(bowl).replace('\\', '/'))
+    for name in names:
+        direct = (
+            target_root / bowl_path / relative_path.parent / name
         )
-
-    source_root = Path(sourcedir)
-    target_root = Path(targetdir)
-    for markdown_path in markdown_files(source_root):
-        resolved = markdown_path.resolve()
-        is_anonymized = markdown_path.name.casefold().endswith("_anon.md")
-        if resolved in expected_source:
-            continue
-        if is_anonymized:
-            if not settings["anonymize_sync_deletes"]:
-                continue
-            base = markdown_path.with_name(
-                markdown_path.name[: -len("_anon.md")] + ".md"
-            )
-            if _docprep_source_has_document(base):
-                continue
-        elif not settings["sync_deletes"]:
-            continue
-        delete(markdown_path)
-
-    for markdown_path in markdown_files(target_root):
-        resolved = markdown_path.resolve()
-        is_anonymized = markdown_path.name.casefold().endswith("_anon.md")
-        if resolved in expected_target:
-            continue
-        if is_anonymized:
-            if not settings["anonymize_sync_deletes"]:
-                continue
-            base_path = markdown_path.with_name(
-                markdown_path.name[: -len("_anon.md")] + ".md"
-            )
-            if base_path.resolve() in expected_target:
-                continue
-        elif not settings["sync_deletes"]:
-            continue
-        delete(markdown_path)
-
-
-def _find_existing_docprep_markup(targetdir, output_path, relative_path, bowl):
-    target_root = Path(targetdir)
-    direct_path = target_root / Path(str(bowl).replace('\\', '/')) / relative_path.parent / output_path.name
-    candidates = [output_path, direct_path]
-    candidates.extend(
-        path
-        for path in target_root.rglob(output_path.name)
-        if path.is_file()
-    )
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
+        if direct.is_file():
+            return direct
+    for name in names:
+        for candidate in target_root.rglob(name):
+            if candidate.is_file():
+                return candidate
     return None
 
 
-def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, *, ignore_append=False):
-    """Create Markdown in targetdir while preserving source documents."""
+def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
+    """Create Markdown and its sidecar next to the source document."""
     settings = docprep_settings(config_object)
     source = file if isinstance(file, Path) else Path(os.path.join(sourcedir, str(file)))
     page_count, convert = DOCPREP_CONVERTERS[source.suffix.lower()]
-    source_root = Path(config_object['TABLE']['sourcedir']).resolve()
     source = source.resolve()
+    source_root = Path(config_object['TABLE']['sourcedir']).resolve()
     relative_path = source.relative_to(source_root)
-    relative_path = _docprep_anonymized_relative_path(relative_path, settings)
-    cleaned_name = normalize_spaces(cleanfilename(source.name, clean, clean_nocase, replacements))
-    output_path = _docprep_output_path(
-        targetdir,
-        relative_path,
-        cleaned_name,
-        bowl,
-    )
-    sidecar_path = source.parent / f"{Path(cleaned_name).stem}_pdf2md.json"
-    paired_markup = source.with_suffix('.md')
+    cleaned_stem = Path(
+        normalize_spaces(
+            cleanfilename(source.name, clean, clean_nocase, replacements)
+        )
+    ).stem
+    output_path = source.with_suffix('.md')
+    sidecar_path = source.parent / f"{cleaned_stem}_pdf2md.json"
     log_message(_('Handling Doc_prep: {}').format(source), level="INFO")
 
-    if not paired_markup.is_file():
+    if not output_path.is_file():
         existing_markup = _find_existing_docprep_markup(
             targetdir,
-            output_path,
             relative_path,
             bowl,
+            [output_path.name, f"{cleaned_stem}.md"],
         )
         if existing_markup is not None:
-            keep_originals = settings.get('anonymize_keep_originals', False)
-            if keep_originals:
-                paired_markup.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(existing_markup), str(paired_markup))
-            else:
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                if existing_markup != output_path:
-                    shutil.move(str(existing_markup), str(output_path))
-                if settings['anonymize']:
-                    anonymized_output = output_path.with_name(
-                        f"{output_path.stem}_anon{output_path.suffix}"
-                    )
-                    handle_docprep_anonymization(
-                        output_path,
-                        settings,
-                        output_path=anonymized_output,
-                        remove_source=True,
-                        ignore_append=ignore_append,
-                    )
-                return True
+            shutil.move(str(existing_markup), str(output_path))
+            message = f"Doc_prep: moved existing markup to {output_path}"
+            log_message(message, level="INFO")
+            print(message)
 
     if dryrun:
-        if paired_markup.is_file():
-            print(f"  Doc_prep (dryrun): using existing markup {paired_markup}")
+        if output_path.is_file():
+            print(f"  Doc_prep (dryrun): using existing markup {output_path}")
         else:
             print(f"  Doc_prep (dryrun): {source} -> {output_path}")
         return True
 
-    if paired_markup.is_file():
-        message = f"Doc_prep: found existing markup {paired_markup.name}, skipping conversion"
+    if output_path.is_file():
+        message = f"Doc_prep: found existing markup {output_path.name}, skipping conversion"
         log_message(message, level="INFO")
         print(message)
-        if settings['anonymize']:
-            try:
-                keep_originals = settings.get('anonymize_keep_originals', False)
-                if keep_originals and output_path.is_file():
-                    output_path.unlink()
-                    log_message(
-                        f"Doc_prep: moved original markup to {paired_markup}",
-                        level="INFO",
-                    )
-                anonymized_output = output_path.with_name(
-                    f"{output_path.stem}_anon{output_path.suffix}"
-                )
-                handle_docprep_anonymization(
-                    paired_markup,
-                    settings,
-                    output_path=anonymized_output,
-                    remove_source=not settings.get('anonymize_keep_originals', False),
-                    ignore_append=ignore_append,
-                )
-            except Exception as e:
-                message = f"Doc_prep anonymization failed for {paired_markup.name}: {e}"
-                log_message(message, level="ERROR")
-                print(message)
-                return False
         return True
 
     try:
@@ -1463,42 +1419,17 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
             log_message(message, level="WARNING")
             print(message)
             return False
-        if output_path.exists():
-            message = f"Doc_prep: {output_path.name} exists, skipping conversion"
-            log_message(message, level="INFO")
-            print(message)
-        else:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            conversion_settings = dict(settings)
-            conversion_settings['sidecar_path'] = str(sidecar_path)
-            convert(source, output_path, conversion_settings)
-            message = f"Doc_prep: created {output_path}"
-            log_message(message, level="INFO")
-            print(message)
+        conversion_settings = dict(settings)
+        conversion_settings['sidecar_path'] = str(sidecar_path)
+        convert(source, output_path, conversion_settings)
+        message = f"Doc_prep: created {output_path}"
+        log_message(message, level="INFO")
+        print(message)
     except Exception as e:
         message = f"Doc_prep: conversion failed for {source.name}: {e}"
         log_message(message, level="ERROR")
         print(message)
         return False
-
-    if settings['anonymize']:
-        try:
-            keep_originals = settings.get('anonymize_keep_originals', False)
-            if keep_originals:
-                original_markup = source.with_suffix('.md')
-                if not original_markup.exists():
-                    shutil.copy2(output_path, original_markup)
-            handle_docprep_anonymization(
-                output_path,
-                settings,
-                remove_source=keep_originals,
-                ignore_append=ignore_append,
-            )
-        except Exception as e:
-            message = f"Doc_prep anonymization failed for {output_path.name}: {e}"
-            log_message(message, level="ERROR")
-            print(message)
-            return False
 
     if filemode == 'nc':
         from wit_pytools import nctools
@@ -1688,7 +1619,6 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                 replacements,
                 dryrun,
                 overwrite,
-                ignore_append=ignore_append,
             )
             return
 
@@ -1785,13 +1715,24 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
                 log_message(f"Empty bowl returned for {file.name}, skipping move", level="DEBUG")
             else:
                 movefile(sourcedir, file, targetdir + bowl, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+                return
         else:
             # No matching bowl
-            if skip_unmatched:
-                print(f"  No bowl match, skipping: {nfile}")
-            else:
+            if not skip_unmatched:
                 print(f"  No bowl match, moving to base target: {nfile}")
                 movefile(sourcedir, file, targetdir, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+                return
+            print(f"  No bowl match, skipping: {nfile}")
+
+    ## Handle Anonymize bowls (files still in sourcedir) ##
+    if bowllist_anonymize(config_object):
+        nfile = normalize_spaces(cleanfilename(file.name, clean, clean_nocase, replacements))
+        if bowldir_anonymize(nfile, config_object):
+            print("Handle Anonymize Bowls")
+            log_message(
+                f"Anonymize: {file.name} matches an anonymize bowl",
+                level="INFO",
+            )
 
 ## MAIN cinderellasort execution ##
 def _validate_source_target_dirs(sourcedir, targetdir):
@@ -1906,23 +1847,22 @@ def cinderellasort(
     # ADD unzip
 
     docprep_config = docprep_settings(config_object)
-    ignore_append = not dryrun and _prepare_docprep_ignore_save(docprep_config)
-    _prepare_docprep_directories(
+    anonymize_config = anonymize_settings(config_object)
+    ignore_append = not dryrun and _prepare_anonymize_ignore_save(
+        anonymize_config
+    )
+    _prepare_anonymize_directories(
         sourcedir,
         targetdir,
-        docprep_config,
+        anonymize_config,
         recursive,
         dryrun,
         ignore_append,
     )
     _sync_docprep_deletes(
         sourcedir,
-        targetdir,
         config_object,
         docprep_config,
-        clean,
-        clean_nocase,
-        replacements,
         recursive,
         dryrun,
     )
@@ -2066,11 +2006,11 @@ def cinderellasort(
         else:
             print(' #  No valid sort found!') 
 
-    process_pending_docprep_anonymization(
+    process_pending_anonymization(
         sourcedir,
         targetdir,
         config_object,
-        docprep_config,
+        anonymize_config,
         clean,
         clean_nocase,
         replacements,
@@ -2078,7 +2018,7 @@ def cinderellasort(
         dryrun,
         ignore_append=ignore_append,
     )
-    _write_docprep_lastmap(docprep_config, dryrun)
+    _write_anonymize_lastmap(anonymize_config, dryrun)
 
     if clear_empty_directories:
         print(f"\n## Removing empty directories:")

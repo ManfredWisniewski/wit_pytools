@@ -7,25 +7,33 @@
 - replace the legacy subdirectory pass in `cinderellasort()` with `handlefile`
 - Add a user-facing runner/config example for the `recursive=false` option.
 
-## Doc_prep anonymization
+## Anonymization
 
 ### Implemented design
 
-- `[DOCPREP] anonymize=false` is off by default.
-- `anonymize_mapping_file` points to one customer mapping CSV; when unset it
-  defaults to `<sourcedir>/<sourcedir-name>-anon-mapping.csv`.
-- On the first run, Markdown is generated and new candidates are added with
-  `status=new`; no anonymized output is created yet.
-- Only rows with `status=anon` are approved and applied.
-- Set `status=anon` to approve a proposal or `status=keep` to explicitly reject
-  replacement. Rows with `status=new` are never applied.
-- On later runs, approved mappings are applied only when they match the current
-  Markdown. No `_anon.md` file is created when there is no match.
-- `anonymize_update=false` preserves an existing anonymized output;
-  `anonymize_update=true` refreshes it using the current approved mapping.
-- `anonymize_ignore_save=false` is off by default; when true, values filtered
+- Doc_prep and anonymization are separate bowl types: `[BOWLS_DOCPREP]` +
+  `[DOCPREP]` only convert documents to `.md` beside the source; `[BOWLS_ANONYMIZE]`
+  + `[ANONYMIZE]` anonymize bowl-matched source files to `<stem>_anon.<ext>`
+  below `targetdir`.
+- Supported anonymize input types are `.md`, `.txt`, `.json`, `.csv`, `.log`;
+  `.xls`/`.xlsx` warn until a structured adapter exists.
+- Only bowl-matched files are anonymized; a file moved by an earlier bowl is
+  never evaluated by the anonymize pass.
+- `mapping_file` points to one customer mapping CSV; when unset it defaults to
+  `<sourcedir>/<sourcedir-name>-anon-mapping.csv`.
+- On the first run, new candidates are added with `status=new`; no anonymized
+  output is created yet. Only rows with `status=anon` are applied; `status=keep`
+  explicitly rejects replacement.
+- On later runs, approved mappings are applied only when they match the source
+  file. No `_anon.<ext>` is created when there is no match.
+- `force_update=false` preserves an existing anonymized output unless the
+  `*-anon_lastmap.csv` diff flags a changed or extended approved row present in
+  the source; `force_update=true` refreshes unconditionally.
+- `ignore_save=false` is off by default; when true, values filtered
   from proposals are written to `<slug>-anon-ignore-save.csv`, which is rewritten
   on each run. `<slug>-anon-ignore.csv` remains cumulative for `keep` rows.
+- `publish_without_review=false` withholds plaintext copies that still contain
+  unapproved candidates.
 - Source subdirectory names are included in anonymization proposals. Approved
   mappings rename matching mirrored target directories before document output;
   source directories remain unchanged.

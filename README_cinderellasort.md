@@ -5,8 +5,9 @@ sorting tools.
 
 ## Common sorting rules
 
-In Nextcloud mode, CinderellaSort loads common `[BOWLS]` and
-`[BOWLS_EMAIL]` rules from the central configuration file:
+In Nextcloud mode, CinderellaSort loads common `[BOWLS]`, `[BOWLS_EMAIL]`,
+`[BOWLS_DOCPREP]`, `[BOWLS_ANONYMIZE]`, and `[BOWLS_GEN_IMG]` rules from the
+central configuration file:
 
 ```text
 /etc/nctools/nctools.ini
@@ -87,14 +88,16 @@ For Nextcloud mode, the project configuration is normally named
 
 The common rule merge is enabled automatically when the effective
 configuration uses `filemode=nc`. Existing configurations without central
-`[BOWLS]`, `[BOWLS_EMAIL]`, or `[BOWLS_DOCPREP]` sections continue to work
-unchanged.
+`[BOWLS]`, `[BOWLS_EMAIL]`, `[BOWLS_DOCPREP]`, `[BOWLS_ANONYMIZE]`, or
+`[BOWLS_GEN_IMG]` sections continue to work unchanged.
 
 ## Doc_prep bowls
 
-Doc_prep bowls convert documents in place. A matching PDF is converted to
-Markdown beside the source PDF, while the original PDF and its sidecar are
-moved to a separate target root that mirrors the source directory structure.
+Doc_prep bowls convert documents to Markdown **next to the source document**.
+Nothing is moved and nothing is anonymized — the produced `.md` (and the
+`_pdf2md.json` sidecar) are plain source files. To have them anonymized or
+published, select them with a `[BOWLS_ANONYMIZE]` criterion; to sort them,
+select them with a `[BOWLS]` criterion.
 
 ```ini
 [BOWLS_DOCPREP]
@@ -109,38 +112,8 @@ max_pages=50
 retry_times=3
 continue_on_error=false
 sidecar=true
-# Remove Markdown copies whose registered source document no longer exists.
+# Remove Markdown/sidecar files whose source document no longer exists.
 sync-deletes=false
-anonymize=false
-# Remove orphaned _anon.md files independently of sync-deletes.
-anonymize-sync-deletes=true
-# custom uses the local text-list detector; presidio uses presidio-analyzer.
-anonymize-mode=custom
-anonymize_presidio_model=de_core_news_sm
-anonymize_presidio_score_threshold=0.5
-# Replacement token length; the default is 4.
-anonymize_token_length=4
-# DATE_TIME and URL are excluded by default.
-anonymize_presidio_entities=PERSON,EMAIL_ADDRESS,PHONE_NUMBER,LOCATION,ORGANIZATION,IP_ADDRESS,CREDIT_CARD,CRYPTO,IBAN_CODE,NRP,MEDICAL_LICENSE
-anonymize_ignore_dictionary=true
-anonymize_ignore_numbers=true
-anonymize_ignore_emails=true
-anonymize_ignore_dates=true
-# Rewrite <slug>-anon-ignore-save.csv with values filtered in the current run.
-anonymize_ignore_save=false
-# Optional; defaults to <sourcedir>/<sourcedir-name>-anon-mapping.csv.
-anonymize_mapping_file=P:\\customers\\customer-anon-mapping.csv
-anonymize_update=false
-anonymize-keep-originals=false
-# Publish source .md to target even when unapproved candidates match.
-anonymize_publish_without_review=false
-# Optional country-aware name detection.
-anonymize_name_countries=de,us
-anonymize_use_name_datasets=true
-anonymize_name_dataset_offline=false
-anonymize_name_dataset_debug=false
-anonymize_name_cache_dir=
-anonymize_name_exclusions=
 ```
 
 For a source tree:
@@ -149,32 +122,87 @@ For a source tree:
 source/Project/Rechnung 2026.pdf
 ```
 
-with `targetdir=/path/to/originals`, the result is:
+the result is:
 
 ```text
+source/Project/Rechnung 2026.pdf
 source/Project/Rechnung 2026.md
-originals/Project/Rechnung 2026.pdf
-originals/Project/Rechnung 2026_pdf2md.json
+source/Project/Rechnung 2026_pdf2md.json
 ```
 
 The `[BOWLS_DOCPREP]` bowl selects files; it does not create a `Doc_prep`
-subdirectory.
+subdirectory. A `.md` already next to the source (or found in `targetdir`)
+short-circuits conversion — targetdir copies are moved next to the source.
+
+## Anonymize bowls
+
+Anonymize bowls select source files for the anonymization pipeline — both
+markup produced by Doc_prep and files that need no pre-processing
+(`.md`, `.txt`, `.json`, `.csv`, `.log`). Matched files stay in `sourcedir`;
+the anonymized copy `<stem>_anon.<ext>` is written below `targetdir`,
+mirroring the source-relative path (with approved mappings applied to
+directory names).
+
+Anonymize bowls only *select*; they never move files and never create
+subdirectories. A file moved by a regular bowl (or any earlier bowl type)
+is gone before the anonymization pass runs and is not anonymized — bowl
+order decides.
+
+```ini
+[BOWLS_ANONYMIZE]
+Anonymized=.md,.json
+
+[ANONYMIZE]
+# Optional; defaults to <sourcedir>/<sourcedir-name>-anon-mapping.csv.
+mapping_file=P:\\customers\\customer-anon-mapping.csv
+# custom uses the local text-list detector; presidio uses presidio-analyzer.
+mode=custom
+presidio_model=de_core_news_sm
+presidio_score_threshold=0.5
+# DATE_TIME and URL are excluded by default.
+presidio_entities=PERSON,EMAIL_ADDRESS,PHONE_NUMBER,LOCATION,ORGANIZATION,IP_ADDRESS,CREDIT_CARD,CRYPTO,IBAN_CODE,NRP,MEDICAL_LICENSE
+# Replacement token length; the default is 4.
+token_length=4
+ignore_dictionary=true
+ignore_numbers=true
+ignore_emails=true
+ignore_dates=true
+# Rewrite <slug>-anon-ignore-save.csv with values filtered in the current run.
+ignore_save=false
+# Rewrite existing _anon.<ext> even when no mapping change is detected.
+force_update=false
+# Remove orphaned _anon.<ext> files from targetdir.
+sync-deletes=true
+# Copy matched source files to target even when unapproved candidates match.
+publish_without_review=false
+language=de
+# Optional country-aware name detection.
+name_countries=de,us
+use_name_datasets=true
+name_dataset_offline=false
+name_dataset_debug=false
+name_cache_dir=
+name_exclusions=
+```
+
+`.xls` and `.xlsx` matched by a bowl produce a "not supported yet" warning;
+other unmatched-by-handler extensions are skipped with a warning.
 
 ## Anonymization modes
 
-`anonymize-mode=custom` is the default and preserves the existing candidate
-and reviewed-mapping workflow. `anonymize-mode=presidio` uses the locally
+`mode=custom` (in `[ANONYMIZE]`) is the default and preserves the existing
+candidate and reviewed-mapping workflow. `mode=presidio` uses the locally
 installed `presidio-analyzer` package to detect entities, then uses the same
 reviewed mapping workflow. Presidio mode fails if the package or configured
 language model is unavailable; it does not fall back to custom detection.
 
-`anonymize-mode=all` runs both custom detection and Presidio, merging duplicate
+`mode=all` runs both custom detection and Presidio, merging duplicate
 values with custom detection taking precedence. This mode is useful when the
 goal is to find as many possible names as possible, but it produces significantly
 more false-positive recommendations than either mode alone and requires more
 manual review.
 
-`anonymize_presidio_entities` is a comma-separated allow-list. Use `all` to
+`presidio_entities` is a comma-separated allow-list. Use `all` to
 request all entities available in the configured Presidio recognizer registry.
 The supported entity names include:
 
@@ -201,13 +229,13 @@ from the default allow-list.
 
 Presidio recommendations can also be filtered before they enter the mapping:
 
-- `anonymize_ignore_dictionary=true` ignores values containing configured-language dictionary words. With `anonymize_name_countries=de`, this includes German nouns, plurals, articles, pronouns, adjectives, adverbs, conjunctions, subjunctions, prepositions, particles, verbs, numbers, comparatives, superlatives, contractions, interjections, and abbreviations. Dictionary substrings must contain at least five characters; candidate tokens containing entries from `anonymization/assets/de/word-exclusions.txt` are skipped.
-- `anonymize_ignore_numbers=true` ignores any recommendation containing a digit.
-- `anonymize_ignore_emails=true` ignores e-mail addresses.
-- `anonymize_ignore_dates=true` ignores date-like and `DATE_TIME` recommendations.
-- `anonymize_ignore_save=true` writes values removed by the filters to the sibling report file, such as `Wisniewski-anon-ignore-save.csv`, and replaces that file's contents on each run. The report is informational and is not read as an ignore list.
+- `ignore_dictionary=true` ignores values containing configured-language dictionary words. With `name_countries=de`, this includes German nouns, plurals, articles, pronouns, adjectives, adverbs, conjunctions, subjunctions, prepositions, particles, verbs, numbers, comparatives, superlatives, contractions, interjections, and abbreviations. Dictionary substrings must contain at least five characters; candidate tokens containing entries from `anonymization/assets/de/word-exclusions.txt` are skipped.
+- `ignore_numbers=true` ignores any recommendation containing a digit.
+- `ignore_emails=true` ignores e-mail addresses.
+- `ignore_dates=true` ignores date-like and `DATE_TIME` recommendations.
+- `ignore_save=true` writes values removed by the filters to the sibling report file, such as `Wisniewski-anon-ignore-save.csv`, and replaces that file's contents on each run. The report is informational and is not read as an ignore list.
 
-These filters default to `false`; `anonymize_ignore_save` also defaults to `false`.
+These filters default to `false`; `ignore_save` also defaults to `false`.
 
 When a mapping row has `status=keep`, its `original_value` is moved to a
 sibling ignore file such as `Wisniewski-anon-ignore.csv`. The ignore file has
@@ -217,11 +245,12 @@ sibling approved mapping file, such as `Wisniewski-anon.csv`; anonymization
 functions read that file automatically. Approved rows retain replacement,
 original, type, and `vip` fields.
 
-With `anonymize=true`, source subdirectory names are also checked for
-recommendations. Approved mappings are applied to the mirrored target directory
-path before Markdown output is written. If a matching unanonymized target
-directory already exists, it is renamed; an existing anonymized directory is
-merged without overwriting files. Source directories remain unchanged.
+When anonymize bowls are configured, source subdirectory names are also
+checked for recommendations. Approved mappings are applied to the mirrored
+target directory path before anonymized output is written. If a matching
+unanonymized target directory already exists, it is renamed; an existing
+anonymized directory is merged without overwriting files. Source directories
+remain unchanged.
 
 For German Presidio detection, install a German spaCy model in addition to the
 Python dependency, for example:
@@ -230,6 +259,8 @@ Python dependency, for example:
 pip install -r requirements.txt
 python -m spacy download de_core_news_sm
 ```
+
+`[DOCPREP]` keys:
 
 | Key                 | Default                          | Meaning                                                          |
 | ------------------- | -------------------------------- | ---------------------------------------------------------------- |
@@ -241,8 +272,7 @@ python -m spacy download de_core_news_sm
 | `retry_times`       | `3`                              | Retries per page.                                                |
 | `continue_on_error` | `false`                          | Keep going when a page fails after all retries.                  |
 | `sidecar`           | `true`                           | Keep the `_pdf2md.json` sidecar with the original.                |
-| `sync-deletes`      | `false`                          | Remove `.md` files without a registered source document.          |
-| `anonymize-sync-deletes` | `true`                      | Remove `_anon.md` files without a registered source document.     |
+| `sync-deletes`      | `false`                          | Remove `.md`/`_pdf2md.json` files without a registered source document. |
 | `recursive`         | `true`                           | Process files in subdirectories; set `false` for the source root only. |
 
 Behavior:
@@ -250,42 +280,36 @@ Behavior:
 - Doc_prep is evaluated before all other bowl types, but only for extensions
   with a registered converter (`.pdf`). PDFs that match no `[BOWLS_DOCPREP]`
   criterion take the standard `[BOWLS]` path.
-- The original PDF remains in the source tree.
-- An existing Markdown file in the mirrored target skips conversion; the source
-  PDF remains unchanged.
-- The sidecar is written once beside the source PDF.
+- The original PDF remains in the source tree; `.md` output and the
+  `_pdf2md.json` sidecar are written beside it.
+- An existing Markdown next to the source skips conversion; a `.md` found in
+  `targetdir` is moved next to the source instead.
 - A failed conversion leaves the PDF in the source directory and logs an error;
   no output is created.
-- The source directory is scanned recursively and its relative directory
-  structure is mirrored below `targetdir`.
-- Delete synchronization uses every extension registered in
-  `DOCPREP_CONVERTERS` (currently `.pdf`) and automatically supports future
-  converter types. `sync-deletes=false` keeps ordinary orphaned `.md` files;
-  `anonymize-sync-deletes=true` removes orphaned `_anon.md` files by default.
+- `sync-deletes=true` removes `.md` and `_pdf2md.json` files in `sourcedir`
+  whose registered source document (every extension in `DOCPREP_CONVERTERS`)
+  no longer exists.
 - The cost confirmation of `pdf_to_markdown` is bypassed (`yes=True`);
   `max_pages` is the cost guard. Set `OPENROUTER_API_KEY` and
   `OPENROUTER_PDF_MODEL` in the environment of the process that runs
   cinderellasort.
-- `anonymize=false` is the default. With `anonymize=true`, new candidates are
-  added with `status=new` in the configured customer mapping CSV. Only rows
-  with `status=anon` are applied. Set `status=anon` to approve a value or
-  `status=keep` to explicitly preserve it.
-- After normal sorting, the anonymization pass scans all existing Markdown files
-  below `targetdir` that do not have an `_anon.md` output yet. Markdown files
-  below `sourcedir` are scanned as well and anonymized to their computed target
-  path; source-side Markdown is never removed. A source Markdown that requires
-  no anonymization (no `anon` or `new` mapping row matches) is copied to its
-  target path instead; `anonymize_publish_without_review=true` also copies
-  files with unapproved `new` candidates. With
-  `anonymize_update=true`, it also revisits existing anonymized files.
-- After a successful anonymization, the original Markdown file is removed and
-  only `_anon.md` remains. `anonymize_update=false` preserves an existing
-  `_anon.md`; set it to `true` to apply the current approved mapping again. An
-  existing `_anon.md` is also regenerated when its plaintext contains an
-  original whose approved mapping row changed since the
-  `*-anon_lastmap.csv` snapshot. No `_anon.md` is created when no approved
-  mapping matches. With `anonymize-sync-deletes=true`, an `_anon.md` whose
-  plaintext Markdown no longer exists is removed.
+- Anonymization is a separate bowl type (`BOWLS_ANONYMIZE` + `[ANONYMIZE]`).
+  New candidates are added with `status=new` in the configured mapping CSV.
+  Only rows with `status=anon` are applied. Set `status=anon` to approve a
+  value or `status=keep` to explicitly preserve it.
+- After normal sorting, the anonymization pass scans `sourcedir` for files
+  matching a `[BOWLS_ANONYMIZE]` criterion and anonymizes them to their
+  computed target path; source files are never removed. A matched source file
+  that requires no anonymization (no `anon` or `new` mapping row matches) is
+  copied to its target path instead; `publish_without_review=true` also
+  copies files with unapproved `new` candidates. With `force_update=true`, existing
+  anonymized files are rewritten unconditionally.
+- An existing `_anon.<ext>` is preserved with `force_update=false` unless its
+  plaintext source contains an original whose approved mapping row changed
+  since the `*-anon_lastmap.csv` snapshot — such files are always
+  regenerated. No `_anon.<ext>` is created when no approved mapping matches.
+  With `sync-deletes=true`, a target `_anon.<ext>` whose source no longer
+  exists is removed.
 - The customer mapping CSV starts with the `status` column and uses
   `status=anon` for approved replacements, `status=keep` for values that must
   not be replaced, and `status=new` for
@@ -295,8 +319,9 @@ Behavior:
   recorded in a sibling `*-anon_lastmap.csv` after each run. Only `anon` rows
   are applied.
 - In `nc` mode the mirrored target directory is rescanned after conversion.
-- `[BOWLS_DOCPREP]` is merged from the central configuration like `[BOWLS]`;
-  `[DOCPREP]` is project-specific.
+- `[BOWLS_DOCPREP]` and `[BOWLS_ANONYMIZE]` are merged from the central
+  configuration like `[BOWLS]`; `[DOCPREP]` and `[ANONYMIZE]` are
+  project-specific.
 
 ## GEN_IMG bowls
 

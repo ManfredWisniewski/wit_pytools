@@ -11,7 +11,7 @@ The implementation currently lives in `wit_pytools/cinderellasort.py`; this dire
 - **Source directory** (`sourcedir`): files are read from here and its subdirectories.
 - **Target directory** (`targetdir`): normally the root below which bowls are created; for Doc_prep it is the separate root for moved originals.
 - **Bowl**: a target subdirectory plus the criteria that route files into it. Bowl name = key, criteria = comma-separated values. Bowl names may contain `/` to address nested directories.
-- **Bowl type**: a configuration section that defines how criteria are evaluated (`BOWLS`, `BOWLS_EMAIL`, `BOWLS_GPS`, `BOWLS_GPS_TAGS`, `BOWLS_DOCPREP`, `BOWLS_GEN_IMG`).
+- **Bowl type**: a configuration section that defines how criteria are evaluated (`BOWLS`, `BOWLS_EMAIL`, `BOWLS_GPS`, `BOWLS_GPS_TAGS`, `BOWLS_DOCPREP`, `BOWLS_ANONYMIZE`, `BOWLS_GEN_IMG`).
 - **Special tokens** in criteria: `!DEFAULT` marks the fallback bowl of a section; `!MALFORMED` (`BOWLS_EMAIL` only) receives files whose generated name has no valid e-mail address.
 - **File modes**: `win` moves with `os.rename`; `nc` moves through Nextcloud (`occ files:move`) and rescans directories so Nextcloud indexes the changes.
 - **Run modes**: all-files mode walks `sourcedir`; `single` mode handles one file passed by a Nextcloud Flow.
@@ -59,20 +59,24 @@ Key format `Bowl name;distance_km`, value `lat,lon[;lat,lon...]`. Images whose E
 
 See "Doc_prep bowls" below.
 
+### `[BOWLS_ANONYMIZE]` and `[ANONYMIZE]`
+
+See "Anonymize bowls" below.
+
 ### `[BOWLS_GEN_IMG]` and `[GEN_IMG]`
 
 See "GEN_IMG bowls" below.
 
 ### Common rules
 
-In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, `BOWLS_DOCPREP`, and `BOWLS_GEN_IMG` of the central `/etc/nctools/nctools.ini` are merged into the project configuration at runtime (`merge_common_rules`). Criteria of bowls present in both files are combined and deduplicated; the project file is never modified. `[DOCPREP]` and `[GEN_IMG]` are project-specific and not merged.
+In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, `BOWLS_DOCPREP`, `BOWLS_ANONYMIZE`, and `BOWLS_GEN_IMG` of the central `/etc/nctools/nctools.ini` are merged into the project configuration at runtime (`merge_common_rules`). Criteria of bowls present in both files are combined and deduplicated; the project file is never modified. `[DOCPREP]`, `[ANONYMIZE]`, and `[GEN_IMG]` are project-specific and not merged.
 
 ## Processing order
 
 `cinderellasort(configfile, single=None, filemode='win', dryrun=False, common_configfile=None)`:
 
 1. Read the configuration, merge common rules, read settings.
-2. When Doc_prep anonymization is enabled, source subdirectory names update the
+2. When anonymize bowls are configured, source subdirectory names update the
    proposal mapping and approved directory mappings rename mirrored target
    directories before file processing.
 3. `prepsort`: create bowl directories for `BOWLS`, `BOWLS_EMAIL`, `BOWLS_GEN_IMG`.
@@ -80,7 +84,10 @@ In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, `BOWLS_DOCPREP`, and `BOWLS_GE
    - first pass: delete `ftype_delete` files in directories that contain sortable files;
    - second pass: delete `trash`/`trash_nocase` matches, then `handlefile` for every remaining file;
    - legacy pass over subdirectories (to be replaced by `handlefile`).
-5. Remove empty source directories when `clear-empty-directories` is true.
+5. `process_pending_anonymization`: anonymize bowl-matched source files and
+   remove orphaned `_anon.*` outputs.
+6. `_write_anonymize_lastmap`: refresh the `*-anon_lastmap.csv` snapshot.
+7. Remove empty source directories when `clear-empty-directories` is true.
 
 `handlefile` evaluates bowl types in this fixed priority and stops at the first that handles the file:
 
@@ -92,10 +99,17 @@ In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, `BOWLS_DOCPREP`, and `BOWLS_GE
 6. `[BOWLS_GPS_TAGS]` configured and `set_tags=true` → `handle_gps_tags` (does not stop processing).
 7. `[BOWLS_GPS]` configured → `handle_gps`; files without GPS data are renamed `*_nogps`.
 8. `[BOWLS]` → `bowldir`; unmatched files are skipped (`skipunmatched`) or moved to `targetdir`.
+9. **Anonymize**: file still in `sourcedir` and the cleaned filename matches a `[BOWLS_ANONYMIZE]` criterion → marked for the post-run anonymization pass (`process_pending_anonymization`).
+
+Decision: anonymize bowls run last. A file moved by any earlier bowl type is
+gone from `sourcedir` and is never anonymized — which bowl wins is decided
+by this fixed order and is intended behavior.
 
 ## Doc_prep bowls
 
 Doc_prep is a bowl type that **transforms** documents before sorting them. Its purpose is to turn documents into Markdown (or, later, CSV) so that their content becomes searchable, diffable, and usable by other tools, while keeping the original.
+
+Doc_prep only converts. It does not move, sort, or anonymize anything — the generated `.md` and `_pdf2md.json` sidecar are plain source files beside the original. Downstream handling (sorting via `[BOWLS]`, anonymization via `[BOWLS_ANONYMIZE]`) is configured separately.
 
 ### Configuration
 
@@ -112,30 +126,65 @@ max_pages=50           ; larger documents are skipped
 retry_times=3
 continue_on_error=false
 sidecar=true           ; keep <stem>_pdf2md.json beside the original
-sync-deletes=false     ; remove Markdown without a registered source document
-anonymize=false
-anonymize-sync-deletes=true ; remove orphaned _anon.md files
-anonymize_mapping_file=P:\\customers\\customer-anon-mapping.csv ; optional; default: <sourcedir>/<sourcedir-name>-anon-mapping.csv
-anonymize_ignore_save=false ; rewrite <slug>-anon-ignore-save.csv with filtered proposals
-anonymize_update=false
-anonymize_publish_without_review=false ; publish source .md even when unapproved candidates match
+sync-deletes=false     ; remove Markdown/sidecars without a registered source document
 ```
 
 ### Behavior per file
 
 1. Clean the filename as for every bowl; the Markdown gets the cleaned stem.
-2. Mirror the source file's relative path below `targetdir`. When anonymization
-   is enabled, approved mappings are applied per directory component and an
-   existing unanonymized target directory is renamed or merged into the
-   anonymized directory.
+2. Output path is always the source file's path with the `.md` suffix — the source file's relative path is **not** mirrored below `targetdir` for output.
 3. Page count above `max_pages` → warning, file stays in the source directory.
-4. An existing Markdown in the mirrored target skips conversion, no API cost.
-5. Otherwise convert to the mirrored target (`documenttools.pdf_to_markdown` with `yes=True`, no interactive cost prompt).
-6. The original PDF stays in the source directory. Its `_pdf2md.json` sidecar is written beside the original. Conversion errors leave the PDF untouched.
-7. If `anonymize=true`, add new candidates to the customer mapping with `status=new`. Apply only rows with `status=anon` to create `<stem>_anon.md` when at least one approved mapping matches. Rows with `status=keep` are explicitly ignored.
-8. Before normal sorting, synchronize Markdown deletions independently. With `sync-deletes=true`, remove source and target `.md` files whose corresponding source document no longer exists. With `anonymize-sync-deletes=true`, remove `_anon.md` files whose source document no longer exists. Source documents are identified by every extension registered in `DOCPREP_CONVERTERS`, currently `.pdf`; future converters automatically extend this check. Renames are intentionally not detected because a rename cannot be distinguished from deleting one document and adding a similar one; outputs for the old filename are removed by the enabled synchronization options and the renamed source is processed as new.
-9. After normal sorting, scan all existing Markdown files below `targetdir` that do not yet have an `_anon.md` output. Markdown files below `sourcedir` are also scanned and anonymized to their computed target path, whether or not a source document exists. A source Markdown that requires no anonymization — no `anon` or `new` mapping row matches — is copied to its target path instead. With `anonymize_publish_without_review=true`, it is copied even when unapproved `new` candidates match. A previously published plaintext copy is removed once the file is anonymized or becomes subject to review. If `anonymize_update=true`, revisit existing anonymized files too.
-10. After successful anonymization, remove the original Markdown and retain only `_anon.md`. Source-side Markdown files are never removed by the pending scan. If `anonymize_update=false`, an existing `_anon.md` is preserved unless its plaintext contains an original whose approved mapping row changed since the `*-anon_lastmap.csv` snapshot (changed `replacement_value`, changed `original_value` set, or new row) — such files are always regenerated. If true, it is refreshed unconditionally. No `_anon.md` is created when no approved mapping matches. With `anonymize-sync-deletes=true`, a target `_anon.md` whose plaintext Markdown no longer exists anywhere is removed. The lastmap snapshot is rewritten at the end of each run. In `nc` mode the mirrored target directory is rescanned.
+4. An existing `.md` beside the source skips conversion, no API cost. A `.md` found below `targetdir` (leftover from older versions) is moved beside the source instead.
+5. Otherwise convert with `documenttools.pdf_to_markdown` (`yes=True`, no interactive cost prompt), writing `.md` and `_pdf2md.json` beside the source.
+6. The original stays in the source directory. Conversion errors leave it untouched.
+7. Before normal sorting, `sync-deletes=true` removes `.md`/`_pdf2md.json` files in `sourcedir` whose registered source document no longer exists. Source documents are identified by every extension registered in `DOCPREP_CONVERTERS`, currently `.pdf`; future converters automatically extend this check. Renames are intentionally not detected because a rename cannot be distinguished from deleting one document and adding a similar one.
+8. If anonymize bowls are configured, approved mappings are applied to mirrored target directory names before processing and existing unanonymized target directories are renamed or merged into the anonymized directory.
+
+Decision: the produced `.md` beside the original is the only output mode
+(the former `anonymize-keep-originals` semantics made unconditional);
+`targetdir` stays free of plaintext markup unless an anonymize bowl
+publishes it.
+
+Example:
+
+```text
+source/Project/Document.pdf
+source/Project/Document.md
+source/Project/Document_pdf2md.json
+```
+
+## Anonymize bowls
+
+Anonymize is a bowl type that **selects** source files for the anonymization pipeline. It covers both Doc_prep markup and text formats that need no pre-processing. Matched files stay in `sourcedir`; `<stem>_anon.<ext>` is written below `targetdir`, mirroring the source-relative path with approved mappings applied to directory components.
+
+Supported types: `.md` (protected Markdown spans are never replaced), `.txt`, `.json`, `.csv`, `.log` (whole content is editable). `.xls`/`.xlsx` produce a "not supported yet" warning; other matched extensions are skipped with a warning.
+
+### Configuration
+
+```ini
+[BOWLS_ANONYMIZE]
+Anonymized=.md,.json
+
+[ANONYMIZE]
+mapping_file=P:\\customers\\customer-anon-mapping.csv ; optional; default: <sourcedir>/<sourcedir-name>-anon-mapping.csv
+mode=custom            ; custom | presidio | all
+force_update=false     ; rewrite existing _anon.<ext> unconditionally
+sync-deletes=true      ; remove orphaned _anon.<ext> files from targetdir
+publish_without_review=false ; publish source even when unapproved candidates match
+ignore_save=false      ; rewrite <slug>-anon-ignore-save.csv with filtered proposals
+```
+
+Anonymization is enabled by `BOWLS_ANONYMIZE` + `[ANONYMIZE]` configuration — there is no `anonymize` flag, and bowls that match nothing simply produce no output.
+
+### Behavior per file
+
+1. Only files whose cleaned name matches a `[BOWLS_ANONYMIZE]` criterion are processed — cinderellasort never anonymizes files that no bowl selects. `*_anon.*`, `*_pdf2md.json`, and the mapping family (mapping, `*-anon.csv`, `*-ignore*.csv`, `*_lastmap.csv`) are never anonymization input.
+2. If a file is moved by a regular bowl before the anonymize evaluation, it is not evaluated by the anonymize bowl — bowl order decides, and this is intended.
+3. New candidates are added to the mapping with `status=new`. Only rows with `status=anon` are applied; rows with `status=keep` are explicitly ignored.
+4. `<stem>_anon.<ext>` is written to the mirrored target path when at least one approved mapping matches; with `force_update=true` it is rewritten unconditionally.
+5. With `force_update=false`, an existing `_anon.<ext>` is still regenerated when its source contains an original whose approved row changed since the `*-anon_lastmap.csv` snapshot — a changed `replacement_value` re-anonymizes every original of the row; an extended `original_value` list re-anonymizes only the added values.
+6. A matched source with no approved match is copied to the target path unchanged when no `new` candidates match either, or when `publish_without_review=true`. A previously published plaintext copy is retracted once the file is anonymized or when it has unapproved candidates and review is required.
+7. With `sync-deletes=true`, a target `_anon.<ext>` whose source no longer exists (no plaintext sibling and no source-relative input) is removed. The lastmap snapshot is rewritten at the end of each non-dryrun run. In `nc` mode the mirrored target directory is rescanned.
 
 The customer mapping is a CSV with a `status` column using only:
 
@@ -143,21 +192,15 @@ The customer mapping is a CSV with a `status` column using only:
 - `keep` — explicitly do not replace;
 - `new` — proposal, never applied until changed to `anon`.
 
+Each row carries a stable `uid`; `original_value` lists are routinely extended and reordered, so `uid` — not position or value — identifies a row across runs and across the `*-mapping.csv` → `*-anon.csv` move. The applied state is recorded in `*-anon_lastmap.csv` after each run.
+
 Example:
 
 ```csv
-status,replacement_value,original_value,value_type,source_documents,locations,occurrences
-anon,Person-abc,Anna Musterpeter,name,,,
-keep,,Peter Beispiel,name,document.md,line 4,1
-new,Person-def,Max Beispiel,name,document.md,line 8,1
-```
-
-Example:
-
-```text
-source/Project/Document.pdf
-source/Project/Document_pdf2md.json
-originals/Project/Document.md
+status,replacement_value,original_value,value_type,source_documents,locations,occurrences,vip,uid
+anon,Person-abc,Anna Musterpeter,name,,,,,row-0001
+keep,,Peter Beispiel,name,document.md,line 4,1,,
+new,Person-def,Max Beispiel,name,document.md,line 8,1,,
 ```
 
 ### Converters
@@ -224,11 +267,12 @@ Configuration and rules:
 - `parse_bowl_tags(tags_str)` — parse `Tag[level]` lists for GPS tags.
 - `gps_fetch_default_distance(config_object)` — default GPS distance.
 - `docprep_settings(config_object)` — `[DOCPREP]` with defaults.
+- `anonymize_settings(config_object)` — `[ANONYMIZE]` with defaults; adds `enabled` (`BOWLS_ANONYMIZE` non-empty) and `source_markers` used for orphan detection.
 - `gen_img_settings(config_object)` — `[GEN_IMG]` with defaults.
 
 Bowl listing:
 
-- `bowllist`, `bowllist_email`, `bowllist_gps`, `bowllist_gps_tags`, `bowllist_docprep`, `bowllist_gen_img`.
+- `bowllist`, `bowllist_email`, `bowllist_gps`, `bowllist_gps_tags`, `bowllist_docprep`, `bowllist_anonymize`, `bowllist_gen_img`.
 
 Bowl matching (return `'/<bowl>'` or `''`):
 
@@ -237,6 +281,7 @@ Bowl matching (return `'/<bowl>'` or `''`):
 - `bowldir_gps(file, config_object, image_coords)`
 - `bowldir_gps_tags(file, config_object, image_coords)`
 - `bowldir_docprep(file, config_object)`
+- `bowldir_anonymize(file, config_object)`
 - `bowldir_gen_img(file, config_object)`; `is_gen_img_prompt(file)` accepts only `<slug>_prompt.txt`; `gen_img_slug(file)` returns `<slug>`; `gen_img_reference(directory, slug)` resolves the slug or general reference image.
 
 Filenames:
@@ -248,7 +293,8 @@ Filenames:
 Preparation and handlers:
 
 - `prepsort(config_object, targetdir, prepfilter=False)` — create bowl directories; optionally write `filter-examples.txt`.
-- `handle_docprep`, `handle_gen_img`, `handle_pdf`, `handle_emails`, `handle_gps`, `handle_gps_tags`, `handle_oldfiles` (unfinished).
+- `handle_docprep`, `handle_anonymization`, `handle_gen_img`, `handle_pdf`, `handle_emails`, `handle_gps`, `handle_gps_tags`, `handle_oldfiles` (unfinished).
+- `process_pending_anonymization`, `_prepare_anonymize_directories`, `_write_anonymize_lastmap`, `ANONYMIZE_SUPPORTED_SUFFIXES`.
 - `GEN_IMG_GENERATOR` — indirection to `aitools.generate_image`, replaceable in tests.
 - `handlefile(...)` — dispatcher described above.
 - `cinderellasort(...)` — main entry point.

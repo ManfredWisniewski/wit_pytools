@@ -473,6 +473,8 @@ def _docprep_setup(
     bowls=None,
     pdf_name="Rechnung 2026.pdf",
     settings_section=None,
+    anonymize_bowls=None,
+    anonymize_section=None,
 ):
     source_dir = tmp_path / "source"
     target_dir = tmp_path / "target"
@@ -496,6 +498,10 @@ def _docprep_setup(
         config["BOWLS"] = bowls
     if docprep_section is not None:
         config["DOCPREP"] = docprep_section
+    if anonymize_bowls:
+        config["BOWLS_ANONYMIZE"] = anonymize_bowls
+    if anonymize_section is not None:
+        config["ANONYMIZE"] = anonymize_section
     config_path = tmp_path / "docprep.ini"
     with config_path.open("w", encoding="utf-8") as fp:
         config.write(fp)
@@ -512,18 +518,16 @@ def _fake_converter(calls, fail=False):
     return convert
 
 
-def test_docprep_output_path_does_not_duplicate_bowl():
-    relative_path = Path("DOCDIR") / "files" / "document.pdf"
+def test_mirrored_target_dir_does_not_duplicate_root():
+    relative_parent = Path("DOCDIR") / "files"
 
-    assert cs._docprep_output_path(
+    assert cs._mirrored_target_dir(
         Path("target") / "DOCDIR",
-        relative_path,
-        "document.pdf",
-        "ADAC",
-    ) == Path("target") / "DOCDIR" / "files" / "document.md"
+        relative_parent,
+    ) == Path("target") / "DOCDIR" / "files"
 
 
-def test_docprep_converts_and_moves_original_to_originals(tmp_path, monkeypatch):
+def test_docprep_converts_beside_source(tmp_path, monkeypatch):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path, docprep_section={"language": "de", "model": "test/model"}
     )
@@ -533,8 +537,8 @@ def test_docprep_converts_and_moves_original_to_originals(tmp_path, monkeypatch)
     cinderellasort(str(config_path), dryrun=False)
 
     assert (source_dir / "Rechnung 2026.pdf").is_file()
-    assert (target_dir / "Rechnung 2026.md").read_text(encoding="utf-8") == "# converted"
-    assert not (source_dir / "Rechnung 2026.md").exists()
+    assert (source_dir / "Rechnung 2026.md").read_text(encoding="utf-8") == "# converted"
+    assert not (target_dir / "Rechnung 2026.md").exists()
     assert calls[0]["settings"]["model"] == "test/model"
     assert calls[0]["settings"]["language"] == "de"
     assert calls[0]["settings"]["max_pages"] == 50
@@ -551,7 +555,7 @@ def test_docprep_failure_leaves_pdf_in_source(tmp_path, monkeypatch):
     assert not list(source_dir.glob("*.md"))
 
 
-def test_docprep_existing_markdown_skips_conversion_but_moves(tmp_path, monkeypatch):
+def test_docprep_existing_markup_moves_to_source(tmp_path, monkeypatch):
     source_dir, target_dir, config_path = _docprep_setup(tmp_path)
     (target_dir / "Rechnung 2026.md").write_text("existing", encoding="utf-8")
     calls = []
@@ -560,7 +564,8 @@ def test_docprep_existing_markdown_skips_conversion_but_moves(tmp_path, monkeypa
     cinderellasort(str(config_path), dryrun=False)
 
     assert calls == []
-    assert (target_dir / "Rechnung 2026.md").read_text(encoding="utf-8") == "existing"
+    assert (source_dir / "Rechnung 2026.md").read_text(encoding="utf-8") == "existing"
+    assert not (target_dir / "Rechnung 2026.md").exists()
     assert (source_dir / "Rechnung 2026.pdf").is_file()
 
 
@@ -588,7 +593,7 @@ def test_docprep_non_matching_pdf_uses_standard_bowls(tmp_path, monkeypatch):
     assert (target_dir / "Sonstiges" / "Bericht.pdf").is_file()
 
 
-def test_docprep_keeps_original_and_skips_existing_target_markdown(tmp_path, monkeypatch):
+def test_docprep_moves_stray_target_markdown_to_source(tmp_path, monkeypatch):
     source_dir, target_dir, config_path = _docprep_setup(tmp_path)
     target_file = target_dir / "Rechnung 2026.md"
     target_file.write_text("existing", encoding="utf-8")
@@ -598,11 +603,12 @@ def test_docprep_keeps_original_and_skips_existing_target_markdown(tmp_path, mon
     cinderellasort(str(config_path), dryrun=False)
 
     assert calls == []
-    assert target_file.read_text(encoding="utf-8") == "existing"
+    assert (source_dir / "Rechnung 2026.md").read_text(encoding="utf-8") == "existing"
+    assert not target_file.exists()
     assert (source_dir / "Rechnung 2026.pdf").is_file()
 
 
-def test_docprep_mirrors_subdir_and_keeps_original(tmp_path, monkeypatch):
+def test_docprep_writes_markup_beside_nested_source(tmp_path, monkeypatch):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path, pdf_name="nested/Invoice.pdf"
     )
@@ -612,8 +618,8 @@ def test_docprep_mirrors_subdir_and_keeps_original(tmp_path, monkeypatch):
     cinderellasort(str(config_path), dryrun=False)
 
     assert (source_dir / "nested" / "Invoice.pdf").is_file()
-    assert (target_dir / "nested" / "Invoice.md").is_file()
-    assert calls[0]["output"] == target_dir / "nested" / "Invoice.md"
+    assert (source_dir / "nested" / "Invoice.md").is_file()
+    assert calls[0]["output"] == source_dir / "nested" / "Invoice.md"
 
 
 def test_docprep_clear_empty_directories_defaults_false(tmp_path, monkeypatch):
@@ -629,7 +635,7 @@ def test_docprep_clear_empty_directories_defaults_false(tmp_path, monkeypatch):
     cinderellasort(str(config_path), dryrun=False)
 
     assert empty_dir.is_dir()
-    assert (target_dir / "Rechnung 2026.md").is_file()
+    assert (source_dir / "Rechnung 2026.md").is_file()
 
 
 def test_docprep_clear_empty_directories_true_removes_directories(tmp_path, monkeypatch):
@@ -648,16 +654,14 @@ def test_docprep_clear_empty_directories_true_removes_directories(tmp_path, monk
     cinderellasort(str(config_path), dryrun=False)
 
     assert not empty_dir.exists()
-    assert (target_dir / "Rechnung 2026.md").is_file()
+    assert (source_dir / "Rechnung 2026.md").is_file()
 
 
-def test_docprep_source_directories_create_anonymization_proposals(tmp_path, monkeypatch):
+def test_anonymize_source_directories_create_anonymization_proposals(tmp_path, monkeypatch):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path,
-        docprep_section={
-            "anonymize": "true",
-            "anonymize-keep-originals": "true",
-        },
+        anonymize_bowls={"Anonymized": ".md"},
+        anonymize_section={},
         pdf_name="Anna Muster/Rechnung 2026.pdf",
     )
     monkeypatch.setitem(
@@ -678,16 +682,14 @@ def test_docprep_source_directories_create_anonymization_proposals(tmp_path, mon
         "Anna Muster"
     ]
     assert directory_rows[0]["source_documents"] == "directory:Anna Muster"
-    assert (target_dir / "Anna Muster" / "Rechnung 2026.md").is_file()
+    assert (source_dir / "Anna Muster" / "Rechnung 2026.md").is_file()
 
 
-def test_docprep_anonymized_source_directories_rename_target_directories(tmp_path, monkeypatch):
+def test_anonymize_source_directories_rename_target_directories(tmp_path, monkeypatch):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path,
-        docprep_section={
-            "anonymize": "true",
-            "anonymize-keep-originals": "true",
-        },
+        anonymize_bowls={"Anonymized": ".md"},
+        anonymize_section={},
         pdf_name="Anna Muster/Sub Name/Rechnung 2026.pdf",
     )
     old_target_dir = target_dir / "Anna Muster" / "Sub Name"
@@ -715,20 +717,20 @@ def test_docprep_anonymized_source_directories_rename_target_directories(tmp_pat
     assert (new_target_dir / "existing.md").read_text(
         encoding="utf-8"
     ) == "existing"
-    assert (new_target_dir / "Rechnung 2026.md").is_file()
+    assert (source_dir / "Anna Muster" / "Sub Name" / "Rechnung 2026.md").is_file()
 
 
-def test_docprep_anonymization_creates_proposals_then_applies_approved_mapping(tmp_path):
+def test_anonymization_creates_proposals_then_applies_approved_mapping(tmp_path):
     markdown = tmp_path / "document.md"
     markdown.write_text("# Anna Musterpeter", encoding="utf-8")
     mapping = tmp_path / "customer_mapping.csv"
     settings = {
-        "anonymize": True,
-        "anonymize_mapping_file": str(mapping),
-        "anonymize_update": False,
+        "enabled": True,
+        "mapping_file": str(mapping),
+        "force_update": False,
     }
 
-    assert cs.handle_docprep_anonymization(markdown, settings) is None
+    assert cs.handle_anonymization(markdown, settings) is None
     mapping_text = mapping.read_text(encoding="utf-8")
     assert "status" in mapping_text and mapping_text.splitlines()[1].startswith("new,")
     assert not (tmp_path / "document_anon.md").exists()
@@ -738,13 +740,13 @@ def test_docprep_anonymization_creates_proposals_then_applies_approved_mapping(t
         "anon,Person-abc,Anna Musterpeter,name,,,\n",
         encoding="utf-8",
     )
-    output = cs.handle_docprep_anonymization(markdown, settings)
+    output = cs.handle_anonymization(markdown, settings)
     assert output == tmp_path / "document_anon.md"
     assert output.read_text(encoding="utf-8") == "# Person-e3a2"
-    assert not markdown.exists()
+    assert markdown.is_file()
 
 
-def test_docprep_mapping_updates_from_existing_anonymized_file(tmp_path):
+def test_anonymization_mapping_updates_from_existing_anonymized_file(tmp_path):
     source = tmp_path / "document.md"
     output = tmp_path / "document_anon.md"
     source.write_text("Sample Person; New Person", encoding="utf-8")
@@ -756,14 +758,13 @@ def test_docprep_mapping_updates_from_existing_anonymized_file(tmp_path):
         encoding="utf-8",
     )
     settings = {
-        "anonymize": True,
-        "anonymize_mapping_file": str(mapping),
-        "anonymize_update": True,
-        "anonymize_mode": "custom",
-        "anonymize_keep_originals": True,
+        "enabled": True,
+        "mapping_file": str(mapping),
+        "force_update": True,
+        "mode": "custom",
     }
 
-    cs.handle_docprep_anonymization(source, settings, output_path=output, remove_source=False)
+    cs.handle_anonymization(source, settings, output_path=output)
 
     rows = list(csv.DictReader(mapping.open(encoding="utf-8", newline="")))
     anon_path = tmp_path / "mapping-anon.csv"
@@ -774,19 +775,14 @@ def test_docprep_mapping_updates_from_existing_anonymized_file(tmp_path):
     assert [row["original_value"] for row in anon_rows] == ["Sample Person"]
 
 
-def test_docprep_uses_paired_markup_and_keeps_original(tmp_path, monkeypatch):
+def test_anonymize_uses_paired_markup_and_keeps_source(tmp_path, monkeypatch):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path,
-        docprep_section={
-            "anonymize": "true",
-            "anonymize_mapping_file": str(tmp_path / "mapping.csv"),
-            "anonymize-keep-originals": "true",
-        },
+        anonymize_bowls={"Anonymized": ".md"},
+        anonymize_section={"mapping_file": str(tmp_path / "mapping.csv")},
     )
     markup = source_dir / "Rechnung 2026.md"
     markup.write_text("# Sample Person", encoding="utf-8")
-    target_original = target_dir / "Rechnung 2026.md"
-    target_original.write_text("# stale target copy", encoding="utf-8")
     (tmp_path / "mapping.csv").write_text(
         "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
         "anon,Person-001,Sample Person,name,, ,1\n",
@@ -799,18 +795,14 @@ def test_docprep_uses_paired_markup_and_keeps_original(tmp_path, monkeypatch):
 
     assert calls == []
     assert markup.read_text(encoding="utf-8") == "# Sample Person"
-    assert not target_original.exists()
     assert (target_dir / "Rechnung 2026_anon.md").read_text(encoding="utf-8") == "# Person-16ad"
 
 
-def test_docprep_moves_target_markup_to_source_before_anonymizing(tmp_path, monkeypatch):
+def test_anonymize_moves_target_markup_to_source_before_anonymizing(tmp_path, monkeypatch):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path,
-        docprep_section={
-            "anonymize": "true",
-            "anonymize_mapping_file": str(tmp_path / "mapping.csv"),
-            "anonymize-keep-originals": "true",
-        },
+        anonymize_bowls={"Anonymized": ".md"},
+        anonymize_section={"mapping_file": str(tmp_path / "mapping.csv")},
     )
     target_original = target_dir / "Rechnung 2026.md"
     target_original.write_text("# Sample Person", encoding="utf-8")
@@ -830,14 +822,11 @@ def test_docprep_moves_target_markup_to_source_before_anonymizing(tmp_path, monk
     assert (target_dir / "Rechnung 2026_anon.md").read_text(encoding="utf-8") == "# Person-16ad"
 
 
-def test_docprep_keep_originals_copies_generated_markup(tmp_path, monkeypatch):
+def test_anonymize_generated_markup(tmp_path, monkeypatch):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path,
-        docprep_section={
-            "anonymize": "true",
-            "anonymize_mapping_file": str(tmp_path / "mapping.csv"),
-            "anonymize-keep-originals": "true",
-        },
+        anonymize_bowls={"Anonymized": ".md"},
+        anonymize_section={"mapping_file": str(tmp_path / "mapping.csv")},
     )
     (tmp_path / "mapping.csv").write_text(
         "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
@@ -863,66 +852,72 @@ def test_docprep_sync_deletes_removes_orphan_markdown(tmp_path):
         docprep_section={"sync-deletes": "true"},
     )
     orphan_source = source_dir / "Orphan.md"
-    orphan_nested = target_dir / "Archive" / "Nested.md"
-    orphan_anon = target_dir / "Orphan_anon.md"
+    orphan_sidecar = source_dir / "Orphan_pdf2md.json"
     orphan_source.write_text("orphan", encoding="utf-8")
-    orphan_nested.parent.mkdir()
-    orphan_nested.write_text("orphan", encoding="utf-8")
-    orphan_anon.write_text("orphan", encoding="utf-8")
+    orphan_sidecar.write_text("{}", encoding="utf-8")
     (source_dir / "Rechnung 2026.md").write_text(
         "source markdown", encoding="utf-8"
     )
-    shutil.copy(TEST_PDF, source_dir / "Marked_anon.pdf")
-    (target_dir / "Marked_anon.md").write_text(
-        "not anonymized", encoding="utf-8"
-    )
-    target_dir.joinpath("Rechnung 2026.md").write_text(
-        "original", encoding="utf-8"
-    )
-    target_dir.joinpath("Rechnung 2026_anon.md").write_text(
-        "anon", encoding="utf-8"
+    (source_dir / "Rechnung 2026_pdf2md.json").write_text(
+        "{}", encoding="utf-8"
     )
 
     cinderellasort(str(config_path), dryrun=False)
 
     assert not orphan_source.exists()
-    assert not orphan_nested.exists()
-    assert not orphan_anon.exists()
+    assert not orphan_sidecar.exists()
     assert (source_dir / "Rechnung 2026.md").is_file()
-    assert (target_dir / "Rechnung 2026.md").is_file()
-    assert (target_dir / "Rechnung 2026_anon.md").is_file()
-    assert (target_dir / "Marked_anon.md").is_file()
+    assert (source_dir / "Rechnung 2026_pdf2md.json").is_file()
 
 
 def test_docprep_sync_deletes_defaults_to_keeping_original_markdown(tmp_path):
     source_dir, target_dir, config_path = _docprep_setup(tmp_path)
-    orphan = target_dir / "Orphan.md"
-    orphan_anon = target_dir / "Orphan_anon.md"
+    orphan = source_dir / "Orphan.md"
     orphan.write_text("orphan", encoding="utf-8")
-    orphan_anon.write_text("orphan anon", encoding="utf-8")
 
     cinderellasort(str(config_path), dryrun=False)
 
     assert orphan.is_file()
-    assert not orphan_anon.exists()
 
 
-def test_docprep_anonymize_sync_deletes_false_keeps_orphan_anon(tmp_path):
+def test_anonymize_sync_deletes_removes_orphan_anon(tmp_path):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path,
-        docprep_section={
-            "sync-deletes": "true",
-            "anonymize-sync-deletes": "false",
-        },
+        anonymize_bowls={"Anonymized": ".md"},
+        anonymize_section={"mapping_file": str(tmp_path / "mapping.csv")},
     )
-    orphan = target_dir / "Orphan.md"
+    (tmp_path / "mapping.csv").write_text(
+        "status,replacement_value,original_value,value_type\n"
+        "anon,Person-001,Sample Person,name\n",
+        encoding="utf-8",
+    )
     orphan_anon = target_dir / "Orphan_anon.md"
-    orphan.write_text("orphan", encoding="utf-8")
     orphan_anon.write_text("orphan anon", encoding="utf-8")
 
     cinderellasort(str(config_path), dryrun=False)
 
-    assert not orphan.exists()
+    assert not orphan_anon.exists()
+
+
+def test_anonymize_sync_deletes_false_keeps_orphan_anon(tmp_path):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        anonymize_bowls={"Anonymized": ".md"},
+        anonymize_section={
+            "mapping_file": str(tmp_path / "mapping.csv"),
+            "sync-deletes": "false",
+        },
+    )
+    (tmp_path / "mapping.csv").write_text(
+        "status,replacement_value,original_value,value_type\n"
+        "anon,Person-001,Sample Person,name\n",
+        encoding="utf-8",
+    )
+    orphan_anon = target_dir / "Orphan_anon.md"
+    orphan_anon.write_text("orphan anon", encoding="utf-8")
+
+    cinderellasort(str(config_path), dryrun=False)
+
     assert orphan_anon.is_file()
 
 
@@ -937,13 +932,13 @@ def test_docprep_sync_deletes_supports_registered_extensions(tmp_path, monkeypat
         (lambda source: 1, _fake_converter([])),
     )
     (source_dir / "Original.docx").write_text("document", encoding="utf-8")
-    (target_dir / "Original.md").write_text("original", encoding="utf-8")
-    (target_dir / "Original_anon.md").write_text("anon", encoding="utf-8")
+    (source_dir / "Original.md").write_text("original", encoding="utf-8")
+    (source_dir / "Orphan.md").write_text("orphan", encoding="utf-8")
 
     cinderellasort(str(config_path), dryrun=False)
 
-    assert (target_dir / "Original.md").is_file()
-    assert (target_dir / "Original_anon.md").is_file()
+    assert (source_dir / "Original.md").is_file()
+    assert not (source_dir / "Orphan.md").exists()
 
 
 def test_docprep_sync_deletes_dryrun_keeps_orphans(tmp_path):
@@ -951,15 +946,12 @@ def test_docprep_sync_deletes_dryrun_keeps_orphans(tmp_path):
         tmp_path,
         docprep_section={"sync-deletes": "true"},
     )
-    orphan = target_dir / "Orphan.md"
-    orphan_anon = target_dir / "Orphan_anon.md"
+    orphan = source_dir / "Orphan.md"
     orphan.write_text("orphan", encoding="utf-8")
-    orphan_anon.write_text("orphan anon", encoding="utf-8")
 
     cinderellasort(str(config_path), dryrun=True)
 
     assert orphan.is_file()
-    assert orphan_anon.is_file()
 
 
 def test_docprep_sync_deletes_inactive_without_docprep_bowls(tmp_path):
@@ -990,15 +982,16 @@ def test_docprep_sync_deletes_inactive_without_docprep_bowls(tmp_path):
     assert orphan_anon.is_file()
 
 
-def test_docprep_pending_anonymization_scans_existing_target_markdown(tmp_path):
+def test_anonymize_pending_scans_source_markdown(tmp_path):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path,
-        docprep_section={"anonymize": "true"},
+        anonymize_bowls={"Anonymized": ".md"},
+        anonymize_section={},
     )
     (source_dir / "Rechnung 2026.pdf").unlink()
-    target_markdown = target_dir / "old" / "existing.md"
-    target_markdown.parent.mkdir(parents=True)
-    target_markdown.write_text("Anna Musterpeter", encoding="utf-8")
+    source_markdown = source_dir / "old" / "existing.md"
+    source_markdown.parent.mkdir(parents=True)
+    source_markdown.write_text("Anna Musterpeter", encoding="utf-8")
     mapping = source_dir / "source-anon-mapping.csv"
     mapping.write_text(
         "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
@@ -1012,19 +1005,75 @@ def test_docprep_pending_anonymization_scans_existing_target_markdown(tmp_path):
     assert (source_dir / "source-anon.csv").is_file()
 
 
-def test_docprep_ignore_save_collects_all_pending_documents(tmp_path):
+def test_anonymize_publishes_non_matching_source_files(tmp_path):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path,
-        docprep_section={
-            "anonymize": "true",
-            "anonymize_ignore_emails": "true",
-            "anonymize_ignore_save": "true",
-            "anonymize-keep-originals": "true",
+        anonymize_bowls={"Anonymized": ".json"},
+        anonymize_section={},
+    )
+    (source_dir / "Rechnung 2026.pdf").unlink()
+    (source_dir / "data.json").write_text('{}', encoding="utf-8")
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "data.json").read_text(encoding="utf-8") == '{}'
+
+
+def test_anonymize_pending_review_blocks_publication(tmp_path):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        anonymize_bowls={"Anonymized": ".md"},
+        anonymize_section={"mapping_file": str(tmp_path / "mapping.csv")},
+    )
+    (source_dir / "Rechnung 2026.pdf").unlink()
+    (source_dir / "notes.md").write_text("Anna Musterpeter", encoding="utf-8")
+    (tmp_path / "mapping.csv").write_text(
+        "status,replacement_value,original_value,value_type\n"
+        "new,Person-abc,Anna Musterpeter,name\n",
+        encoding="utf-8",
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not (target_dir / "notes.md").exists()
+    assert not (target_dir / "notes_anon.md").exists()
+
+
+def test_anonymize_pending_review_publishes_when_enabled(tmp_path):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        anonymize_bowls={"Anonymized": ".md"},
+        anonymize_section={
+            "mapping_file": str(tmp_path / "mapping.csv"),
+            "publish_without_review": "true",
         },
     )
     (source_dir / "Rechnung 2026.pdf").unlink()
-    (target_dir / "first.md").write_text("first@example.com", encoding="utf-8")
-    (target_dir / "second.md").write_text("second@example.com", encoding="utf-8")
+    (source_dir / "notes.md").write_text("Anna Musterpeter", encoding="utf-8")
+    (tmp_path / "mapping.csv").write_text(
+        "status,replacement_value,original_value,value_type\n"
+        "new,Person-abc,Anna Musterpeter,name\n",
+        encoding="utf-8",
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "notes.md").read_text(encoding="utf-8") == "Anna Musterpeter"
+    assert not (target_dir / "notes_anon.md").exists()
+
+
+def test_anonymize_ignore_save_collects_all_pending_documents(tmp_path):
+    source_dir, target_dir, config_path = _docprep_setup(
+        tmp_path,
+        anonymize_bowls={"Anonymized": ".md"},
+        anonymize_section={
+            "ignore_emails": "true",
+            "ignore_save": "true",
+        },
+    )
+    (source_dir / "Rechnung 2026.pdf").unlink()
+    (source_dir / "first.md").write_text("first@example.com", encoding="utf-8")
+    (source_dir / "second.md").write_text("second@example.com", encoding="utf-8")
     ignore_path = source_dir / "source-anon-ignore.csv"
     ignore_path.write_text(
         "original_value,value_type\nstale@example.com,email\n",
@@ -1052,54 +1101,69 @@ def test_docprep_settings_defaults(tmp_path):
     config.optionxform = str
     settings = cs.docprep_settings(config)
     assert settings["language"] == "en"
+    assert settings["mode"] == "vision"
     assert settings["sidecar"] is True
-    assert settings["anonymize_name_countries"] == ()
-    assert settings["anonymize_mode"] == "custom"
-    assert settings["anonymize_use_name_datasets"] is None
-    assert settings["anonymize_keep_originals"] is False
-    assert settings["anonymize_ignore_save"] is False
-    assert settings["anonymize_mapping_file"] is None
     assert settings["sync_deletes"] is False
-    assert settings["anonymize_sync_deletes"] is True
-    config["TABLE"] = {"sourcedir": str(tmp_path / "source")}
     config["DOCPREP"] = {
         "language": "de",
+        "mode": "text",
         "sidecar": "false",
-        "anonymize_name_countries": "de, us",
-        "anonymize_use_name_datasets": "true",
-        "anonymize_name_dataset_offline": "true",
-        "anonymize_name_exclusions": "common, word",
-        "anonymize-keep-originals": "true",
-        "anonymize-mode": "all",
-        "anonymize_ignore_save": "true",
-        "anonymize_presidio_score_threshold": "0.7",
         "sync-deletes": "true",
-        "anonymize-sync-deletes": "false",
     }
     settings = cs.docprep_settings(config)
     assert settings["language"] == "de"
+    assert settings["mode"] == "text"
     assert settings["sidecar"] is False
-    assert settings["anonymize_name_countries"] == ("de", "us")
-    assert settings["anonymize_use_name_datasets"] is True
-    assert settings["anonymize_name_dataset_offline"] is True
-    assert settings["anonymize_name_exclusions"] == ("common", "word")
-    assert settings["anonymize_keep_originals"] is True
-    assert settings["anonymize_mode"] == "all"
-    assert settings["anonymize_ignore_save"] is True
-    assert settings["anonymize_presidio_score_threshold"] == 0.7
     assert settings["sync_deletes"] is True
-    assert settings["anonymize_sync_deletes"] is False
-    assert "DATE_TIME" not in settings["anonymize_presidio_entities"]
-    assert "URL" not in settings["anonymize_presidio_entities"]
-    assert settings["anonymize_mapping_file"] == str(
+
+
+def test_anonymize_settings(tmp_path):
+    config = ConfigParser()
+    config.optionxform = str
+    settings = cs.anonymize_settings(config)
+    assert settings["enabled"] is False
+    assert settings["mapping_file"] is None
+    assert settings["mode"] == "custom"
+    assert settings["use_name_datasets"] is None
+    assert settings["sync_deletes"] is True
+    assert settings["publish_without_review"] is False
+    config["TABLE"] = {"sourcedir": str(tmp_path / "source")}
+    config["BOWLS_ANONYMIZE"] = {"Anonymized": ".md"}
+    config["ANONYMIZE"] = {
+        "name_countries": "de, us",
+        "use_name_datasets": "true",
+        "name_dataset_offline": "true",
+        "name_exclusions": "common, word",
+        "mode": "all",
+        "ignore_save": "true",
+        "presidio_score_threshold": "0.7",
+        "sync-deletes": "false",
+        "force_update": "true",
+        "publish_without_review": "true",
+    }
+    settings = cs.anonymize_settings(config)
+    assert settings["enabled"] is True
+    assert settings["name_countries"] == ("de", "us")
+    assert settings["use_name_datasets"] is True
+    assert settings["name_dataset_offline"] is True
+    assert settings["name_exclusions"] == ("common", "word")
+    assert settings["mode"] == "all"
+    assert settings["ignore_save"] is True
+    assert settings["presidio_score_threshold"] == 0.7
+    assert settings["sync_deletes"] is False
+    assert settings["force_update"] is True
+    assert settings["publish_without_review"] is True
+    assert "DATE_TIME" not in settings["presidio_entities"]
+    assert "URL" not in settings["presidio_entities"]
+    assert settings["mapping_file"] == str(
         tmp_path / "source" / "source-anon-mapping.csv"
     )
     custom_mapping = tmp_path / "custom-mapping.csv"
-    config["DOCPREP"]["anonymize_mapping_file"] = str(custom_mapping)
-    config["DOCPREP"]["anonymize_ignore_save"] = "false"
-    settings = cs.docprep_settings(config)
-    assert settings["anonymize_mapping_file"] == str(custom_mapping)
-    assert settings["anonymize_ignore_save"] is False
+    config["ANONYMIZE"]["mapping_file"] = str(custom_mapping)
+    config["ANONYMIZE"]["ignore_save"] = "false"
+    settings = cs.anonymize_settings(config)
+    assert settings["mapping_file"] == str(custom_mapping)
+    assert settings["ignore_save"] is False
 
 
 def test_gen_img_ignore_max_cost_setting():

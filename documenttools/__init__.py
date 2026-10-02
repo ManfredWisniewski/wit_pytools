@@ -17,6 +17,7 @@ from wit_pytools.anonymization import (
     CandidateCollector,
     anon_path_for_mapping,
     changed_anonymization_values,
+    lastmap_path_for,
     detect_presidio_candidates,
     detect_text_candidates,
     is_date_string,
@@ -297,6 +298,12 @@ def _markdown_protected_spans(content: str):
     return [(match.start(), match.end()) for match in _MARKDOWN_PROTECTED.finditer(content)]
 
 
+def _editable_parts(content: str, suffix: str = ".md"):
+    if suffix.lower() == ".md":
+        return _markdown_editable_parts(content)
+    return ((True, content),)
+
+
 def _merge_candidates(primary, secondary):
     merged = {candidate.original_value: candidate for candidate in primary}
     ordered = list(primary)
@@ -332,8 +339,11 @@ def _text_candidate_rows(
     ignore_emails: bool = False,
     ignore_dates: bool = False,
     ignored_candidates: Optional[List[Any]] = None,
+    protect_markup: bool = True,
 ) -> List[Dict[str, Any]]:
-    protected_spans = _markdown_protected_spans(content)
+    protected_spans = (
+        _markdown_protected_spans(content) if protect_markup else []
+    )
     if anonymize_mode == "custom":
         candidates = detect_text_candidates(
             content,
@@ -445,6 +455,7 @@ def identify_text_strings(
             ignore_numbers=ignore_numbers,
             ignore_emails=ignore_emails,
             ignore_dates=ignore_dates,
+            protect_markup=input_path.suffix.lower() == ".md",
         ),
     )
     return candidate_path
@@ -496,6 +507,21 @@ def _saved_ignore_path_for_mapping(mapping_path: Path) -> Path:
     return mapping_path.with_name(f"{stem}-ignore-save.csv")
 
 
+def mapping_family_paths(mapping_path: Path | str) -> set:
+    """Resolved paths of a proposal mapping and all its derived files."""
+    mapping_file = Path(mapping_path)
+    return {
+        path.resolve()
+        for path in (
+            mapping_file,
+            anon_path_for_mapping(mapping_file),
+            lastmap_path_for(mapping_file),
+            _ignore_path_for_mapping(mapping_file),
+            _saved_ignore_path_for_mapping(mapping_file),
+        )
+    }
+
+
 def _unique_ignore_rows(rows: List[Dict[str, str]]) -> List[Dict[str, str]]:
     unique_rows = []
     seen_values = set()
@@ -539,6 +565,7 @@ def _update_text_mapping_sources(
     ignore_dates: bool = False,
     ignore_save: bool = False,
     ignore_append: bool = False,
+    protect_markup: bool = True,
 ) -> Path:
     """Add candidates from ``(content, source_name)`` pairs."""
     mapping_file = Path(mapping_path)
@@ -735,6 +762,7 @@ def _update_text_mapping_sources(
                 ignored_candidates=(
                     source_ignored_candidates if ignore_save else None
                 ),
+                protect_markup=protect_markup,
             )
         )
         ignored_candidates.extend(source_ignored_candidates)
@@ -820,6 +848,7 @@ def update_text_mapping(
     return _update_text_mapping_sources(
         [(input_path.read_text(encoding="utf-8"), input_path.name)],
         mapping_path,
+        protect_markup=input_path.suffix.lower() == ".md",
         countries=countries,
         use_name_datasets=use_name_datasets,
         cache_dir=cache_dir,
@@ -921,14 +950,18 @@ def anonymize_path_parts(path: Path | str, mapping_path: Path | str) -> Path:
     )
 
 
-def mapping_matches_text(content: str, mapping_path: Path | str) -> bool:
-    """Return whether approved mappings match editable Markdown/text."""
+def mapping_matches_text(
+    content: str, mapping_path: Path | str, *, suffix: str = ".md"
+) -> bool:
+    """Return whether approved mappings match editable content parts."""
     mapping = mapping_path_rows(Path(mapping_path))
-    return mapping_matches_parts(_markdown_editable_parts(content), mapping)
+    return mapping_matches_parts(_editable_parts(content, suffix), mapping)
 
 
-def mapping_requires_anonymization(content: str, mapping_path: Path | str) -> bool:
-    """Return whether non-keep mapping rows match editable Markdown/text."""
+def mapping_requires_anonymization(
+    content: str, mapping_path: Path | str, *, suffix: str = ".md"
+) -> bool:
+    """Return whether non-keep mapping rows match editable content parts."""
     mapping_file = Path(mapping_path)
     values = set()
     for path in (mapping_file, anon_path_for_mapping(mapping_file)):
@@ -943,21 +976,25 @@ def mapping_requires_anonymization(content: str, mapping_path: Path | str) -> bo
                 if original.strip()
             )
     pending = {value: value for value in values}
-    return mapping_matches_parts(_markdown_editable_parts(content), pending)
-
-
-def text_contains_values(content: str, values) -> bool:
-    """Return whether any value appears in editable Markdown/text parts."""
     return mapping_matches_parts(
-        _markdown_editable_parts(content),
+        _editable_parts(content, suffix), pending
+    )
+
+
+def text_contains_values(content: str, values, *, suffix: str = ".md") -> bool:
+    """Return whether any value appears in editable content parts."""
+    return mapping_matches_parts(
+        _editable_parts(content, suffix),
         {value: value for value in values},
     )
 
 
-def anonymize_text_content(content: str, mapping_path: Path | str) -> str:
-    """Apply a mapping to editable Markdown/text content."""
+def anonymize_text_content(
+    content: str, mapping_path: Path | str, *, suffix: str = ".md"
+) -> str:
+    """Apply a mapping to editable file content."""
     mapping = mapping_path_rows(Path(mapping_path))
-    return replace_text_parts(_markdown_editable_parts(content), mapping)
+    return replace_text_parts(_editable_parts(content, suffix), mapping)
 
 
 def anonymize_text(
@@ -967,7 +1004,7 @@ def anonymize_text(
     *,
     overwrite: bool = False,
 ) -> Path:
-    """Apply a mapping to Markdown/text and write an output file."""
+    """Apply a mapping to text content and write an output file."""
     input_path = Path(file_path)
     if not input_path.is_file():
         raise FileNotFoundError(input_path)
@@ -977,7 +1014,11 @@ def anonymize_text(
     _check_output_path(output, input_path, overwrite)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(
-        anonymize_text_content(input_path.read_text(encoding="utf-8"), mapping_path),
+        anonymize_text_content(
+            input_path.read_text(encoding="utf-8"),
+            mapping_path,
+            suffix=input_path.suffix,
+        ),
         encoding="utf-8",
     )
     return output
