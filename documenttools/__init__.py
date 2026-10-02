@@ -16,18 +16,21 @@ from wit_pytools.anonymization import (
     MAPPING_STATUS_COLUMNS,
     CandidateCollector,
     anon_path_for_mapping,
+    changed_anonymization_values,
     detect_presidio_candidates,
     detect_text_candidates,
     is_date_string,
     load_name_catalog,
     mapping_matches_parts,
     mapping_path_rows,
+    new_mapping_uid,
     read_mapping_rows,
     replace_related_values,
     replace_text_parts,
     replacement_for,
     replacement_token_length,
     related_mapping_values,
+    update_anonymization_lastmap,
     write_csv,
 )
 
@@ -603,6 +606,9 @@ def _update_text_mapping_sources(
         unique_anon_rows.append(row)
     anon_rows = unique_anon_rows
     anon_values = seen_anon_values
+    for row in [*anon_rows, *rows]:
+        if not (row.get("uid") or "").strip():
+            row["uid"] = new_mapping_uid()
 
     filtered_rows = []
     for row in rows:
@@ -652,6 +658,7 @@ def _update_text_mapping_sources(
                     "original_value": row["original_value"],
                     "value_type": row["value_type"],
                     "vip": row.get("vip", "") or "",
+                    "uid": row.get("uid", "") or "",
                 }
                 for row in anon_rows
             ],
@@ -759,6 +766,7 @@ def _update_text_mapping_sources(
                 "source_documents": candidate["worksheet"],
                 "locations": candidate["cell"],
                 "occurrences": str(candidate["occurrences"]),
+                "uid": new_mapping_uid(),
             }
         )
         known.add(candidate["original_value"])
@@ -936,6 +944,14 @@ def mapping_requires_anonymization(content: str, mapping_path: Path | str) -> bo
             )
     pending = {value: value for value in values}
     return mapping_matches_parts(_markdown_editable_parts(content), pending)
+
+
+def text_contains_values(content: str, values) -> bool:
+    """Return whether any value appears in editable Markdown/text parts."""
+    return mapping_matches_parts(
+        _markdown_editable_parts(content),
+        {value: value for value in values},
+    )
 
 
 def anonymize_text_content(content: str, mapping_path: Path | str) -> str:

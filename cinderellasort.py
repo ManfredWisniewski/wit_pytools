@@ -12,10 +12,13 @@ from wit_pytools.systools import walklevel, rmemptydir, movefile, copyfile, delf
 from wit_pytools.documenttools import (
     anonymize_path_parts,
     anonymize_text,
+    changed_anonymization_values,
     document_find_regex,
     mapping_matches_text,
     mapping_requires_anonymization,
     reset_saved_ignore_file,
+    text_contains_values,
+    update_anonymization_lastmap,
     update_directory_mapping,
     update_text_mapping,
 )
@@ -752,6 +755,7 @@ def process_pending_docprep_anonymization(
     clean_nocase,
     replacements,
     recursive,
+    dryrun,
     *,
     ignore_append=False,
 ):
@@ -763,11 +767,13 @@ def process_pending_docprep_anonymization(
         log_message(message, level='WARNING')
         print(message)
         return
+    covered_anon = set()
     pending = []
     for markdown_path in sorted(Path(targetdir).rglob('*.md')):
         if markdown_path.name.endswith('_anon.md'):
             continue
         anonymized_path = markdown_path.with_name(f"{markdown_path.stem}_anon.md")
+        covered_anon.add(anonymized_path.resolve())
         if anonymized_path.exists() and not settings['anonymize_update']:
             continue
         pending.append((markdown_path, anonymized_path, None, None))
@@ -799,6 +805,7 @@ def process_pending_docprep_anonymization(
             anonymized_path = output_path.with_name(
                 f"{output_path.stem}_anon{output_path.suffix}"
             )
+            covered_anon.add(anonymized_path.resolve())
             if anonymized_path.exists() and not settings['anonymize_update']:
                 continue
             pending.append((markdown_path, anonymized_path, False, output_path))
@@ -825,6 +832,15 @@ def process_pending_docprep_anonymization(
             log_message(
                 f"Pending Doc_prep anonymization failed for {markdown_path}: {e}",
                 level="ERROR",
+            )
+    if settings['anonymize_sync_deletes']:
+        for anon_path in sorted(Path(targetdir).rglob('*_anon.md')):
+            if anon_path.resolve() in covered_anon:
+                continue
+            delfile(anon_path.parent, anon_path.name, dryrun)
+            log_message(
+                f"Doc_prep anonymization: removed {anon_path} (no plaintext Markdown)",
+                level="INFO",
             )
 
 
@@ -869,6 +885,24 @@ def _publish_docprep_markup(markdown_path, publish_target, settings, *, anonymiz
         f"Doc_prep: published {markdown_path} to {publish_target}",
         level="INFO",
     )
+
+
+def _write_docprep_lastmap(settings, dryrun):
+    """Snapshot the applied mapping so changed replacements can be detected."""
+    if dryrun or not (
+        settings['anonymize'] and settings['anonymize_mapping_file']
+    ):
+        return
+    removed = update_anonymization_lastmap(
+        Path(settings['anonymize_mapping_file'])
+    )
+    for replacement in removed:
+        message = (
+            f"Doc_prep anonymization: replacement {replacement} was removed "
+            f"from the mapping; existing anonymized files may contain it"
+        )
+        log_message(message, level="WARNING")
+        print(message)
 
 
 def handle_docprep_anonymization(
@@ -925,11 +959,20 @@ def handle_docprep_anonymization(
     if remove_source is None:
         remove_source = not keep_originals
     if output_path.exists() and not settings['anonymize_update']:
-        log_message(f"Doc_prep anonymization: {output_path.name} exists, skipping", level="INFO")
-        if remove_source and Path(markdown_path).exists():
-            Path(markdown_path).unlink()
-            log_message(f"Doc_prep anonymization: removed source {markdown_path}", level="INFO")
-        return output_path
+        changed_values = changed_anonymization_values(mapping_path)
+        stale = bool(changed_values) and text_contains_values(
+            content, changed_values
+        )
+        if not stale:
+            log_message(f"Doc_prep anonymization: {output_path.name} exists, skipping", level="INFO")
+            if remove_source and Path(markdown_path).exists():
+                Path(markdown_path).unlink()
+                log_message(f"Doc_prep anonymization: removed source {markdown_path}", level="INFO")
+            return output_path
+        log_message(
+            f"Doc_prep anonymization: mapping values changed, regenerating {output_path.name}",
+            level="INFO",
+        )
     result = anonymize_text(markdown_path, mapping_path, output_path, overwrite=True)
     if remove_source:
         Path(markdown_path).unlink()
@@ -2032,8 +2075,10 @@ def cinderellasort(
         clean_nocase,
         replacements,
         recursive,
+        dryrun,
         ignore_append=ignore_append,
     )
+    _write_docprep_lastmap(docprep_config, dryrun)
 
     if clear_empty_directories:
         print(f"\n## Removing empty directories:")

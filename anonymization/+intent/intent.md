@@ -129,14 +129,44 @@ replacement_value,original_value,value_type
 
 `original_value` may contain semicolon-separated related originals. Status-aware
 mapping files may additionally contain `status`, `vip`, `source_documents`,
-`locations`, and `occurrences`. `vip` defaults to an empty value and is added
+`locations`, `occurrences`, and `uid`. `vip` defaults to an empty value and is added
 when mapping updates rewrite an older file. Supported statuses are `keep`, `anon`, and
 `new`; rows without a status are treated as `anon`. During text mapping
 updates, `keep` rows are moved to a sibling `*-ignore.csv` file containing
 `original_value` and `value_type`. Approved `anon` rows are moved to a sibling
 `*-anon.csv` file containing `replacement_value`, `original_value`,
-`value_type`, and `vip`; functions that apply mappings read that sibling file
+`value_type`, `vip`, and `uid`; functions that apply mappings read that sibling file
 automatically.
+
+Note: `original_value` lists are extended over time (`ab;abc;abcd`) and item
+order within a row — as well as row order in the file — is not fixed. The
+`uid` column provides stable row identity across edits; rows without one are
+backfilled when the mapping is updated. `source_documents` and `locations` are
+cleared when rows move to `*-anon.csv`, so they cannot identify which outputs
+used a row.
+
+### Lastmap CSV
+
+For each `*-anon.csv`, a sibling `*-anon_lastmap.csv` records the applied
+state as `uid,replacement_value,original_value`. On each run,
+`changed_anonymization_values(...)` reports the originals that must be
+re-anonymized; consumers re-process files containing them.
+`update_anonymization_lastmap(...)` rewrites the snapshot after processing and
+returns replacement values whose rows were removed — such tokens may remain
+orphaned in existing anonymized outputs. `status=ignore`/`new` values have no
+replacement and cannot appear in existing outputs, so they are not tracked.
+
+Decisions:
+
+- `original_value` changes are tracked, not only `replacement_value` changes.
+  Rows are routinely extended with additional related originals, and documents
+  processed before the extension would otherwise never get the new values
+  anonymized.
+- Only the delta is reported: a changed `replacement_value` marks all of the
+  row's originals; an extended `original_value` set marks only the added
+  entries. This keeps re-anonymization workload minimal.
+- Identity is the `uid`, not `original_value`: list entries can move position
+  and row order in the file is not fixed.
 
 ## Safety and preservation
 

@@ -87,8 +87,10 @@ flowchart TD
     H --> I{"mapping_matches_text(new .md)?<br/>approved status=anon rows<br/>as substring of editable parts"}
     I -- no --> I2["'no approved mapping matches'<br/>return None — nothing changes"]
     I -- yes --> J{"_anon.md exists<br/>and anonymize_update=false?"}
-    J -- yes --> K["'exists, skipping'<br/>keep existing _anon.md"]
     J -- no --> L["anonymize_text(.md → _anon.md,<br/>overwrite=True)"]
+    J -- yes --> J3{"lastmap diff:<br/>changed/extended anon rows<br/>present in .md?"}
+    J3 -- yes --> L
+    J3 -- no --> K["'exists, skipping'<br/>keep existing _anon.md"]
     K --> M{"remove_source?"}
     L --> M
     M -- yes --> N["delete markdown_path (.md)"]
@@ -113,7 +115,7 @@ flowchart TD
 | `anonymize-mode` | `custom` | `custom` | `presidio` | `all` candidate detection |
 | `anonymize_mapping_file` | `<sourcedir>/<dirname>-anon-mapping.csv` | mapping CSV |
 | `anonymize_update` | `false` | regenerate existing `_anon.md` (still requires a mapping match) |
-| `anonymize-sync-deletes` | `true` | delete `_anon.md` when source document is gone |
+| `anonymize-sync-deletes` | `true` | delete `_anon.md` when source document or plaintext `.md` is gone |
 | `anonymize-keep-originals` | `false` | keep unanonymized `.md` next to the source PDF |
 | `anonymize_publish_without_review` | `false` | publish source `.md` even when unapproved candidates match |
 | `anonymize_presidio_model` | `de_core_news_sm` | spaCy model for presidio mode |
@@ -134,5 +136,8 @@ flowchart TD
 
 Note: a change of `mode` does not trigger re-conversion — any existing `.md`
 (paired, in targetdir, or at `output_path`) short-circuits conversion.
-An existing `_anon.md` is only regenerated when `anonymize_update=true`
-**and** `mapping_matches_text` finds an approved value in the current `.md`.
+An existing `_anon.md` is regenerated when `anonymize_update=true`, or when
+the `*-anon_lastmap.csv` diff shows a changed/new `uid` row (replacement or
+originals) that occurs in the `.md`. Mapping rows carry a stable `uid`;
+`update_anonymization_lastmap` refreshes the snapshot after each run and
+reports removed rows (their tokens may remain orphaned in outputs).

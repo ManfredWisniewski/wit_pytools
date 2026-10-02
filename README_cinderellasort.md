@@ -280,13 +280,20 @@ Behavior:
   `anonymize_update=true`, it also revisits existing anonymized files.
 - After a successful anonymization, the original Markdown file is removed and
   only `_anon.md` remains. `anonymize_update=false` preserves an existing
-  `_anon.md`; set it to `true` to apply the current approved mapping again. No
-  `_anon.md` is created when no approved mapping matches.
+  `_anon.md`; set it to `true` to apply the current approved mapping again. An
+  existing `_anon.md` is also regenerated when its plaintext contains an
+  original whose approved mapping row changed since the
+  `*-anon_lastmap.csv` snapshot. No `_anon.md` is created when no approved
+  mapping matches. With `anonymize-sync-deletes=true`, an `_anon.md` whose
+  plaintext Markdown no longer exists is removed.
 - The customer mapping CSV starts with the `status` column and uses
   `status=anon` for approved replacements, `status=keep` for values that must
   not be replaced, and `status=new` for
   proposals. The `vip` column follows `value_type` and defaults to an empty
-  value. Only `anon` rows are applied.
+  value. Each row carries a stable `uid` so changed `replacement_value`s and
+  extended `original_value` lists can be detected; the applied state is
+  recorded in a sibling `*-anon_lastmap.csv` after each run. Only `anon` rows
+  are applied.
 - In `nc` mode the mirrored target directory is rescanned after conversion.
 - `[BOWLS_DOCPREP]` is merged from the central configuration like `[BOWLS]`;
   `[DOCPREP]` is project-specific.

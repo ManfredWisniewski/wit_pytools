@@ -3,8 +3,9 @@
 import csv
 import io
 import re
+import uuid
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 
 from .candidates import VALUE_TYPES, is_date_string
 
@@ -18,7 +19,7 @@ CANDIDATE_COLUMNS = [
     "occurrences",
 ]
 MAPPING_COLUMNS = ["replacement_value", "original_value", "value_type"]
-ANON_COLUMNS = [*MAPPING_COLUMNS, "vip"]
+ANON_COLUMNS = [*MAPPING_COLUMNS, "vip", "uid"]
 MAPPING_STATUS_COLUMNS = [
     "status",
     "replacement_value",
@@ -28,7 +29,9 @@ MAPPING_STATUS_COLUMNS = [
     "source_documents",
     "locations",
     "occurrences",
+    "uid",
 ]
+LASTMAP_COLUMNS = ["uid", "replacement_value", "original_value"]
 VALID_MAPPING_STATUSES = {"keep", "anon", "new"}
 
 
@@ -66,6 +69,111 @@ def anon_path_for_mapping(mapping_path: Path) -> Path:
     if not stem.endswith("-anon"):
         stem = f"{stem}-anon"
     return mapping_path.with_name(f"{stem}.csv")
+
+
+def new_mapping_uid() -> str:
+    """Generate a stable identifier for a mapping row."""
+    return uuid.uuid4().hex[:12]
+
+
+def lastmap_path_for(mapping_path: Path) -> Path:
+    """Return the applied-state snapshot path for a mapping's anon file."""
+    anon_file = anon_path_for_mapping(Path(mapping_path))
+    return anon_file.with_name(f"{anon_file.stem}_lastmap{anon_file.suffix}")
+
+
+def read_lastmap(lastmap_path: Path) -> Dict[str, Dict[str, str]]:
+    """Read a lastmap CSV as uid -> {replacement_value, original_value}."""
+    path = Path(lastmap_path)
+    if not path.is_file():
+        return {}
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        return {
+            row["uid"].strip(): {
+                "replacement_value": row.get("replacement_value") or "",
+                "original_value": row.get("original_value") or "",
+            }
+            for row in reader
+            if (row.get("uid") or "").strip()
+        }
+
+
+def _original_set(value: str) -> Set[str]:
+    return {
+        original.strip() for original in value.split(";") if original.strip()
+    }
+
+
+def changed_anonymization_values(mapping_path: Path) -> Set[str]:
+    """Originals whose approved row changed since the lastmap snapshot.
+
+    A new uid or a changed replacement_value marks all of the row's
+    originals; a changed original_value set marks only the added originals.
+    """
+    mapping_file = Path(mapping_path)
+    anon_file = anon_path_for_mapping(mapping_file)
+    previous = read_lastmap(lastmap_path_for(mapping_file))
+    changed: Set[str] = set()
+    if not anon_file.is_file():
+        return changed
+    for row in read_mapping_rows(anon_file):
+        entry = previous.get(row.get("uid", "").strip())
+        current = _original_set(row["original_value"])
+        if entry is None or (
+            entry["replacement_value"] != row["replacement_value"]
+        ):
+            changed.update(current)
+        else:
+            changed.update(current - _original_set(entry["original_value"]))
+    return changed
+
+
+def update_anonymization_lastmap(mapping_path: Path) -> List[str]:
+    """Refresh the lastmap snapshot; return orphaned replacement values.
+
+    Rows without a uid are backfilled in the ``*-anon.csv`` file first.
+    Removed uids leave their replacement tokens in existing outputs; the
+    returned list lets callers report them.
+    """
+    mapping_file = Path(mapping_path)
+    anon_file = anon_path_for_mapping(mapping_file)
+    lastmap_path = lastmap_path_for(mapping_file)
+    previous = read_lastmap(lastmap_path)
+    rows = read_mapping_rows(anon_file) if anon_file.is_file() else []
+    backfilled = False
+    for row in rows:
+        if not (row.get("uid") or "").strip():
+            row["uid"] = new_mapping_uid()
+            backfilled = True
+    if backfilled:
+        write_csv(
+            anon_file,
+            ANON_COLUMNS,
+            [
+                {column: row.get(column, "") for column in ANON_COLUMNS}
+                for row in rows
+            ],
+        )
+    current_uids = {row["uid"].strip() for row in rows}
+    removed = [
+        entry["replacement_value"]
+        for uid, entry in previous.items()
+        if uid not in current_uids
+    ]
+    write_csv(
+        lastmap_path,
+        LASTMAP_COLUMNS,
+        [
+            {
+                "uid": row["uid"].strip(),
+                "replacement_value": row["replacement_value"],
+                "original_value": row["original_value"],
+            }
+            for row in rows
+        ],
+    )
+    return removed
 
 
 def contains_value(container: str, contained: str) -> bool:
@@ -264,6 +372,7 @@ def read_mapping_rows(mapping_path: Path) -> List[Dict[str, str]]:
                 "source_documents": row.get("source_documents", "") or "",
                 "locations": row.get("locations", "") or "",
                 "occurrences": row.get("occurrences", "") or "",
+                "uid": row.get("uid", "") or "",
             }
         )
     return rows

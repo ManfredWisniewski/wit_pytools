@@ -547,8 +547,10 @@ def test_update_text_mapping_creates_new_block_and_approved_rows_are_applied(tmp
         "source_documents",
         "locations",
         "occurrences",
+        "uid",
     ]
     assert {row["status"] for row in rows} == {"new"}
+    assert all(row["uid"].strip() for row in rows)
     assert all(row["vip"] == "" for row in rows)
     assert "Anna Musterpeter" in {row["original_value"] for row in rows}
     assert not mapping_matches_text(source.read_text(encoding="utf-8"), mapping)
