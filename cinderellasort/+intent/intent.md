@@ -105,6 +105,15 @@ Decision: anonymize bowls run last. A file moved by any earlier bowl type is
 gone from `sourcedir` and is never anonymized — which bowl wins is decided
 by this fixed order and is intended behavior.
 
+Decision: single mode is scoped to the one file. Directory-mapping prep only
+covers the file's ancestor chain, `_sync_docprep_deletes` and the
+full-tree anonymization scan do not run, and the legacy subdirectory pass is
+skipped. Orphan cleanup and full-tree directory renames are batch-run jobs.
+Within a run, detected candidate rows are buffered per file and merged into
+the mapping CSV in batches (`_AnonymizeRun`, flush every 200 submissions and
+at the end) so the mapping file is not rewritten per file; a crash loses only
+proposals since the last flush, which are re-detected on the next run.
+
 ## Doc_prep bowls
 
 Doc_prep is a bowl type that **transforms** documents before sorting them. Its purpose is to turn documents into Markdown (or, later, CSV) so that their content becomes searchable, diffable, and usable by other tools, while keeping the original.
