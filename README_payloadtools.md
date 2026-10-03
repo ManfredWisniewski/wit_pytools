@@ -54,7 +54,7 @@ Filename rules:
 ```bat
 python -m wit_pytools.payloadtools sync  [--repo DIR] [--file PATH] [--dry-run] [-v]
 python -m wit_pytools.payloadtools media [--repo DIR] [--dry-run]
-python -m wit_pytools.payloadtools theme --css-light FILE [--css-dark FILE] [--logo FILE]
+python -m wit_pytools.payloadtools theme --css-light FILE [--css-dark FILE] [--logo FILE] [--font FAMILY=FILE[:WEIGHT]]... [--font-var VAR=FAMILY]...
 python -m wit_pytools.payloadtools site  [--repo DIR] [--dry-run]
 python -m wit_pytools.payloadtools check [--repo DIR]
 ```
@@ -82,6 +82,17 @@ failed     kategorie_products/broken_webtext_locked.md  (missing image img/missi
 8. Emit the per-file result line.
 
 The `media` command runs steps 1 and 4 only (upload/dedup, no page writes).
+
+`theme --font FAMILY=FILE[:WEIGHT]` uploads font files to `media`
+(sha256-deduped like images) and prepends a generated `@font-face` rule per
+file to `cssLight`. `FILE` may be a single file, a directory, or a glob —
+all files of the family are uploaded. `WEIGHT` is a single value (`400`)
+or a variable range (`100 900`); when omitted, weight and style are
+inferred from the filename (`*-700`, `*-700italic`, `*-italic`,
+`*-regular`, `*variable` → `100 900`).
+`--font-var VAR=FAMILY` prepends a `:root` block setting
+`--VAR: 'FAMILY'` — use it to repoint the typeface tokens in the compiled
+CSS (e.g. `--font-var "typography-typeface-change-font-here-body=Inter"`).
 
 ## Structure documents
 

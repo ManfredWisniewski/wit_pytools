@@ -47,6 +47,8 @@ class FakeClient:
 
     def upload_media(self, path, *, collection, alt="", caption="",
                      source_hash="", source_path=""):
+        from pathlib import Path
+
         self._write()
         media_id = f"media-{len(self.uploads) + 1}"
         self.uploads.append({
@@ -54,7 +56,10 @@ class FakeClient:
             "caption": caption, "source_hash": source_hash,
             "source_path": source_path,
         })
-        self.media_docs[source_hash] = {"id": media_id}
+        self.media_docs[source_hash] = {
+            "id": media_id,
+            "url": f"/api/media/file/{Path(path).name}",
+        }
         return media_id
 
     def update_global(self, slug, payload):

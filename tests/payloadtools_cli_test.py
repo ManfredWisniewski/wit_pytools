@@ -79,6 +79,134 @@ def test_theme_command(monkeypatch, tmp_path):
     assert payload == {"cssLight": ":root{--a:1}"}
 
 
+def test_theme_fonts(monkeypatch, tmp_path):
+    fake = FakeClient()
+    monkeypatch.setattr(
+        cli, "load_credentials", lambda: ("https://x.test", "key")
+    )
+    monkeypatch.setattr(cli, "PayloadClient", lambda *a, **k: fake)
+    css = tmp_path / "light.css"
+    css.write_text(":root{--a:1}")
+    font = tmp_path / "open-sans.woff2"
+    font.write_bytes(b"WOFF2-fake")
+    code = cli.main([
+        "theme", "--css-light", str(css),
+        "--font", f"Open Sans={font}:100 900",
+        "--font-var", "typography-typeface-body=Open Sans",
+    ])
+    assert code == 0
+    _slug, payload = fake.globals[0]
+    css_out = payload["cssLight"]
+    assert "@font-face" in css_out
+    assert "font-family: 'Open Sans';" in css_out
+    assert "url('/api/media/file/open-sans.woff2') format('woff2')" in css_out
+    assert "font-weight: 100 900;" in css_out
+    assert "--typography-typeface-body: 'Open Sans';" in css_out
+    assert css_out.endswith(":root{--a:1}")
+    assert fake.uploads[0]["path"].endswith("open-sans.woff2")
+
+
+def test_theme_font_deduped(monkeypatch, tmp_path):
+    import hashlib
+
+    font = tmp_path / "f.woff2"
+    font.write_bytes(b"WOFF2-fake")
+    digest = hashlib.sha256(b"WOFF2-fake").hexdigest()
+    fake = FakeClient(media={digest: {
+        "id": "m-1", "url": "/api/media/file/f.woff2",
+    }})
+    monkeypatch.setattr(
+        cli, "load_credentials", lambda: ("https://x.test", "key")
+    )
+    monkeypatch.setattr(cli, "PayloadClient", lambda *a, **k: fake)
+    css = tmp_path / "light.css"
+    css.write_text(":root{}")
+    code = cli.main([
+        "theme", "--css-light", str(css), "--font", f"F={font}",
+    ])
+    assert code == 0
+    assert fake.uploads == []
+    assert "url('/api/media/file/f.woff2')" in fake.globals[0][1]["cssLight"]
+
+
+def test_theme_font_bad_spec_exit_2(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli, "load_credentials", lambda: ("https://x.test", "key")
+    )
+    monkeypatch.setattr(
+        cli, "PayloadClient", lambda *a, **k: FakeClient()
+    )
+    css = tmp_path / "light.css"
+    css.write_text(":root{}")
+    code = cli.main(
+        ["theme", "--css-light", str(css), "--font", "no-equals"]
+    )
+    assert code == 2
+
+
+def test_theme_font_windows_path_weight():
+    assert cli._parse_font_spec("Inter=C:\\fonts\\i.woff2") == (
+        "Inter", "C:\\fonts\\i.woff2", None
+    )
+    assert cli._parse_font_spec("Inter=C:\\fonts\\i.woff2:100 900") == (
+        "Inter", "C:\\fonts\\i.woff2", "100 900"
+    )
+    assert cli._parse_font_spec("Inter=f.woff2:400") == (
+        "Inter", "f.woff2", "400"
+    )
+
+
+def test_font_infer_weight_style():
+    infer = cli._infer_weight_style
+    assert infer(Path("inter-v13-latin-700.woff2")) == ("700", "normal")
+    assert infer(Path("inter-v13-latin-700italic.woff2")) == ("700", "italic")
+    assert infer(Path("inter-v13-latin-italic.woff2")) == (None, "italic")
+    assert infer(Path("inter-v13-latin-regular.woff2")) == (None, "normal")
+    assert infer(Path("open-sans-variable.woff2")) == ("100 900", "normal")
+
+
+def test_theme_font_glob_family(monkeypatch, tmp_path):
+    fake = FakeClient()
+    monkeypatch.setattr(
+        cli, "load_credentials", lambda: ("https://x.test", "key")
+    )
+    monkeypatch.setattr(cli, "PayloadClient", lambda *a, **k: fake)
+    css = tmp_path / "light.css"
+    css.write_text(":root{}")
+    fonts = tmp_path / "fonts"
+    fonts.mkdir()
+    (fonts / "inter-v13-latin-regular.woff2").write_bytes(b"a")
+    (fonts / "inter-v13-latin-700.woff2").write_bytes(b"b")
+    (fonts / "inter-v13-latin-700italic.woff2").write_bytes(b"c")
+    code = cli.main([
+        "theme", "--css-light", str(css),
+        "--font", f"Inter={fonts / 'inter-v13-latin-*.woff2'}",
+    ])
+    assert code == 0
+    css_out = fake.globals[0][1]["cssLight"]
+    assert css_out.count("@font-face") == 3
+    assert css_out.count("font-family: 'Inter';") == 3
+    assert "font-weight: 700;" in css_out
+    assert "font-style: italic;" in css_out
+    assert len(fake.uploads) == 3
+
+
+def test_theme_font_dir_no_match_exit_2(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli, "load_credentials", lambda: ("https://x.test", "key")
+    )
+    monkeypatch.setattr(
+        cli, "PayloadClient", lambda *a, **k: FakeClient()
+    )
+    css = tmp_path / "light.css"
+    css.write_text(":root{}")
+    code = cli.main([
+        "theme", "--css-light", str(css),
+        "--font", f"Inter={tmp_path / 'nope-*.woff2'}",
+    ])
+    assert code == 2
+
+
 def test_theme_missing_css_exit_2(monkeypatch, tmp_path):
     monkeypatch.setattr(
         cli, "load_credentials", lambda: ("https://x.test", "key")

@@ -115,9 +115,11 @@ def process_entry(entry, config, client, route_index, *,
         meta_values = extract_meta(
             text, entry.path.parent, config.meta.get("briefing_glob", "")
         )
-        text = strip_front_matter(text)
+        stripped = strip_front_matter(text)
+        line_offset = text.count("\n") - stripped.count("\n")
         text, uploads = rewrite_image_refs(
-            text, entry, config, client, dry_run=dry_run
+            stripped, entry, config, client, dry_run=dry_run,
+            line_offset=line_offset,
         )
         if media_only:
             status = "created" if uploads else "unchanged"

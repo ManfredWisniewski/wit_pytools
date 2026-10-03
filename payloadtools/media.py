@@ -18,11 +18,13 @@ def sha256_file(path):
     return digest.hexdigest()
 
 
-def rewrite_image_refs(text, entry, config, client, *, dry_run=False):
+def rewrite_image_refs(text, entry, config, client, *, dry_run=False,
+                       line_offset=0):
     """Rewrite ![alt](relpath) to ![media:<docId>]() placeholders.
 
     Uploads the image when no Media doc matches its sha256; in dry-run no
     upload happens and the hash itself is used as deterministic placeholder.
+    line_offset shifts reported line numbers (stripped front matter).
     Returns (rewritten_text, upload_count).
     """
     uploads = 0
@@ -35,8 +37,16 @@ def rewrite_image_refs(text, entry, config, client, *, dry_run=False):
             return match.group(0)
         image_path = (entry.path.parent / target).resolve()
         if not image_path.is_file():
+            line = line_offset + text[:match.start()].count("\n") + 1
+            try:
+                expected = image_path.relative_to(
+                    config.repo.resolve()
+                ).as_posix()
+            except ValueError:
+                expected = str(image_path)
             raise FileNotFoundError(
-                f"{entry.relpath}: missing image {target}"
+                f"{entry.relpath}:{line}: missing image '{target}' "
+                f"(expected at {expected})"
             )
         source_path = image_path.relative_to(
             config.repo.resolve()
