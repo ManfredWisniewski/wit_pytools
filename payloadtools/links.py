@@ -45,3 +45,21 @@ def rewrite_internal_links(text, entry, repo_root, route_index):
         return f"[{match.group(1)}]({route}{suffix}{extra})"
 
     return LINK_RE.sub(replace, text)
+
+
+MARKER_RE = re.compile(r"\[(Link|Button):\s*([^\]]+)\]")
+
+
+def rewrite_markers(text, link_map):
+    """Resolve [Link: LABEL]/[Button: LABEL] via the config links map.
+
+    Unmapped labels are left untouched so missing targets stay visible.
+    """
+    def replace(match):
+        label = match.group(2).strip()
+        target = (link_map or {}).get(label)
+        if not target:
+            return match.group(0)
+        return f"[{label}]({target})"
+
+    return MARKER_RE.sub(replace, text)

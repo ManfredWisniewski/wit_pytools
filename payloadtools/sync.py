@@ -7,9 +7,9 @@ import yaml
 
 from .client import PayloadAuthError
 from .config import PayloadConfigError
-from .links import rewrite_internal_links
+from .links import rewrite_internal_links, rewrite_markers
 from .media import rewrite_image_refs
-from .meta import extract_meta
+from .meta import extract_meta, strip_front_matter
 from .scan import build_route_index, scan_repo
 from .transforms import apply_transforms
 
@@ -115,6 +115,7 @@ def process_entry(entry, config, client, route_index, *,
         meta_values = extract_meta(
             text, entry.path.parent, config.meta.get("briefing_glob", "")
         )
+        text = strip_front_matter(text)
         text, uploads = rewrite_image_refs(
             text, entry, config, client, dry_run=dry_run
         )
@@ -124,6 +125,7 @@ def process_entry(entry, config, client, route_index, *,
                 entry.relpath, status, f"media uploads: {uploads}"
             )
         text = rewrite_internal_links(text, entry, config.repo, route_index)
+        text = rewrite_markers(text, config.links)
         text = apply_transforms(text, config.transforms)
         payload = build_payload(entry, text, meta_values, config)
 

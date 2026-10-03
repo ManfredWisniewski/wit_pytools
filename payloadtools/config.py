@@ -35,6 +35,7 @@ class Config:
     route: RouteConfig = field(default_factory=RouteConfig)
     meta: dict = field(default_factory=dict)
     transforms: list = field(default_factory=list)
+    links: dict = field(default_factory=dict)
     source_repo: str = ""
 
 
@@ -89,6 +90,7 @@ def load_config(repo=None) -> Config:
         ),
         meta=dict(raw.get("meta") or {}),
         transforms=list(raw.get("transforms") or []),
+        links=dict(raw.get("links") or {}),
         source_repo=str(raw.get("source_repo") or repo.name),
     )
 

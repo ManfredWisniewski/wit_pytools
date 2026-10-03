@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from wit_pytools.payloadtools.meta import extract_meta
+from wit_pytools.payloadtools.meta import extract_meta, strip_front_matter
 
 REPO = Path(__file__).parent / "payloadtools" / "witrepo"
 
@@ -70,3 +70,13 @@ def test_meta_fields_not_in_content():
     meta = extract_meta(text, REPO)
     assert meta["title"] == "Heading"
     assert meta["description"] == ""
+
+
+def test_strip_front_matter():
+    text = "---\ntemplate: landing\nmeta_title: T\n---\n\n# Heading\n"
+    assert strip_front_matter(text) == "# Heading\n"
+
+
+def test_strip_front_matter_absent():
+    text = "# Heading\n\n---\nnot front matter at line 3\n"
+    assert strip_front_matter(text) == text

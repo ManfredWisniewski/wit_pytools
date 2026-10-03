@@ -26,6 +26,11 @@ def _front_matter(text):
     return data if isinstance(data, dict) else {}
 
 
+def strip_front_matter(text):
+    """Return text with a leading YAML front matter block removed."""
+    return FRONT_MATTER_RE.sub("", text, count=1)
+
+
 def _pick(mapping, keys):
     """Pick the first non-empty key value, also checking a nested meta map."""
     for key in keys:

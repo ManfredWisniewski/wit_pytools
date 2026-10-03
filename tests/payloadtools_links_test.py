@@ -8,7 +8,10 @@ from pathlib import Path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from wit_pytools.payloadtools.config import load_config
-from wit_pytools.payloadtools.links import rewrite_internal_links
+from wit_pytools.payloadtools.links import (
+    rewrite_internal_links,
+    rewrite_markers,
+)
 from wit_pytools.payloadtools.scan import build_route_index, scan_repo
 
 REPO = Path(__file__).parent / "payloadtools" / "witrepo"
@@ -63,3 +66,19 @@ def test_link_title_preserved():
     text = '[home](home_webtext_locked.md "Home title")\n'
     rewritten = rewrite_internal_links(text, entry, config.repo, index)
     assert rewritten == '[home](/ "Home title")\n'
+
+
+def test_marker_resolves_via_links_map():
+    text = "[Link: SEO-AGENTUR]\n[Button: Anfrage]\n"
+    out = rewrite_markers(
+        text, {"SEO-AGENTUR": "/online-marketing/kategorie_seo-agentur"}
+    )
+    assert "[SEO-AGENTUR](/online-marketing/kategorie_seo-agentur)" in out
+    # unmapped marker stays literal so the missing target is visible
+    assert "[Button: Anfrage]" in out
+
+
+def test_marker_empty_map_untouched():
+    text = "[Link: SEO-AGENTUR]\n"
+    assert rewrite_markers(text, {}) == text
+    assert rewrite_markers(text, None) == text
