@@ -152,3 +152,74 @@ def test_theme_logo_deduped(monkeypatch, tmp_path):
     _slug, payload = fake.globals[0]
     assert payload["logo"] == "existing-9"
     assert fake.uploads == []
+
+
+def _site_repo(tmp_path, site_yml):
+    (tmp_path / ".arrcontent.yml").write_text(
+        "collection: pages\nmedia_collection: media\n", encoding="utf-8"
+    )
+    (tmp_path / "site.yml").write_text(site_yml, encoding="utf-8")
+    return tmp_path
+
+
+def test_site_pushes_config(monkeypatch, tmp_path):
+    fake = FakeClient()
+    fake.global_docs["theme"] = {"meta": {"fontFamily": "Inter"}}
+    monkeypatch.setattr(
+        cli, "load_credentials", lambda: ("https://x.test", "key")
+    )
+    monkeypatch.setattr(cli, "PayloadClient", lambda *a, **k: fake)
+    repo = _site_repo(
+        tmp_path,
+        "site_name: WIT Consult\n"
+        "logo: logo.svg\n"
+        "logo_alt: WIT\n"
+        "favicon: fav.svg\n",
+    )
+    (repo / "logo.svg").write_text("<svg/>")
+    (repo / "fav.svg").write_text("<svg f/>")
+    code = cli.main(["site", "--repo", str(repo)])
+    assert code == 0
+    slug, payload = fake.globals[0]
+    assert slug == "theme"
+    assert payload["logo"] == "media-1"
+    assert payload["favicon"] == "media-2"
+    # existing meta keys are preserved, siteName merged in
+    assert payload["meta"] == {"fontFamily": "Inter", "siteName": "WIT Consult"}
+    assert fake.uploads[0]["alt"] == "WIT"
+    assert fake.uploads[1]["alt"] == "fav"
+
+
+def test_site_missing_yml_exit_2(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli, "load_credentials", lambda: ("https://x.test", "key")
+    )
+    (tmp_path / ".arrcontent.yml").write_text("collection: pages\n")
+    code = cli.main(["site", "--repo", str(tmp_path)], client=FakeClient())
+    assert code == 2
+
+
+def test_site_empty_yml_exit_2(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        cli, "load_credentials", lambda: ("https://x.test", "key")
+    )
+    repo = _site_repo(tmp_path, "# nothing\n")
+    code = cli.main(["site", "--repo", str(repo)], client=FakeClient())
+    assert code == 2
+
+
+def test_site_alt_synced_on_dedup(monkeypatch, tmp_path):
+    import hashlib
+
+    digest = hashlib.sha256(b"<svg/>").hexdigest()
+    fake = FakeClient(media={digest: {"id": "m-1", "alt": "old"}})
+    monkeypatch.setattr(
+        cli, "load_credentials", lambda: ("https://x.test", "key")
+    )
+    monkeypatch.setattr(cli, "PayloadClient", lambda *a, **k: fake)
+    repo = _site_repo(tmp_path, "logo: logo.svg\nlogo_alt: New Alt\n")
+    (repo / "logo.svg").write_bytes(b"<svg/>")
+    code = cli.main(["site", "--repo", str(repo)])
+    assert code == 0
+    assert fake.updated == [("media", "m-1", {"alt": "New Alt"})]
+    assert fake.uploads == []

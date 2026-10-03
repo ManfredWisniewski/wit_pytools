@@ -54,7 +54,8 @@ Filename rules:
 ```bat
 python -m wit_pytools.payloadtools sync  [--repo DIR] [--file PATH] [--dry-run] [-v]
 python -m wit_pytools.payloadtools media [--repo DIR] [--dry-run]
-python -m wit_pytools.payloadtools theme --css-light FILE [--css-dark FILE]
+python -m wit_pytools.payloadtools theme --css-light FILE [--css-dark FILE] [--logo FILE]
+python -m wit_pytools.payloadtools site  [--repo DIR] [--dry-run]
 python -m wit_pytools.payloadtools check [--repo DIR]
 ```
 
@@ -100,6 +101,25 @@ The frontend reads `structures` doc `navigation` and renders
 `data.items[*].label/path` as the header menu. Future documents (`footer`,
 `header`, …) work by filename convention without schema changes. `--file`
 accepts structure paths too (`--file structure/navigation.yml`).
+
+## Site configuration
+
+`site.yml` at the content repo root is the source of truth for site-wide
+settings pushed onto the `theme` global by the `site` command:
+
+```yaml
+site_name: WIT Consult       # -> theme.meta.siteName (merged, not replaced)
+logo: path/to/logo.svg       # uploaded to media, -> theme.logo
+logo_alt: WIT Consult        # -> alt on the logo media doc (defaults to stem)
+favicon: path/to/favicon.svg # uploaded to media, -> theme.favicon
+favicon_alt: Icon            # -> alt on the favicon media doc
+```
+
+Paths resolve relative to `site.yml`. Files go through the same
+sha256-dedup as page images — a repeated `site` push reuses the existing
+media doc and only patches `alt` when it differs. Unknown keys are ignored.
+The frontend renders `logo` in the header (falling back to `siteName` text)
+and `favicon` as `<link rel="icon">`.
 
 ## Errors and safety
 

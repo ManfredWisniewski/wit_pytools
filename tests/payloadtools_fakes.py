@@ -13,10 +13,17 @@ class FakeClient:
         self.updated = []
         self.uploads = []
         self.globals = []
+        self.global_docs = {}   # globals slug -> doc
         self.gets = 0
 
     def close(self):
         pass
+
+    def get(self, path, params=None):
+        self.gets += 1
+        if path.startswith("globals/"):
+            return self.global_docs.get(path.split("/", 1)[1], {})
+        return {"docs": list(self.docs.values())}
 
     def find_doc(self, collection, field_name, value):
         self.gets += 1
