@@ -111,3 +111,44 @@ def test_malformed_config_exit_2(tmp_path):
         ["sync", "--repo", str(tmp_path)], client=FakeClient()
     )
     assert code == 2
+
+
+def test_theme_logo_uploads_media(monkeypatch, tmp_path):
+    fake = FakeClient()
+    monkeypatch.setattr(
+        cli, "load_credentials", lambda: ("https://x.test", "key")
+    )
+    monkeypatch.setattr(cli, "PayloadClient", lambda *a, **k: fake)
+    css = tmp_path / "light.css"
+    css.write_text(":root{--a:1}")
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"\x89PNG-fake")
+    code = cli.main(
+        ["theme", "--css-light", str(css), "--logo", str(logo)]
+    )
+    assert code == 0
+    _slug, payload = fake.globals[0]
+    assert payload["logo"] == "media-1"
+    assert fake.uploads[0]["path"].endswith("logo.png")
+
+
+def test_theme_logo_deduped(monkeypatch, tmp_path):
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"\x89PNG-fake")
+    import hashlib
+
+    digest = hashlib.sha256(b"\x89PNG-fake").hexdigest()
+    fake = FakeClient(media={digest: {"id": "existing-9"}})
+    monkeypatch.setattr(
+        cli, "load_credentials", lambda: ("https://x.test", "key")
+    )
+    monkeypatch.setattr(cli, "PayloadClient", lambda *a, **k: fake)
+    css = tmp_path / "light.css"
+    css.write_text(":root{}")
+    code = cli.main(
+        ["theme", "--css-light", str(css), "--logo", str(logo)]
+    )
+    assert code == 0
+    _slug, payload = fake.globals[0]
+    assert payload["logo"] == "existing-9"
+    assert fake.uploads == []

@@ -34,6 +34,7 @@ def _build_parser():
     theme_p = sub.add_parser("theme", help="push theme CSS global")
     theme_p.add_argument("--css-light", required=True)
     theme_p.add_argument("--css-dark")
+    theme_p.add_argument("--logo", help="brand logo image file for the header")
 
     check_p = sub.add_parser("check", help="dry validation, no writes")
     check_p.add_argument("--repo")
@@ -50,6 +51,26 @@ def _print_results(results, verbose):
         log_message(line, level="INFO")
 
 
+def _ensure_media(client, image_path):
+    """Upload image_path to media unless the hash already exists; -> doc id."""
+    from .media import sha256_file
+
+    try:
+        digest = sha256_file(image_path)
+    except OSError as error:
+        raise PayloadConfigError(f"Cannot read logo file: {error}") from error
+    existing = client.find_doc("media", "sourceHash", digest)
+    if existing is not None:
+        return existing.get("id")
+    return client.upload_media(
+        image_path,
+        collection="media",
+        alt=image_path.stem,
+        source_hash=digest,
+        source_path=image_path.name,
+    )
+
+
 def _run_theme(args):
     base_url, api_key = load_credentials()
     client = PayloadClient(base_url, api_key)
@@ -63,6 +84,8 @@ def _run_theme(args):
             )
     except OSError as error:
         raise PayloadConfigError(f"Cannot read CSS file: {error}") from error
+    if args.logo:
+        payload["logo"] = _ensure_media(client, Path(args.logo))
     try:
         client.update_global("theme", payload)
     finally:
