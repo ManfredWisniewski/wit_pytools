@@ -70,16 +70,21 @@ def scan_structures(config):
 
 
 def _unchanged_structure(existing, payload):
-    """True when name, data and sourceRepo already match remotely."""
+    """True when name, data, sourcePath and sourceRepo already match."""
     return (
         existing.get("name") == payload["name"]
         and (existing.get("data") or {}) == payload["data"]
+        and (existing.get("sourcePath") or "") == payload["sourcePath"]
         and (existing.get("sourceRepo") or "") == payload["sourceRepo"]
     )
 
 
 def process_structure(path, config, client, *, dry_run=False):
-    """Upsert one structure YAML into `structures`; drafts only."""
+    """Upsert one structure YAML into `structures`; drafts only.
+
+    Upsert key is `name` (unique per collection) — a file move therefore
+    updates the existing doc's sourcePath instead of creating a duplicate.
+    """
     relpath = path.relative_to(config.repo).as_posix()
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -89,11 +94,17 @@ def process_structure(path, config, client, *, dry_run=False):
             "sourcePath": relpath,
             "sourceRepo": config.source_repo,
         }
-        existing = client.find_doc("structures", "sourcePath", relpath)
+        existing = client.find_doc("structures", "name", path.stem)
         if existing is None:
             if not dry_run:
                 client.create_doc("structures", payload)
             return FileResult(relpath, "created")
+        if (existing.get("sourceRepo") or "") != payload["sourceRepo"]:
+            return FileResult(
+                relpath, "failed",
+                f"name '{path.stem}' already used by repo "
+                f"'{existing.get('sourceRepo')}'",
+            )
         if _unchanged_structure(existing, payload):
             return FileResult(relpath, "unchanged")
         if not dry_run:

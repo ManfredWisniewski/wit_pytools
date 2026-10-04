@@ -99,8 +99,10 @@ CSS (e.g. `--font-var "typography-typeface-change-font-here-body=Inter"`).
 `sync` and `check` also process `+structure/*.yml` / `+structure/*.yaml`
 under the site directory (`media` skips them). Each file maps to one
 document in the `structures` collection: the filename stem becomes `name`,
-the parsed YAML lands verbatim in `data`, and upserts key on `sourcePath` —
-same draft-only rules as pages. Example `+structure/navigation.yml`:
+the parsed YAML lands verbatim in `data`, and upserts key on `name` (unique
+per collection — a moved file updates the existing doc's `sourcePath`, a
+`name` owned by another repo fails) — same draft-only rules as pages.
+Example `+structure/navigation.yml`:
 
 ```yaml
 items:

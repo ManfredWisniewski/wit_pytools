@@ -184,7 +184,7 @@ def test_structure_unchanged(tmp_path):
     existing = dict(probe.created[0][1])
     existing["id"] = "s-1"
     client = FakeClient(
-        docs={("structures", "+structure/navigation.yml"): existing}
+        docs={("structures", "navigation"): existing}
     )
     results = sync_repo(config, client)
     assert _statuses(results) == {"+structure/navigation.yml": "unchanged"}
@@ -198,11 +198,44 @@ def test_structure_updated(tmp_path):
         "data": {"items": []}, "sourceRepo": config.source_repo,
     }
     client = FakeClient(
-        docs={("structures", "+structure/navigation.yml"): existing}
+        docs={("structures", "navigation"): existing}
     )
     results = sync_repo(config, client)
     assert _statuses(results) == {"+structure/navigation.yml": "updated"}
     assert client.updated[0][1] == "s-1"
+
+
+def test_structure_moved_file_updates_sourcepath(tmp_path):
+    """Same name at a new path -> update, not duplicate create."""
+    config = _structure_repo(tmp_path, NAV_YAML)
+    existing = {
+        "id": "s-1", "name": "navigation",
+        "data": {"items": [{"label": "Home", "path": "/"},
+                           {"label": "MDM", "path": "/mdm"}]},
+        "sourcePath": "structure/navigation.yml",
+        "sourceRepo": config.source_repo,
+    }
+    client = FakeClient(
+        docs={("structures", "navigation"): existing}
+    )
+    results = sync_repo(config, client)
+    assert _statuses(results) == {"+structure/navigation.yml": "updated"}
+    assert client.created == []
+    assert client.updated[0][2]["sourcePath"] == "+structure/navigation.yml"
+
+
+def test_structure_name_used_by_other_repo(tmp_path):
+    config = _structure_repo(tmp_path, NAV_YAML)
+    existing = {
+        "id": "s-9", "name": "navigation",
+        "data": {}, "sourceRepo": "other-repo",
+    }
+    client = FakeClient(
+        docs={("structures", "navigation"): existing}
+    )
+    results = sync_repo(config, client)
+    assert _statuses(results) == {"+structure/navigation.yml": "failed"}
+    assert client.created == [] and client.updated == []
 
 
 def test_structure_dry_run_no_writes(tmp_path):

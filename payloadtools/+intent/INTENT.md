@@ -59,7 +59,9 @@ Design context: `wit-obs-strategy-trurl/team/trurl/plan-payload-website.md` and
     `_payload` containing a JSON string with `alt`, `caption`, `sourceHash`,
     `sourcePath`
   - `POST /api/globals/theme` — theme CSS push
-  - `GET  /api/structures?where[sourcePath][equals]=<path>&limit=1` — find
+  - `GET  /api/structures?where[name][equals]=<stem>&limit=1` — find
+    (upsert key is `name`; a moved file updates `sourcePath`, a `name`
+    owned by another `sourceRepo` fails)
   - `POST /api/structures?draft=true` / `PATCH /api/structures/<id>?draft=true`
     — structure upsert (same draft-only rules as pages)
 - The `content-bot` API key must not be able to publish or delete. Treat any
