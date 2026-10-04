@@ -34,8 +34,8 @@ Design context: `wit-obs-strategy-trurl/team/trurl/plan-payload-website.md` and
 - **Theme global**: a Payload global (`theme`) holding compiled CSS variables
   (`cssLight`, `cssDark`) injected by the frontend on `:root`. Pushed via API
   like content; site styling is data, not code.
-- **Structure document**: a YAML file under `<site>/structure/` (e.g.
-  `structure/navigation.yml`) synced into the generic `structures`
+- **Structure document**: a YAML file under `<site>/+structure/` (e.g.
+  `+structure/navigation.yml`) synced into the generic `structures`
   collection: filename stem → `name`, parsed YAML → `data` (JSON),
   `sourcePath`/`sourceRepo` as with pages. Generic by design — `menu`,
   `navigation`, `footer`, `header`, … all work by filename convention without
@@ -116,7 +116,7 @@ transforms:
    `draft=true`; never send `_status`.
 8. Emit a per-file result line: `created|updated|unchanged|skipped|failed`.
 
-After the webtext pass, `structure/*.yml` files get the same upsert treatment
+After the webtext pass, `+structure/*.yml` files get the same upsert treatment
 into `structures` (steps 7–8 semantics; no status/route/media/link handling).
 Skipped entirely in the `media` pass; `--file` applies to both.
 

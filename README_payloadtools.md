@@ -96,11 +96,11 @@ CSS (e.g. `--font-var "typography-typeface-change-font-here-body=Inter"`).
 
 ## Structure documents
 
-`sync` and `check` also process `structure/*.yml` / `structure/*.yaml` under
-the site directory (`media` skips them). Each file maps to one document in the
-`structures` collection: the filename stem becomes `name`, the parsed YAML
-lands verbatim in `data`, and upserts key on `sourcePath` — same draft-only
-rules as pages. Example `structure/navigation.yml`:
+`sync` and `check` also process `+structure/*.yml` / `+structure/*.yaml`
+under the site directory (`media` skips them). Each file maps to one
+document in the `structures` collection: the filename stem becomes `name`,
+the parsed YAML lands verbatim in `data`, and upserts key on `sourcePath` —
+same draft-only rules as pages. Example `+structure/navigation.yml`:
 
 ```yaml
 items:
@@ -111,7 +111,7 @@ items:
 The frontend reads `structures` doc `navigation` and renders
 `data.items[*].label/path` as the header menu. Future documents (`footer`,
 `header`, …) work by filename convention without schema changes. `--file`
-accepts structure paths too (`--file structure/navigation.yml`).
+accepts structure paths too (`--file +structure/navigation.yml`).
 
 ## Site configuration
 

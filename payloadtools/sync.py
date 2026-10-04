@@ -18,8 +18,8 @@ _COMPARED_FIELDS = ("title", "slug", "path", "markdownRaw", "sourceRepo",
                     "template")
 _COMPARED_META_FIELDS = ("title", "description",)
 
-# structure/*.yml|*.yaml each map to one `structures` document (name = stem)
-STRUCTURE_PATTERNS = ("structure/*.yml", "structure/*.yaml")
+# +structure/*.yml|*.yaml each map to one `structures` document (name = stem)
+STRUCTURE_PATTERNS = ("+structure/*.yml", "+structure/*.yaml")
 
 
 @dataclass
@@ -60,7 +60,7 @@ def _unchanged(existing, payload):
 
 
 def scan_structures(config):
-    """structure/*.yml|*.yaml files, each -> one `structures` document."""
+    """+structure/*.yml|*.yaml files, each -> one `structures` document."""
     paths = [
         path
         for pattern in STRUCTURE_PATTERNS

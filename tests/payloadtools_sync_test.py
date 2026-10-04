@@ -153,12 +153,12 @@ NAV_YAML = "items:\n  - {label: Home, path: /}\n  - {label: MDM, path: /mdm}\n"
 
 
 def _structure_repo(tmp_path, body):
-    """Minimal config + structure/navigation.yml in a temp repo."""
+    """Minimal config + ++structure/navigation.yml in a temp repo."""
     (tmp_path / ".arrcontent.yml").write_text(
         "collection: pages\n", encoding="utf-8"
     )
-    (tmp_path / "structure").mkdir()
-    (tmp_path / "structure" / "navigation.yml").write_text(
+    (tmp_path / "+structure").mkdir()
+    (tmp_path / "+structure" / "navigation.yml").write_text(
         body, encoding="utf-8"
     )
     return load_config(tmp_path)
@@ -168,12 +168,12 @@ def test_structure_created(tmp_path):
     config = _structure_repo(tmp_path, NAV_YAML)
     client = FakeClient()
     results = sync_repo(config, client)
-    assert _statuses(results) == {"structure/navigation.yml": "created"}
+    assert _statuses(results) == {"+structure/navigation.yml": "created"}
     collection, payload = client.created[0]
     assert collection == "structures"
     assert payload["name"] == "navigation"
     assert payload["data"]["items"][1] == {"label": "MDM", "path": "/mdm"}
-    assert payload["sourcePath"] == "structure/navigation.yml"
+    assert payload["sourcePath"] == "+structure/navigation.yml"
     assert "_status" not in payload
 
 
@@ -184,10 +184,10 @@ def test_structure_unchanged(tmp_path):
     existing = dict(probe.created[0][1])
     existing["id"] = "s-1"
     client = FakeClient(
-        docs={("structures", "structure/navigation.yml"): existing}
+        docs={("structures", "+structure/navigation.yml"): existing}
     )
     results = sync_repo(config, client)
-    assert _statuses(results) == {"structure/navigation.yml": "unchanged"}
+    assert _statuses(results) == {"+structure/navigation.yml": "unchanged"}
     assert client.created == [] and client.updated == []
 
 
@@ -198,10 +198,10 @@ def test_structure_updated(tmp_path):
         "data": {"items": []}, "sourceRepo": config.source_repo,
     }
     client = FakeClient(
-        docs={("structures", "structure/navigation.yml"): existing}
+        docs={("structures", "+structure/navigation.yml"): existing}
     )
     results = sync_repo(config, client)
-    assert _statuses(results) == {"structure/navigation.yml": "updated"}
+    assert _statuses(results) == {"+structure/navigation.yml": "updated"}
     assert client.updated[0][1] == "s-1"
 
 
@@ -209,14 +209,14 @@ def test_structure_dry_run_no_writes(tmp_path):
     config = _structure_repo(tmp_path, NAV_YAML)
     client = FakeClient(fail_writes=True)
     results = sync_repo(config, client, dry_run=True)
-    assert _statuses(results) == {"structure/navigation.yml": "created"}
+    assert _statuses(results) == {"+structure/navigation.yml": "created"}
     assert client.created == []
 
 
 def test_structure_malformed_yaml(tmp_path):
     config = _structure_repo(tmp_path, "items: [unclosed\n")
     results = sync_repo(config, FakeClient())
-    assert _statuses(results) == {"structure/navigation.yml": "failed"}
+    assert _statuses(results) == {"+structure/navigation.yml": "failed"}
 
 
 def test_media_only_skips_structures(tmp_path):
@@ -228,12 +228,12 @@ def test_media_only_skips_structures(tmp_path):
 def test_only_file_structure(tmp_path):
     config = _structure_repo(tmp_path, NAV_YAML)
     results = sync_repo(
-        config, FakeClient(), only_file="structure/navigation.yml"
+        config, FakeClient(), only_file="+structure/navigation.yml"
     )
-    assert _statuses(results) == {"structure/navigation.yml": "created"}
+    assert _statuses(results) == {"+structure/navigation.yml": "created"}
 
 
 def test_only_file_unknown_raises(tmp_path):
     config = _structure_repo(tmp_path, NAV_YAML)
     with pytest.raises(PayloadConfigError):
-        sync_repo(config, FakeClient(), only_file="structure/missing.yml")
+        sync_repo(config, FakeClient(), only_file="+structure/missing.yml")
