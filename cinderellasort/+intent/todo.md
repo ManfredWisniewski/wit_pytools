@@ -29,7 +29,7 @@
 - `force_update=false` preserves an existing anonymized output unless the
   `*-anon_lastmap.csv` diff flags a changed or extended approved row present in
   the source; `force_update=true` refreshes unconditionally.
-- `ignore_save=false` is off by default; when true, values filtered
+- `save_ignored_as_list=false` is off by default; when true, values filtered
   from proposals are written to `<slug>-anon-ignore-save.csv`, which is rewritten
   on each run. `<slug>-anon-ignore.csv` remains cumulative for `keep` rows.
 - `publish_without_review=false` withholds plaintext copies that still contain

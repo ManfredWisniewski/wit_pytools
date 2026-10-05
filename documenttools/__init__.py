@@ -20,7 +20,9 @@ from wit_pytools.anonymization import (
     lastmap_path_for,
     detect_presidio_candidates,
     detect_text_candidates,
+    is_corporate_name,
     is_date_string,
+    is_location_name,
     load_name_catalog,
     mapping_matches_parts,
     mapping_path_rows,
@@ -160,6 +162,8 @@ def _candidate_is_ignored(
     ignore_numbers: bool,
     ignore_emails: bool,
     ignore_dates: bool,
+    ignore_locations: bool,
+    ignore_corporate: bool,
 ) -> bool:
     if _is_markdown_table_separator(value) or _is_standalone_currency(value):
         return True
@@ -168,6 +172,10 @@ def _candidate_is_ignored(
     if ignore_numbers and any(character.isdigit() for character in value):
         return True
     if ignore_dates and is_date_string(value):
+        return True
+    if ignore_locations and is_location_name(value):
+        return True
+    if ignore_corporate and is_corporate_name(value):
         return True
     return ignore_dictionary and (
         name_catalog is not None and name_catalog.is_dictionary_word(value)
@@ -343,6 +351,8 @@ def _text_candidate_rows(
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
     ignore_dates: bool = False,
+    ignore_locations: bool = False,
+    ignore_corporate: bool = False,
     ignored_candidates: Optional[List[Any]] = None,
     protect_markup: bool = True,
 ) -> List[Dict[str, Any]]:
@@ -371,6 +381,8 @@ def _text_candidate_rows(
             ignore_numbers=ignore_numbers,
             ignore_emails=ignore_emails,
             ignore_dates=ignore_dates,
+            ignore_locations=ignore_locations,
+            ignore_corporate=ignore_corporate,
             ignored_candidates=ignored_candidates,
         )
         if anonymize_mode == "all":
@@ -397,6 +409,8 @@ def _text_candidate_rows(
             ignore_numbers=ignore_numbers,
             ignore_emails=ignore_emails,
             ignore_dates=ignore_dates,
+            ignore_locations=ignore_locations,
+            ignore_corporate=ignore_corporate,
         ):
             if ignored_candidates is not None:
                 ignored_candidates.append(candidate)
@@ -426,6 +440,8 @@ def identify_text_strings(
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
     ignore_dates: bool = False,
+    ignore_locations: bool = False,
+    ignore_corporate: bool = False,
 ) -> Path:
     """Identify text candidates while leaving markup-specific protection here."""
     input_path = Path(file_path)
@@ -460,6 +476,8 @@ def identify_text_strings(
             ignore_numbers=ignore_numbers,
             ignore_emails=ignore_emails,
             ignore_dates=ignore_dates,
+            ignore_locations=ignore_locations,
+            ignore_corporate=ignore_corporate,
             protect_markup=input_path.suffix.lower() == ".md",
         ),
     )
@@ -559,7 +577,9 @@ def _merge_mapping_candidates(
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
     ignore_dates: bool = False,
-    ignore_save: bool = False,
+    ignore_locations: bool = False,
+    ignore_corporate: bool = False,
+    save_ignored_as_list: bool = False,
     ignore_append: bool = False,
 ) -> Path:
     """Merge detected candidate rows into the proposal mapping CSV."""
@@ -579,7 +599,7 @@ def _merge_mapping_candidates(
     filtered_ignore_rows = []
     saved_ignore_rows = []
     saved_ignore_path = _saved_ignore_path_for_mapping(mapping_file)
-    if ignore_save and ignore_append:
+    if save_ignored_as_list and ignore_append:
         saved_ignore_rows = _read_ignore_rows(saved_ignore_path)
     ignored_values = {
         row["original_value"].strip()
@@ -644,7 +664,7 @@ def _merge_mapping_candidates(
         ignored_originals = [
             original for original in originals if original in ignored_values
         ]
-        if ignore_save:
+        if save_ignored_as_list:
             filtered_ignore_rows.extend(
                 {"original_value": original, "value_type": row["value_type"]}
                 for original in ignored_originals
@@ -711,10 +731,12 @@ def _merge_mapping_candidates(
                 ignore_numbers=ignore_numbers,
                 ignore_emails=ignore_emails,
                 ignore_dates=ignore_dates,
+                ignore_locations=ignore_locations,
+                ignore_corporate=ignore_corporate,
             )
         ]
         if ignored_originals:
-            if ignore_save:
+            if save_ignored_as_list:
                 filtered_ignore_rows.extend(
                     {
                         "original_value": original,
@@ -726,7 +748,7 @@ def _merge_mapping_candidates(
         filtered_rows.append(row)
     rows = filtered_rows
 
-    if ignore_save:
+    if save_ignored_as_list:
         filtered_ignore_rows.extend(
             {
                 "original_value": candidate.original_value,
@@ -736,7 +758,7 @@ def _merge_mapping_candidates(
         )
     for candidate in candidates:
         if candidate["original_value"] in known:
-            if ignore_save and candidate["original_value"] in ignored_values:
+            if save_ignored_as_list and candidate["original_value"] in ignored_values:
                 filtered_ignore_rows.append(
                     {
                         "original_value": candidate["original_value"],
@@ -760,7 +782,7 @@ def _merge_mapping_candidates(
         known.add(candidate["original_value"])
 
     _write_ignore_rows(ignore_path, _unique_ignore_rows(ignore_rows))
-    if ignore_save:
+    if save_ignored_as_list:
         saved_ignore_rows.extend(filtered_ignore_rows)
         _write_ignore_rows(
             saved_ignore_path,
@@ -793,6 +815,8 @@ def detect_text_candidate_rows(
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
     ignore_dates: bool = False,
+    ignore_locations: bool = False,
+    ignore_corporate: bool = False,
     ignored_candidates: Optional[List[Any]] = None,
     protect_markup: bool = True,
 ) -> List[Dict[str, Any]]:
@@ -811,6 +835,8 @@ def detect_text_candidate_rows(
         ignore_numbers=ignore_numbers,
         ignore_emails=ignore_emails,
         ignore_dates=ignore_dates,
+        ignore_locations=ignore_locations,
+        ignore_corporate=ignore_corporate,
         ignored_candidates=ignored_candidates,
         protect_markup=protect_markup,
     )
@@ -833,7 +859,9 @@ def merge_text_mapping_candidates(
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
     ignore_dates: bool = False,
-    ignore_save: bool = False,
+    ignore_locations: bool = False,
+    ignore_corporate: bool = False,
+    save_ignored_as_list: bool = False,
     ignore_append: bool = False,
 ) -> Path:
     """Merge pre-detected candidate rows into the proposal mapping CSV."""
@@ -857,7 +885,9 @@ def merge_text_mapping_candidates(
         ignore_numbers=ignore_numbers,
         ignore_emails=ignore_emails,
         ignore_dates=ignore_dates,
-        ignore_save=ignore_save,
+        ignore_locations=ignore_locations,
+        ignore_corporate=ignore_corporate,
+        save_ignored_as_list=save_ignored_as_list,
         ignore_append=ignore_append,
     )
 
@@ -895,7 +925,9 @@ def _update_text_mapping_sources(
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
     ignore_dates: bool = False,
-    ignore_save: bool = False,
+    ignore_locations: bool = False,
+    ignore_corporate: bool = False,
+    save_ignored_as_list: bool = False,
     ignore_append: bool = False,
     protect_markup: bool = True,
     name_catalog=None,
@@ -930,8 +962,10 @@ def _update_text_mapping_sources(
                 ignore_numbers=ignore_numbers,
                 ignore_emails=ignore_emails,
                 ignore_dates=ignore_dates,
+                ignore_locations=ignore_locations,
+                ignore_corporate=ignore_corporate,
                 ignored_candidates=(
-                    source_ignored_candidates if ignore_save else None
+                    source_ignored_candidates if save_ignored_as_list else None
                 ),
                 protect_markup=protect_markup,
             )
@@ -947,7 +981,9 @@ def _update_text_mapping_sources(
         ignore_numbers=ignore_numbers,
         ignore_emails=ignore_emails,
         ignore_dates=ignore_dates,
-        ignore_save=ignore_save,
+        ignore_locations=ignore_locations,
+        ignore_corporate=ignore_corporate,
+        save_ignored_as_list=save_ignored_as_list,
         ignore_append=ignore_append,
     )
 
@@ -972,7 +1008,9 @@ def update_text_mapping(
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
     ignore_dates: bool = False,
-    ignore_save: bool = False,
+    ignore_locations: bool = False,
+    ignore_corporate: bool = False,
+    save_ignored_as_list: bool = False,
     ignore_append: bool = False,
     name_catalog=None,
 ) -> Path:
@@ -1001,7 +1039,9 @@ def update_text_mapping(
         ignore_numbers=ignore_numbers,
         ignore_emails=ignore_emails,
         ignore_dates=ignore_dates,
-        ignore_save=ignore_save,
+        ignore_locations=ignore_locations,
+        ignore_corporate=ignore_corporate,
+        save_ignored_as_list=save_ignored_as_list,
         ignore_append=ignore_append,
     )
 
@@ -1027,7 +1067,9 @@ def update_directory_mapping(
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
     ignore_dates: bool = False,
-    ignore_save: bool = False,
+    ignore_locations: bool = False,
+    ignore_corporate: bool = False,
+    save_ignored_as_list: bool = False,
     ignore_append: bool = False,
     name_catalog=None,
 ) -> Path:
@@ -1066,7 +1108,9 @@ def update_directory_mapping(
         ignore_numbers=ignore_numbers,
         ignore_emails=ignore_emails,
         ignore_dates=ignore_dates,
-        ignore_save=ignore_save,
+        ignore_locations=ignore_locations,
+        ignore_corporate=ignore_corporate,
+        save_ignored_as_list=save_ignored_as_list,
         ignore_append=ignore_append,
         name_catalog=name_catalog,
     )

@@ -1,0 +1,21 @@
+# Known company names excluded from anonymization proposals.
+# Multi-word entries match as consecutive tokens.
+Amazon
+Amex
+Apple
+Charles Tyrwhitt
+Coral Consors
+Dell
+Hays
+Huawei
+Intel
+Master Card
+Microsoft
+New Work
+Panasonic
+Pinduoduo
+Sixt
+Sony
+Tradegate
+Visa
+Xerox

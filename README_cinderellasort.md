@@ -167,8 +167,10 @@ ignore_dictionary=true
 ignore_numbers=true
 ignore_emails=true
 ignore_dates=true
+ignore_locations=true
+ignore_corporate=true
 # Rewrite <slug>-anon-ignore-save.csv with values filtered in the current run.
-ignore_save=false
+save_ignored_as_list=false
 # Rewrite existing _anon.<ext> even when no mapping change is detected.
 force_update=false
 # Remove orphaned _anon.<ext> files from targetdir.
@@ -233,9 +235,11 @@ Presidio recommendations can also be filtered before they enter the mapping:
 - `ignore_numbers=true` ignores any recommendation containing a digit.
 - `ignore_emails=true` ignores e-mail addresses.
 - `ignore_dates=true` ignores date-like and `DATE_TIME` recommendations.
-- `ignore_save=true` writes values removed by the filters to the sibling report file, such as `Wisniewski-anon-ignore-save.csv`, and replaces that file's contents on each run. The report is informational and is not read as an ignore list.
+- `ignore_locations=true` ignores recommendations whose last word is a location suffix or that match a known place name; the lists live in `anonymization/assets/international/location-suffixes.txt` and `location-names.txt`.
+- `ignore_corporate=true` ignores recommendations that look like company names (`Bank` as first or last word, `Group` or `Inc` as last word, or a known company); the lists live in `anonymization/assets/international/corporate-prefixes.txt`, `corporate-suffixes.txt`, and `corporate-names.txt`.
+- `save_ignored_as_list=true` writes values removed by the filters to the sibling report file, such as `Wisniewski-anon-ignore-save.csv`, and replaces that file's contents on each run. The report is informational and is not read as an ignore list.
 
-These filters default to `false`; `ignore_save` also defaults to `false`.
+These filters default to `false`; `save_ignored_as_list` also defaults to `false`.
 
 When a mapping row has `status=keep`, its `original_value` is moved to a
 sibling ignore file such as `Wisniewski-anon-ignore.csv`. The ignore file has

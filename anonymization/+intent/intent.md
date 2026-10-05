@@ -45,6 +45,12 @@ Candidate detection accepts these options:
 - `ignore_numbers`: ignore Presidio values containing digits.
 - `ignore_emails`: ignore Presidio e-mail recommendations.
 - `ignore_dates`: ignore Presidio `DATE_TIME` and date-like recommendations.
+- `ignore_locations`: ignore values ending in a location suffix or matching a
+  known place name (`assets/international/location-suffixes.txt`,
+  `location-names.txt`).
+- `ignore_corporate`: ignore values that look like company names
+  (`assets/international/corporate-prefixes.txt`, `corporate-suffixes.txt`,
+  `corporate-names.txt`).
 
 Explicit function arguments take precedence over environment variables.
 The runner exposes country, opt-out, offline, and debug options.

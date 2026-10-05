@@ -1,0 +1,20 @@
+# Last-word suffixes marking a candidate as a location.
+# Compared case-insensitively; "Straße" casefolds to "strasse".
+Str
+Strasse
+Hbf
+St
+Street
+Ave
+Avenue
+Rd
+Road
+Blvd
+Boulevard
+Weg
+Allee
+Platz
+Gasse
+Lane
+District
+Drive

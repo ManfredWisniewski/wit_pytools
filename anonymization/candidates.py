@@ -2,6 +2,7 @@
 
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
 from .models import Candidate
@@ -15,6 +16,29 @@ _NAME_PATTERN = re.compile(
     r"[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+(?:[ \t]+[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+){1,3}"
 )
 _DATE_FORMATS = ("%d.%m.%Y", "%d.%m.%y", "%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y")
+_ASSETS_DIR = Path(__file__).parent / "assets"
+
+
+def _asset_words(*parts: str) -> frozenset:
+    """Load a ``#``-commented word list from ``assets/``."""
+    path = _ASSETS_DIR.joinpath(*parts)
+    return frozenset(
+        line.strip().casefold()
+        for line in path.read_text(encoding="utf-8-sig").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+
+
+def _asset_phrases(*parts: str) -> frozenset:
+    """Load a word list as tuples of consecutive tokens."""
+    return frozenset(tuple(entry.split()) for entry in _asset_words(*parts))
+
+
+_LOCATION_SUFFIXES = _asset_words("international", "location-suffixes.txt")
+_LOCATION_NAMES = _asset_phrases("international", "location-names.txt")
+_CORPORATE_PREFIXES = _asset_words("international", "corporate-prefixes.txt")
+_CORPORATE_SUFFIXES = _asset_words("international", "corporate-suffixes.txt")
+_CORPORATE_NAMES = _asset_phrases("international", "corporate-names.txt")
 _TEXT_EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 _TEXT_NAME_PATTERN = re.compile(
     r"[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+(?:[ \t]+[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ]+){1,3}"
@@ -69,6 +93,38 @@ def parse_date(value: str, date_format: str) -> Optional[datetime]:
 def is_date_string(value: str) -> bool:
     value = value.strip()
     return any(parse_date(value, date_format) is not None for date_format in _DATE_FORMATS)
+
+
+def is_location_name(value: str) -> bool:
+    """Whether ``value`` looks like ``<name> <location suffix>`` or a known place."""
+    tokens = value.split()
+    if not tokens:
+        return False
+    words = [token.rstrip(".,").casefold() for token in tokens]
+    if len(words) >= 2 and words[-1] in _LOCATION_SUFFIXES:
+        return True
+    return any(
+        tuple(words[index : index + len(name)]) == name
+        for name in _LOCATION_NAMES
+        for index in range(len(words) - len(name) + 1)
+    )
+
+
+def is_corporate_name(value: str) -> bool:
+    """Whether ``value`` looks like a company name, not a person."""
+    tokens = value.split()
+    if not tokens:
+        return False
+    words = [token.rstrip(".,").casefold() for token in tokens]
+    if len(tokens) == 1:
+        return (words[0],) in _CORPORATE_NAMES
+    if words[0] in _CORPORATE_PREFIXES or words[-1] in _CORPORATE_SUFFIXES:
+        return True
+    return any(
+        tuple(words[index : index + len(name)]) == name
+        for name in _CORPORATE_NAMES
+        for index in range(len(words) - len(name) + 1)
+    )
 
 
 def value_type_for(
