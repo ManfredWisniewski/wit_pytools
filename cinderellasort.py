@@ -1133,13 +1133,15 @@ class _AnonymizeRun:
             'ignore_numbers': settings.get('ignore_numbers', False),
             'ignore_emails': settings.get('ignore_emails', False),
             'ignore_dates': settings.get('ignore_dates', False),
+            'ignore_locations': settings.get('ignore_locations', False),
+            'ignore_corporate': settings.get('ignore_corporate', False),
         }
 
     def submit(self, candidate_source):
         """Detect candidates for one file and buffer them for the flush."""
         candidate_source = Path(candidate_source)
         ignored = (
-            [] if self.settings.get('ignore_save', False) else None
+            [] if self.settings.get('save_ignored_as_list', False) else None
         )
         rows = detect_text_candidate_rows(
             candidate_source.read_text(encoding='utf-8'),
@@ -1181,7 +1183,13 @@ class _AnonymizeRun:
                 ignore_numbers=self.settings.get('ignore_numbers', False),
                 ignore_emails=self.settings.get('ignore_emails', False),
                 ignore_dates=self.settings.get('ignore_dates', False),
-                ignore_save=self.settings.get('ignore_save', False),
+                ignore_locations=self.settings.get(
+                    'ignore_locations', False
+                ),
+                ignore_corporate=self.settings.get(
+                    'ignore_corporate', False
+                ),
+                save_ignored_as_list=self.settings.get('save_ignored_as_list', False),
                 ignore_append=True,
             )
             self._pending_rows = []
@@ -1312,7 +1320,9 @@ def handle_anonymization(
             ignore_numbers=settings.get('ignore_numbers', False),
             ignore_emails=settings.get('ignore_emails', False),
             ignore_dates=settings.get('ignore_dates', False),
-            ignore_save=settings.get('ignore_save', False),
+            ignore_locations=settings.get('ignore_locations', False),
+            ignore_corporate=settings.get('ignore_corporate', False),
+            save_ignored_as_list=settings.get('save_ignored_as_list', False),
             ignore_append=ignore_append,
         )
     else:
@@ -1503,8 +1513,14 @@ def anonymize_settings(config_object):
         'ignore_dates': (
             section.get('ignore_dates', 'false') or 'false'
         ).strip().lower() == 'true',
-        'ignore_save': (
-            section.get('ignore_save', 'false') or 'false'
+        'ignore_locations': (
+            section.get('ignore_locations', 'false') or 'false'
+        ).strip().lower() == 'true',
+        'ignore_corporate': (
+            section.get('ignore_corporate', 'false') or 'false'
+        ).strip().lower() == 'true',
+        'save_ignored_as_list': (
+            section.get('save_ignored_as_list', 'false') or 'false'
         ).strip().lower() == 'true',
         'name_countries': _section_csv(section, 'name_countries'),
         'use_name_datasets': _section_bool(section, 'use_name_datasets'),
@@ -1521,11 +1537,11 @@ def anonymize_settings(config_object):
     }
 
 
-def _prepare_anonymize_ignore_save(settings):
+def _prepare_anonymize_save_ignored_as_list(settings):
     """Reset the filtered-proposal CSV before a multi-file anonymization run."""
     if not (
         settings['enabled']
-        and settings['ignore_save']
+        and settings['save_ignored_as_list']
         and settings['mapping_file']
     ):
         return False
@@ -1597,7 +1613,9 @@ def _anonymize_mapping_kwargs(settings):
         'ignore_numbers': settings.get('ignore_numbers', False),
         'ignore_emails': settings.get('ignore_emails', False),
         'ignore_dates': settings.get('ignore_dates', False),
-        'ignore_save': settings.get('ignore_save', False),
+        'ignore_locations': settings.get('ignore_locations', False),
+        'ignore_corporate': settings.get('ignore_corporate', False),
+        'save_ignored_as_list': settings.get('save_ignored_as_list', False),
     }
 
 
@@ -2241,7 +2259,7 @@ def cinderellasort(
 
     docprep_config = docprep_settings(config_object)
     anonymize_config = anonymize_settings(config_object)
-    ignore_append = not dryrun and _prepare_anonymize_ignore_save(
+    ignore_append = not dryrun and _prepare_anonymize_save_ignored_as_list(
         anonymize_config
     )
     single_relative_parent = None

@@ -615,6 +615,41 @@ def test_update_text_mapping_removes_existing_ignored_recommendations(tmp_path, 
     assert ignore_rows == []
 
 
+def test_update_text_mapping_ignores_location_and_corporate_names(
+    tmp_path, monkeypatch
+):
+    source = tmp_path / "document.md"
+    source.write_text(
+        "Anna Muster Str Karl Beispiel Muster Group", encoding="utf-8"
+    )
+    mapping = tmp_path / "customer_mapping.csv"
+    mapping.write_text(
+        "status,replacement_value,original_value,value_type,source_documents,locations,occurrences\n"
+        "new,Person-1111,Haupt Str,name,doc.md,line 1,1\n"
+        "new,Person-2222,Bank Beispiel,name,doc.md,line 1,1\n",
+        encoding="utf-8",
+    )
+
+    class Catalog:
+        def is_dictionary_word(self, value):
+            return False
+
+        def is_name(self, value):
+            return False
+
+    monkeypatch.setattr(
+        "wit_pytools.documenttools.load_name_catalog",
+        lambda *args, **kwargs: Catalog(),
+    )
+
+    update_text_mapping(
+        source, mapping, ignore_locations=True, ignore_corporate=True
+    )
+
+    rows = list(csv.DictReader(mapping.open(encoding="utf-8", newline="")))
+    assert [row["original_value"] for row in rows] == ["Karl Beispiel"]
+
+
 def test_update_text_mapping_saves_filtered_proposals(tmp_path, monkeypatch):
     source = tmp_path / "document.md"
     source.write_text(
@@ -657,7 +692,7 @@ def test_update_text_mapping_saves_filtered_proposals(tmp_path, monkeypatch):
         ignore_numbers=True,
         ignore_emails=True,
         ignore_dates=True,
-        ignore_save=True,
+        save_ignored_as_list=True,
     )
 
     mapping_rows = list(csv.DictReader(mapping.open(encoding="utf-8", newline="")))
@@ -694,7 +729,7 @@ def test_update_text_mapping_overwrites_saved_ignore_rows(tmp_path, monkeypatch)
         encoding="utf-8",
     )
 
-    update_text_mapping(source, mapping, ignore_emails=True, ignore_save=True)
+    update_text_mapping(source, mapping, ignore_emails=True, save_ignored_as_list=True)
 
     saved_ignore_path = tmp_path / "customer-anon-ignore-save.csv"
     assert list(
@@ -709,7 +744,7 @@ def test_update_text_mapping_overwrites_saved_ignore_rows(tmp_path, monkeypatch)
         encoding="utf-8",
     )
 
-    update_text_mapping(source, mapping, ignore_emails=True, ignore_save=True)
+    update_text_mapping(source, mapping, ignore_emails=True, save_ignored_as_list=True)
 
     assert list(
         csv.DictReader(saved_ignore_path.open(encoding="utf-8", newline=""))

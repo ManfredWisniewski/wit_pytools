@@ -4,7 +4,13 @@ from bisect import bisect_right
 from functools import lru_cache
 from typing import Iterable, List, Optional, Sequence, Tuple
 
-from .candidates import CandidateCollector, is_date_string, replacement_for
+from .candidates import (
+    CandidateCollector,
+    is_corporate_name,
+    is_date_string,
+    is_location_name,
+    replacement_for,
+)
 from .models import Candidate
 
 
@@ -74,6 +80,8 @@ def detect_presidio_candidates(
     ignore_numbers: bool = False,
     ignore_emails: bool = False,
     ignore_dates: bool = False,
+    ignore_locations: bool = False,
+    ignore_corporate: bool = False,
     ignored_candidates: Optional[List[Candidate]] = None,
 ) -> List[Candidate]:
     """Detect PII with Presidio and return the common candidate model."""
@@ -116,6 +124,8 @@ def detect_presidio_candidates(
             (ignore_emails and (entity_type == "EMAIL_ADDRESS" or "@" in value))
             or (ignore_numbers and any(character.isdigit() for character in value))
             or (ignore_dates and (entity_type == "DATE_TIME" or is_date_string(value)))
+            or (ignore_locations and is_location_name(value))
+            or (ignore_corporate and is_corporate_name(value))
             or (
                 ignore_dictionary
                 and name_catalog is not None

@@ -1062,13 +1062,13 @@ def test_anonymize_pending_review_publishes_when_enabled(tmp_path):
     assert not (target_dir / "notes_anon.md").exists()
 
 
-def test_anonymize_ignore_save_collects_all_pending_documents(tmp_path):
+def test_anonymize_save_ignored_as_list_collects_all_pending_documents(tmp_path):
     source_dir, target_dir, config_path = _docprep_setup(
         tmp_path,
         anonymize_bowls={"Anonymized": ".md"},
         anonymize_section={
             "ignore_emails": "true",
-            "ignore_save": "true",
+            "save_ignored_as_list": "true",
         },
     )
     (source_dir / "Rechnung 2026.pdf").unlink()
@@ -1135,7 +1135,7 @@ def test_anonymize_settings(tmp_path):
         "name_dataset_offline": "true",
         "name_exclusions": "common, word",
         "mode": "all",
-        "ignore_save": "true",
+        "save_ignored_as_list": "true",
         "presidio_score_threshold": "0.7",
         "sync-deletes": "false",
         "force_update": "true",
@@ -1148,7 +1148,7 @@ def test_anonymize_settings(tmp_path):
     assert settings["name_dataset_offline"] is True
     assert settings["name_exclusions"] == ("common", "word")
     assert settings["mode"] == "all"
-    assert settings["ignore_save"] is True
+    assert settings["save_ignored_as_list"] is True
     assert settings["presidio_score_threshold"] == 0.7
     assert settings["sync_deletes"] is False
     assert settings["force_update"] is True
@@ -1160,10 +1160,10 @@ def test_anonymize_settings(tmp_path):
     )
     custom_mapping = tmp_path / "custom-mapping.csv"
     config["ANONYMIZE"]["mapping_file"] = str(custom_mapping)
-    config["ANONYMIZE"]["ignore_save"] = "false"
+    config["ANONYMIZE"]["save_ignored_as_list"] = "false"
     settings = cs.anonymize_settings(config)
     assert settings["mapping_file"] == str(custom_mapping)
-    assert settings["ignore_save"] is False
+    assert settings["save_ignored_as_list"] is False
 
 
 def test_gen_img_ignore_max_cost_setting():

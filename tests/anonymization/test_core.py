@@ -13,9 +13,70 @@ from wit_pytools.anonymization import (
     MappingValidationError,
     create_mapping,
     detect_text_candidates,
+    is_corporate_name,
+    is_location_name,
     mapping_path_rows,
     replace_text_parts,
 )
+
+
+def test_is_location_name():
+    assert is_location_name("Muster Str")
+    assert is_location_name("Muster Str.")
+    assert is_location_name("Muster Strasse")
+    assert is_location_name("Muster Straße")
+    assert is_location_name("Muster Hbf")
+    assert is_location_name("Muster Boulevard")
+    assert is_location_name("Muster Allee")
+    assert is_location_name("Muster District")
+    assert is_location_name("Den Haag")
+    assert is_location_name("Kuala Lumpur")
+    assert is_location_name("Estados Unidos")
+    assert is_location_name("New Mexico")
+    assert is_location_name("Dubai")
+    assert is_location_name("New York")
+    assert is_location_name("Las Vegas")
+    assert is_location_name("Mexico City")
+    assert is_location_name("Hotel New York")
+    assert not is_location_name("Muster Person")
+    assert not is_location_name("Straße")
+    assert not is_location_name("New Yorka")
+    assert not is_location_name("Mexico")
+
+
+def test_is_corporate_name():
+    assert is_corporate_name("Bank Muster")
+    assert is_corporate_name("Muster Bank")
+    assert is_corporate_name("Muster Group")
+    assert is_corporate_name("Amazon")
+    assert is_corporate_name("Apple")
+    assert is_corporate_name("Microsoft")
+    assert is_corporate_name("Visa")
+    assert is_corporate_name("Amex")
+    assert is_corporate_name("Master Card")
+    assert is_corporate_name("Charles Tyrwhitt")
+    assert is_corporate_name("Coral Consors")
+    assert is_corporate_name("Dell")
+    assert is_corporate_name("Intel")
+    assert is_corporate_name("Tradegate")
+    assert is_corporate_name("New Work")
+    assert is_corporate_name("Sixt")
+    assert is_corporate_name("Sony")
+    assert is_corporate_name("Xerox")
+    assert is_corporate_name("Hays")
+    assert is_corporate_name("Huawei")
+    assert is_corporate_name("Pinduoduo")
+    assert is_corporate_name("Panasonic")
+    assert is_corporate_name("Muster Inc")
+    assert is_corporate_name("Sony Center")
+    assert is_corporate_name("Apple Store")
+    assert is_corporate_name("Die Charles Tyrwhitt GmbH")
+    assert not is_corporate_name("Muster Person")
+    assert not is_corporate_name("Charles Muster")
+    assert not is_corporate_name("Coral Muster")
+    assert not is_corporate_name("Master Muster")
+    assert not is_corporate_name("Bank")
+    assert not is_corporate_name("Group")
 
 
 def test_detect_text_candidates_skips_protected_spans():
@@ -148,6 +209,43 @@ def test_presidio_recommendation_filters(monkeypatch):
         "12345",
         "Garden",
         "12.03.2025",
+    ]
+
+
+def test_presidio_location_names_filtered(monkeypatch):
+    content = "Anna Muster Str Karl Beispiel"
+
+    class Result:
+        def __init__(self, start, end):
+            self.start = start
+            self.end = end
+            self.entity_type = "PERSON"
+
+    class Analyzer:
+        def analyze(self, **kwargs):
+            return [
+                Result(0, len("Anna Muster Str")),
+                Result(len("Anna Muster Str "), len(content)),
+            ]
+
+    monkeypatch.setattr(
+        "wit_pytools.anonymization.presidio._create_engine",
+        lambda language, model_name: Analyzer(),
+    )
+
+    ignored_candidates = []
+    candidates = detect_presidio_candidates(
+        content,
+        "sample.md",
+        ignore_locations=True,
+        ignored_candidates=ignored_candidates,
+    )
+
+    assert [candidate.original_value for candidate in candidates] == [
+        "Karl Beispiel"
+    ]
+    assert [candidate.original_value for candidate in ignored_candidates] == [
+        "Anna Muster Str"
     ]
 
 

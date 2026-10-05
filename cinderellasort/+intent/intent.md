@@ -180,7 +180,9 @@ mode=custom            ; custom | presidio | all
 force_update=false     ; rewrite existing _anon.<ext> unconditionally
 sync-deletes=true      ; remove orphaned _anon.<ext> files from targetdir
 publish_without_review=false ; publish source even when unapproved candidates match
-ignore_save=false      ; rewrite <slug>-anon-ignore-save.csv with filtered proposals
+ignore_locations=false ; exclude proposals ending in a location suffix
+ignore_corporate=false ; exclude proposals that look like company names
+save_ignored_as_list=false ; rewrite <slug>-anon-ignore-save.csv with filtered proposals
 ```
 
 Anonymization is enabled by `BOWLS_ANONYMIZE` + `[ANONYMIZE]` configuration — there is no `anonymize` flag, and bowls that match nothing simply produce no output.

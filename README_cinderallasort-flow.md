@@ -9,8 +9,8 @@ decision options.
 ```mermaid
 flowchart TD
     A["cinderellasort run"] --> B["docprep_settings() → [DOCPREP]<br/>anonymize_settings() → [ANONYMIZE]"]
-    B --> C{"anonymize enabled<br/>(BOWLS_ANONYMIZE non-empty)<br/>+ ignore_save + mapping file?"}
-    C -- yes --> D["_prepare_anonymize_ignore_save()<br/>reset sibling *-ignore-save.csv"]
+    B --> C{"anonymize enabled<br/>(BOWLS_ANONYMIZE non-empty)<br/>+ save_ignored_as_list + mapping file?"}
+    C -- yes --> D["_prepare_anonymize_save_ignored_as_list()<br/>reset sibling *-ignore-save.csv"]
     C -- no --> E
     D --> E{"anonymize enabled<br/>+ mapping file<br/>and not dryrun?"}
     E -- yes --> F["_prepare_anonymize_directories()<br/>update_directory_mapping() on source dir names"]
@@ -150,7 +150,7 @@ There is no on/off flag.
 | `ignore_numbers` | `false` | ignore values containing digits |
 | `ignore_emails` | `false` | ignore e-mail candidates |
 | `ignore_dates` | `false` | ignore date-like candidates |
-| `ignore_save` | `false` | write filtered proposals to `*-ignore-save.csv` |
+| `save_ignored_as_list` | `false` | write filtered proposals to `*-ignore-save.csv` |
 | `name_countries` | — | ISO alpha-2 codes for name datasets |
 | `use_name_datasets` | on when countries set | enable/disable name datasets |
 | `name_cache_dir` | user cache dir | dataset cache override |
