@@ -2,6 +2,9 @@
 /.agents/
 **/+intent/**/__*/
 
+# webtools browser profile (contains session cookies)
+.webtools/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
