@@ -34,8 +34,21 @@ def browser_session(
             context.close()
 
 
-def wait_for(page, condition, *, timeout=180.0, interval=2.0):
-    """Poll condition(page) until truthy or timeout; returns the result."""
+def wait_for(
+    page,
+    condition,
+    *,
+    timeout=180.0,
+    interval=2.0,
+    screenshot_path=None,
+    on_wait=None,
+):
+    """Poll condition(page) until truthy or timeout; returns the result.
+
+    If screenshot_path is set, the current page is captured there on every
+    poll so the page state can be inspected while waiting. on_wait is an
+    optional callable invoked on each poll (e.g. to dismiss popups).
+    """
     deadline = time.monotonic() + timeout
     while True:
         try:
@@ -46,4 +59,14 @@ def wait_for(page, condition, *, timeout=180.0, interval=2.0):
             return result
         if time.monotonic() >= deadline:
             return False
+        if screenshot_path:
+            try:
+                page.screenshot(path=str(screenshot_path))
+            except Exception:
+                pass
+        if on_wait:
+            try:
+                on_wait()
+            except Exception:
+                pass
         time.sleep(interval)

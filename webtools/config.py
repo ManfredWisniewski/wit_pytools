@@ -1,6 +1,7 @@
 """Credential loading for webtools site automations (env or .env)."""
 
 import os
+from pathlib import Path
 
 
 class WebtoolsConfigError(RuntimeError):
@@ -13,6 +14,8 @@ def load_credentials(site):
         from dotenv import load_dotenv
 
         load_dotenv()
+        # .env next to the package root (wit_pytools/), used when cwd differs
+        load_dotenv(Path(__file__).resolve().parents[1] / ".env")
     except ImportError:
         pass
     prefix = site.upper().replace("-", "_")

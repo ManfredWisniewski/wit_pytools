@@ -24,19 +24,21 @@ AMEX_PASSWORD=...
 ## CLI
 
 ```text
-python -m wit_pytools.webtools amex-statements [--out DIR] [--profile DIR]
-    [--headless] [--count N] [--format pdf|csv|excel] [--mfa-timeout SEC]
+python -m wit_pytools.webtools amex-de-statements [--out DIR] [--profile DIR]
+    [--headless] [--count N] [--formats pdf,csv,excel] [--mfa-timeout SEC]
 ```
 
-Downloads recent American Express (US) statements as PDF (default), CSV
-or Excel into `--out` (default `P:/Downloads/`).
+Downloads the newest American Express DE statements as PDF and CSV into
+`--out` (default `P:/Downloads/`).
+
+Each site lives in its own module under `webtools/sites/` and registers
+a CLI subcommand via `COMMAND`, `DESCRIPTION`, `add_arguments(parser)`
+and `run(args)`. New sites are picked up automatically.
 
 ## Python
 
 ```python
-from wit_pytools.webtools.sites import amex
-
-saved = amex.run("P:/Downloads", count=3, fmt="pdf")
+from wit_pytools.webtools.sites import amex_de
 ```
 
 Generic helpers for new site automations:
@@ -57,4 +59,4 @@ with browser_session(".webtools/profile", headless=False) as (ctx, page):
 - Amex enforces MFA/captcha on unfamiliar sessions: run headed (default)
   and complete the verification manually in the opened browser; later
   runs usually reuse the persisted session.
-- Selectors target the Amex US site; other regions differ.
+- Selectors target the Amex DE site (global.americanexpress.com).
