@@ -10,7 +10,7 @@ from playwright.sync_api import (
     TimeoutError as PlaywrightTimeout,
 )
 
-from ..config import load_credentials
+from ..config import load_credentials_group
 from ..session import DEFAULT_PROFILE_DIR, browser_session, wait_for
 
 COMMAND = "amex-de-statements"
@@ -271,16 +271,17 @@ def _download_buttons(page, include_older=False):
 _FORMAT_EXTENSIONS = {"pdf": ".pdf", "csv": ".csv", "excel": ".xlsx"}
 
 
-def _statement_filename(test_id, index, fmt):
+def _statement_filename(test_id, index, fmt, file_prefix=""):
     date = re.search(r"(\d{4}-\d{2}-\d{2})", test_id or "")
     ext = _FORMAT_EXTENSIONS.get(fmt, f".{fmt}")
     if date:
-        return f"amex-statement-{date.group(1)}{ext}"
-    return f"amex-statement-{index}{ext}"
+        return f"{file_prefix}amex-statement-{date.group(1)}{ext}"
+    return f"{file_prefix}amex-statement-{index}{ext}"
 
 
 def download_statements(
-    page, output_dir, *, count=1, formats=("pdf", "csv"), include_older=False
+    page, output_dir, *, count=1, formats=("pdf", "csv"), include_older=False,
+    file_prefix="",
 ):
     """Download the most recent statements; returns list of saved Paths."""
     out = Path(output_dir)
@@ -374,7 +375,9 @@ def download_statements(
     saved = []
     for index, test_id in enumerate(test_ids, start=1):
         for fmt in formats:
-            target = out / _statement_filename(test_id, index, fmt)
+            target = out / _statement_filename(
+                test_id, index, fmt, file_prefix
+            )
             # the download may navigate/close the tab; re-open the
             # statements page to recover
             try:
@@ -511,26 +514,30 @@ def add_arguments(parser):
 
 
 def run(args):
-    """Full flow: credentials -> session -> login -> download statements."""
-    # env vars stay AMEX_USERNAME / AMEX_PASSWORD
-    username, password = load_credentials("amex")
-    with browser_session(
-        args.profile, headless=args.headless, channel=args.channel
-    ) as (_context, page):
+    """Full flow per account: credentials -> session -> login -> download."""
+    # env vars: AMEX_<TAG>_USERNAME / AMEX_<TAG>_PASSWORD per account
+    # (untagged AMEX_USERNAME/AMEX_PASSWORD works for a single account)
+    accounts = load_credentials_group("amex")
+    saved = []
+    for tag, (username, password) in sorted(accounts.items()):
+        # one browser profile per account; sessions must not collide
+        profile = f"{args.profile}-{tag.lower()}" if tag else args.profile
+        print(f"=== Account {tag or 'default'} ===")
         try:
-            login(page, username, password, mfa_timeout=args.mfa_timeout)
-            saved = download_statements(
-                page,
-                args.out,
-                count=args.count,
-                formats=tuple(args.formats.split(",")),
-                include_older=args.older,
-            )
-            logout(page)
-            return saved
-        except PlaywrightError as error:
-            if "closed" in str(error):
-                raise RuntimeError(
-                    "The browser window was closed before the run finished"
-                ) from error
-            raise
+            with browser_session(
+                profile, headless=args.headless, channel=args.channel
+            ) as (_context, page):
+                login(page, username, password, mfa_timeout=args.mfa_timeout)
+                saved += download_statements(
+                    page,
+                    args.out,
+                    count=args.count,
+                    formats=tuple(args.formats.split(",")),
+                    include_older=args.older,
+                    file_prefix=f"{tag}-" if tag else "",
+                )
+                logout(page)
+        except Exception as error:
+            # one failing account must not skip the remaining ones
+            print(f"  account {tag or 'default'} failed: {error}")
+    return saved
