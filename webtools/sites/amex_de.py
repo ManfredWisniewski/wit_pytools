@@ -472,21 +472,21 @@ def download_statements(
 def logout(page):
     """Log out of Amex to end the persisted session."""
     print("Logging out...")
-    for selector in (
-        "#gnav_logout",
-        "a[href*='logout']",
-        "a:has-text('Abmelden')",
-        "button:has-text('Abmelden')",
-        "a:has-text('Log Out')",
-    ):
-        try:
-            element = page.query_selector(selector)
-            if element and element.is_visible():
-                element.click(timeout=5000)
-                return
-        except PlaywrightError:
-            continue
-    print("  logout link not found")
+    # the logout link lives in a collapsed nav (never is_visible());
+    # navigating its href is more reliable than clicking
+    element = page.query_selector(
+        "#gnav_logout, a[href*='logout']"
+    )
+    if element is None:
+        print("  logout link not found")
+        return
+    try:
+        page.goto(
+            urljoin(page.url, element.get_attribute("href")),
+            wait_until="domcontentloaded",
+        )
+    except PlaywrightError as error:
+        print(f"  logout failed: {error}")
 
 
 def add_arguments(parser):
