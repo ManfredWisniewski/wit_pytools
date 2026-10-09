@@ -29,14 +29,14 @@ python -m wit_pytools.webtools amex-statements [--out DIR] [--profile DIR]
 ```
 
 Downloads recent American Express (US) statements as PDF (default), CSV
-or Excel into `--out` (default `downloads/amex/`).
+or Excel into `--out` (default `P:/Downloads/`).
 
 ## Python
 
 ```python
 from wit_pytools.webtools.sites import amex
 
-saved = amex.run("downloads/amex", count=3, fmt="pdf")
+saved = amex.run("P:/Downloads", count=3, fmt="pdf")
 ```
 
 Generic helpers for new site automations:
