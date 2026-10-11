@@ -32,6 +32,7 @@ def test_full_sync_statuses():
         "home_webtext_locked.md": "created",
         "kategorie_products/broken_webtext_locked.md": "failed",
         "kategorie_products/prod_webtext_locked.md": "created",
+        "media/shared.png": "unchanged",
         "notes_webtext_entwurf.md": "skipped",
         "plain_webtext.md": "created",
         "produkt_widget/detail_webtext_locked-online.md": "created",

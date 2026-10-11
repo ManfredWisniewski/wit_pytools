@@ -90,6 +90,19 @@ class PayloadClient:
         docs = body.get("docs", [])
         return docs[0] if docs else None
 
+    def find_docs(self, collection, params=None, *, page_size=200):
+        """Return all docs of a collection, following pagination."""
+        docs, page = [], 1
+        while True:
+            body = self.get(collection, params={
+                **(params or {}), "limit": page_size, "page": page,
+            })
+            batch = body.get("docs", []) if isinstance(body, dict) else []
+            docs.extend(batch)
+            if not (isinstance(body, dict) and body.get("hasNextPage")):
+                return docs
+            page += 1
+
     def create_doc(self, collection, payload):
         """POST a new draft document."""
         response = self._request(
@@ -104,6 +117,10 @@ class PayloadClient:
             params={"draft": "true"}, json_body=payload,
         )
         return _json(response)
+
+    def delete_doc(self, collection, doc_id):
+        """DELETE a document by id."""
+        self._request("DELETE", f"{collection}/{doc_id}")
 
     def upload_media(self, image_path, *, collection, alt="",
                      caption="", source_hash="", source_path=""):

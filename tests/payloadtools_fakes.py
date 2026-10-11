@@ -11,6 +11,7 @@ class FakeClient:
         self.fail_writes = fail_writes
         self.created = []
         self.updated = []
+        self.deleted = []
         self.uploads = []
         self.globals = []
         self.global_docs = {}   # globals slug -> doc
@@ -40,10 +41,24 @@ class FakeClient:
         self.created.append((collection, payload))
         return {"doc": {"id": f"new-{len(self.created)}"}}
 
+    def find_docs(self, collection, params=None):
+        self.gets += 1
+        if collection == "media":
+            return list(self.media_docs.values())
+        return list(self.docs.values())
+
     def update_doc(self, collection, doc_id, payload):
         self._write()
         self.updated.append((collection, doc_id, payload))
         return {"doc": {"id": doc_id}}
+
+    def delete_doc(self, collection, doc_id):
+        self._write()
+        self.deleted.append((collection, doc_id))
+        self.media_docs = {
+            key: doc for key, doc in self.media_docs.items()
+            if doc.get("id") != doc_id
+        }
 
     def upload_media(self, path, *, collection, alt="", caption="",
                      source_hash="", source_path=""):

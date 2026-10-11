@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from wit_pytools.payloadtools.config import load_config
 from wit_pytools.payloadtools.media import rewrite_image_refs, sha256_file
 from wit_pytools.payloadtools.scan import scan_repo
+from wit_pytools.payloadtools.sync import sync_media_dir
 
 from wit_pytools.tests.payloadtools_fakes import FakeClient
 
@@ -104,6 +105,77 @@ def test_page_relative_wins_over_repo_root():
     assert client.uploads[0]["source_path"] == (
         "kategorie_products/img/pic.png"
     )
+
+
+def test_media_dir_uploads_new_files():
+    config = load_config(REPO)
+    client = FakeClient()
+    results = sync_media_dir(config, client)
+    assert [(r.relpath, r.status) for r in results] == [
+        ("media/shared.png", "created")
+    ]
+    assert client.uploads[0]["source_path"] == "media/shared.png"
+
+
+def test_media_dir_unchanged_when_doc_exists():
+    config = load_config(REPO)
+    digest = sha256_file(REPO / "media" / "shared.png")
+    client = FakeClient(media={digest: {"id": "m-1", "sourceHash": digest,
+                                        "sourcePath": "media/shared.png"}})
+    results = sync_media_dir(config, client)
+    assert [(r.relpath, r.status) for r in results] == [
+        ("media/shared.png", "unchanged")
+    ]
+    assert client.deleted == []
+
+
+def test_media_dir_deletes_missing_remote():
+    config = load_config(REPO)
+    client = FakeClient(media={
+        "oldhash": {"id": "m-9", "sourceHash": "oldhash",
+                    "sourcePath": "media/old.png"},
+    })
+    results = sync_media_dir(config, client)
+    assert client.deleted == [("media", "m-9")]
+    assert ("media/old.png", "deleted") in [
+        (r.relpath, r.status) for r in results
+    ]
+
+
+def test_media_dir_keeps_docs_outside_prefix():
+    config = load_config(REPO)
+    client = FakeClient(media={
+        "h1": {"id": "m-5", "sourceHash": "h1",
+               "sourcePath": "kategorie_products/img/pic.png"},
+    })
+    sync_media_dir(config, client)
+    assert client.deleted == []
+
+
+def test_media_dir_keeps_doc_when_hash_still_present():
+    # media/old.png is gone but an identical file exists under media/
+    config = load_config(REPO)
+    digest = sha256_file(REPO / "media" / "shared.png")
+    client = FakeClient(media={
+        digest: {"id": "m-7", "sourceHash": digest,
+                 "sourcePath": "media/old.png"},
+    })
+    sync_media_dir(config, client)
+    assert client.deleted == []
+
+
+def test_media_dir_dry_run_reports_only():
+    config = load_config(REPO)
+    client = FakeClient(
+        media={"oldhash": {"id": "m-9", "sourceHash": "oldhash",
+                           "sourcePath": "media/old.png"}},
+        fail_writes=True,
+    )
+    results = sync_media_dir(config, client, dry_run=True)
+    statuses = {(r.relpath, r.status) for r in results}
+    assert ("media/shared.png", "created") in statuses
+    assert ("media/old.png", "deleted") in statuses
+    assert client.uploads == [] and client.deleted == []
 
 
 def test_missing_image_raises():

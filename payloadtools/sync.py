@@ -8,7 +8,7 @@ import yaml
 from .client import PayloadAuthError
 from .config import PayloadConfigError
 from .links import rewrite_internal_links, rewrite_markers
-from .media import rewrite_image_refs
+from .media import rewrite_image_refs, sha256_file
 from .meta import extract_meta, strip_front_matter
 from .scan import build_route_index, scan_repo
 from .transforms import apply_transforms
@@ -20,6 +20,10 @@ _COMPARED_META_FIELDS = ("title", "description",)
 
 # +structure/*.yml|*.yaml each map to one `structures` document (name = stem)
 STRUCTURE_PATTERNS = ("+structure/*.yml", "+structure/*.yaml")
+
+# Repo-root assets dir mirrored into the media collection: every file is
+# uploaded, remote docs sourced from it are deleted when the file is gone.
+MEDIA_DIR = "media"
 
 
 @dataclass
@@ -116,6 +120,56 @@ def process_structure(path, config, client, *, dry_run=False):
         return FileResult(relpath, "failed", str(error))
 
 
+def scan_media_dir(config):
+    """Repo-root media/ files -> {relpath: Path}."""
+    media_dir = config.repo / MEDIA_DIR
+    if not media_dir.is_dir():
+        return {}
+    return {
+        path.relative_to(config.repo).as_posix(): path
+        for path in sorted(media_dir.rglob("*"))
+        if path.is_file()
+    }
+
+
+def sync_media_dir(config, client, *, dry_run=False):
+    """Mirror repo-root media/ into the media collection.
+
+    Uploads files absent by sha256 (page refs then dedup onto the same
+    doc). Deletes remote docs whose sourcePath is under media/ when the
+    local file is gone — unless another local file has the same hash.
+    """
+    local = scan_media_dir(config)
+    local_hashes = {}
+    results = []
+    for relpath, path in local.items():
+        digest = sha256_file(path)
+        local_hashes.setdefault(digest, relpath)
+        if client.find_doc(config.media_collection, "sourceHash", digest):
+            results.append(FileResult(relpath, "unchanged"))
+            continue
+        if not dry_run:
+            client.upload_media(
+                path,
+                collection=config.media_collection,
+                alt=path.stem,
+                source_hash=digest,
+                source_path=relpath,
+            )
+        results.append(FileResult(relpath, "created"))
+    prefix = f"{MEDIA_DIR}/"
+    for doc in client.find_docs(config.media_collection):
+        source_path = doc.get("sourcePath") or ""
+        if not source_path.startswith(prefix) or source_path in local:
+            continue
+        if doc.get("sourceHash") in local_hashes:
+            continue
+        if not dry_run:
+            client.delete_doc(config.media_collection, doc["id"])
+        results.append(FileResult(source_path, "deleted"))
+    return results
+
+
 def process_entry(entry, config, client, route_index, *,
                   media_only=False, dry_run=False):
     """Run the per-file pipeline; never aborts on per-file errors."""
@@ -195,4 +249,6 @@ def sync_repo(config, client, *, only_file=None,
         process_structure(path, config, client, dry_run=dry_run)
         for path in structures
     ]
+    if not only_file:
+        results += sync_media_dir(config, client, dry_run=dry_run)
     return results

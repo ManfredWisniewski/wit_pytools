@@ -2,7 +2,7 @@
 
 `payloadtools` synchronizes markdown webtexts, media files, site structure documents, and site theme CSS from a content repository to a Payload CMS 3.x instance via its REST API. The content repository is the single source of truth; the Payload database is a derived read model.
 
-All synced content is written as **drafts**. A human reviews and publishes in the Payload admin panel. The tool never publishes, never deletes, and never modifies source files.
+All synced content is written as **drafts**. A human reviews and publishes in the Payload admin panel. The tool never publishes and never modifies source files. The only deletion is in the mirrored `media/` directory: remote media docs are deleted when their source file is removed (see below).
 
 ## Setup
 
@@ -82,6 +82,14 @@ failed     kategorie_products/broken_webtext_locked.md  (missing image img/missi
 8. Emit the per-file result line.
 
 The `media` command runs steps 1 and 4 only (upload/dedup, no page writes).
+
+Both `sync` and `media` also mirror the repo-root `media/` directory into
+the media collection: every file in it is uploaded (sha256-deduped), and
+remote docs whose `sourcePath` points into `media/` are **deleted** when
+the local file no longer exists — unless an identical file exists under
+another path. Nested `media/` directories (e.g. `mdm/media/`) stay
+reference-driven: they upload only when a page links them and are never
+deleted by the mirror. `--file` skips the mirror pass.
 
 `theme --font FAMILY=FILE[:WEIGHT]` uploads font files to `media`
 (sha256-deduped like images) and prepends a generated `@font-face` rule per
