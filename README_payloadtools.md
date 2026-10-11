@@ -75,7 +75,7 @@ failed     kategorie_products/broken_webtext_locked.md  (missing image img/missi
 1. Scan `include_glob`; parse status from filename; non-publishable files are `skipped`.
 2. Derive route and slug.
 3. Extract `meta.title`/`meta.description`/`template` (front matter or `key: value` lines, then `SEO_*` briefing; title falls back to the first `#`/`##` heading). `template` names a frontend render variant — empty means default.
-4. Rewrite `![alt](relpath)` to `![media:<docId>]()` — the image is sha256-hashed, looked up via `sourceHash`, and uploaded only if absent. The alt text is preserved on the Media document.
+4. Rewrite `![alt](relpath)` to `![media:<docId>]()` — refs resolve page-relative first, then repo-root relative (a shared `media/` directory works from any page depth; a leading `/` anchors at the repo root). The image is sha256-hashed, looked up via `sourceHash`, and uploaded only if absent. The alt text is preserved on the Media document.
 5. Rewrite internal `…file.md` links to their derived `/route` via an index of the whole scan set.
 6. Apply configured `transforms` regex rules.
 7. Upsert: `GET` by `sourcePath`; `PATCH` if changed, `POST` if new, always with `draft=true`. Identical content reports `unchanged`.

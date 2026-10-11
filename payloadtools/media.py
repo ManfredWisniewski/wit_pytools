@@ -18,6 +18,22 @@ def sha256_file(path):
     return digest.hexdigest()
 
 
+def resolve_image_path(target, entry, repo):
+    """Resolve an image ref to a file path.
+
+    Page-relative first; falls back to repo-root relative so a shared
+    `media/` directory works from any page depth. A leading '/' anchors
+    at the repo root. Returns the first hit, else the root-relative
+    candidate for error reporting.
+    """
+    if target.startswith("/"):
+        return (repo.resolve() / target.lstrip("/")).resolve()
+    page_path = (entry.path.parent / target).resolve()
+    if page_path.is_file():
+        return page_path
+    return (repo.resolve() / target).resolve()
+
+
 def rewrite_image_refs(text, entry, config, client, *, dry_run=False,
                        line_offset=0):
     """Rewrite ![alt](relpath) to ![media:<docId>]() placeholders.
@@ -35,7 +51,7 @@ def rewrite_image_refs(text, entry, config, client, *, dry_run=False,
         target, _extra = split_target(raw_target)
         if is_external(target):
             return match.group(0)
-        image_path = (entry.path.parent / target).resolve()
+        image_path = resolve_image_path(target, entry, config.repo)
         if not image_path.is_file():
             line = line_offset + text[:match.start()].count("\n") + 1
             try:

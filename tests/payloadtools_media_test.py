@@ -71,6 +71,41 @@ def test_dry_run_uses_hash_placeholder():
     assert client.uploads == []
 
 
+def test_repo_root_media_fallback():
+    # media/<file> resolves at the repo root from any page depth
+    config, entry = _entry("kategorie_products/prod_webtext_locked.md")
+    client = FakeClient()
+    rewritten, uploads = rewrite_image_refs(
+        "![hero](media/shared.png)", entry, config, client
+    )
+    assert uploads == 1
+    assert client.uploads[0]["source_path"] == "media/shared.png"
+    assert "![media:media-1]()" in rewritten
+
+
+def test_leading_slash_anchors_repo_root():
+    config, entry = _entry("kategorie_products/prod_webtext_locked.md")
+    client = FakeClient()
+    rewritten, uploads = rewrite_image_refs(
+        "![hero](/media/shared.png)", entry, config, client
+    )
+    assert uploads == 1
+    assert client.uploads[0]["source_path"] == "media/shared.png"
+
+
+def test_page_relative_wins_over_repo_root():
+    # kategorie_products/img/pic.png exists; no img/pic.png at repo root
+    config, entry = _entry("kategorie_products/prod_webtext_locked.md")
+    client = FakeClient()
+    rewritten, uploads = rewrite_image_refs(
+        "![pic](img/pic.png)", entry, config, client
+    )
+    assert uploads == 1
+    assert client.uploads[0]["source_path"] == (
+        "kategorie_products/img/pic.png"
+    )
+
+
 def test_missing_image_raises():
     config, entry = _entry("kategorie_products/broken_webtext_locked.md")
     text = entry.path.read_text(encoding="utf-8")
