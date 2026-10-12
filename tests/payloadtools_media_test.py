@@ -112,7 +112,8 @@ def test_media_dir_uploads_new_files():
     client = FakeClient()
     results = sync_media_dir(config, client)
     assert [(r.relpath, r.status) for r in results] == [
-        ("media/shared.png", "created")
+        ("media/notes.txt", "skipped"),
+        ("media/shared.png", "created"),
     ]
     assert client.uploads[0]["source_path"] == "media/shared.png"
 
@@ -124,9 +125,24 @@ def test_media_dir_unchanged_when_doc_exists():
                                         "sourcePath": "media/shared.png"}})
     results = sync_media_dir(config, client)
     assert [(r.relpath, r.status) for r in results] == [
-        ("media/shared.png", "unchanged")
+        ("media/notes.txt", "skipped"),
+        ("media/shared.png", "unchanged"),
     ]
     assert client.deleted == []
+
+
+def test_media_dir_deletes_remote_for_excluded_type():
+    # a .txt file on disk is excluded -> its remote doc is cleaned up
+    config = load_config(REPO)
+    client = FakeClient(media={
+        "txthash": {"id": "m-4", "sourceHash": "txthash",
+                    "sourcePath": "media/notes.txt"},
+    })
+    results = sync_media_dir(config, client)
+    assert client.deleted == [("media", "m-4")]
+    assert ("media/notes.txt", "deleted") in [
+        (r.relpath, r.status) for r in results
+    ]
 
 
 def test_media_dir_deletes_missing_remote():

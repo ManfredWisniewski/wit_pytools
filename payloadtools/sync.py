@@ -25,6 +25,14 @@ STRUCTURE_PATTERNS = ("+structure/*.yml", "+structure/*.yaml")
 # uploaded, remote docs sourced from it are deleted when the file is gone.
 MEDIA_DIR = "media"
 
+# File types pushed to the media collection — anything else in media/ is
+# ignored (and its remote doc, if any, deleted on publish).
+MEDIA_EXTENSIONS = {
+    ".avif", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".webp",
+    ".otf", ".ttf", ".woff", ".woff2",
+    ".mp4", ".pdf", ".webm",
+}
+
 
 @dataclass
 class FileResult:
@@ -128,7 +136,7 @@ def scan_media_dir(config):
     return {
         path.relative_to(config.repo).as_posix(): path
         for path in sorted(media_dir.rglob("*"))
-        if path.is_file()
+        if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS
     }
 
 
@@ -140,8 +148,17 @@ def sync_media_dir(config, client, *, dry_run=False):
     local file is gone — unless another local file has the same hash.
     """
     local = scan_media_dir(config)
+    media_dir = config.repo / MEDIA_DIR
+    skipped = [
+        path.relative_to(config.repo).as_posix()
+        for path in sorted(media_dir.rglob("*"))
+        if path.is_file() and path.suffix.lower() not in MEDIA_EXTENSIONS
+    ] if media_dir.is_dir() else []
+    results = [
+        FileResult(relpath, "skipped", "not a media type")
+        for relpath in skipped
+    ]
     local_hashes = {}
-    results = []
     for relpath, path in local.items():
         digest = sha256_file(path)
         local_hashes.setdefault(digest, relpath)

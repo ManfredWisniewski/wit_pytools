@@ -84,12 +84,14 @@ failed     kategorie_products/broken_webtext_locked.md  (missing image img/missi
 The `media` command runs steps 1 and 4 only (upload/dedup, no page writes).
 
 Both `sync` and `media` also mirror the repo-root `media/` directory into
-the media collection: every file in it is uploaded (sha256-deduped), and
-remote docs whose `sourcePath` points into `media/` are **deleted** when
-the local file no longer exists — unless an identical file exists under
-another path. Nested `media/` directories (e.g. `mdm/media/`) stay
-reference-driven: they upload only when a page links them and are never
-deleted by the mirror. `--file` skips the mirror pass.
+the media collection: every web-asset file in it (images, fonts, PDF,
+video) is uploaded (sha256-deduped), and remote docs whose `sourcePath`
+points into `media/` are **deleted** when the local file no longer exists
+or is not an uploadable type — unless an identical file exists under
+another path. Non-asset files (`.txt`, `.md`, …) report `skipped`. Nested
+`media/` directories (e.g. `mdm/media/`) stay reference-driven: they
+upload only when a page links them and are never deleted by the mirror.
+`--file` skips the mirror pass.
 
 `theme --font FAMILY=FILE[:WEIGHT]` uploads font files to `media`
 (sha256-deduped like images) and prepends a generated `@font-face` rule per
