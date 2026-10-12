@@ -7,7 +7,7 @@ from PIL import Image
 
 # Add the parent directory to the path so we can import modules from wit_pytools
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from wit_pytools.imgtools import add_watermark, jpg_compress, png2jpg, img_getexif, png_compress, avif_compress, save_img
+from wit_pytools.imgtools import add_ai_label, add_watermark, jpg_compress, png2jpg, img_getexif, png_compress, avif_compress, save_img
 
 def create_test_image(path, size=(100, 100), color=(255, 0, 0)):
     """Create a test image for testing"""
@@ -203,6 +203,35 @@ def test_add_watermark_validation(tmp_path):
         add_watermark(source, text="x", position="diagonal")
     with pytest.raises(ValueError):
         add_watermark(source, text="x", text_opacity=256)
+
+
+def test_add_ai_label(tmp_path):
+    source = tmp_path / "portrait.png"
+    Image.new("RGB", (400, 300), (200, 200, 200)).save(source)
+    output = tmp_path / "labeled.jpg"
+
+    result = add_ai_label(source, output)
+
+    assert result == str(output)
+    with Image.open(output) as image:
+        assert image.size == (512, 512)
+        # black disc pixel above the AI letters
+        r, g, b = image.getpixel((100, 350))[:3]
+        assert r < 60 and g < 60 and b < 60
+        # white ring at the left badge edge
+        r, g, b = image.getpixel((55, 395))[:3]
+        assert r > 200 and g > 200 and b > 200
+
+
+def test_add_ai_label_default_output_and_no_overwrite(tmp_path):
+    source = tmp_path / "portrait.png"
+    Image.new("RGB", (300, 300), "white").save(source)
+
+    result = add_ai_label(source)
+    assert result == str(tmp_path / "portrait_ai.png")
+
+    with pytest.raises(FileExistsError):
+        add_ai_label(source)
 
 
 # Run the tests using pytest

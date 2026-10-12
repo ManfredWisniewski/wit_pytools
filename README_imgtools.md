@@ -29,6 +29,25 @@ ratio and fit within 25% of the source dimensions. JPEG output is composited
 against `background_color`; PNG and other alpha-capable formats preserve
 transparency. EXIF and ICC metadata are preserved where supported.
 
+## Add an AI label badge
+
+```python
+from wit_pytools.imgtools import add_ai_label
+
+output = add_ai_label("source.jpg")                    # -> source_ai.jpg, 512x512
+output = add_ai_label("source.jpg", "out.jpg", size=1024)
+```
+
+The image is center-cropped to a square and resized to `size` px, then the
+`LABEL_AI_black` badge (bundled in `wit_pytools/imgtools/`) is rendered at the
+bottom-left with a white inside-stroke ring. CLI:
+
+```text
+python -m wit_pytools.imgtools <image-or-dir> [output] [--size 512] [--badge badge.png] [--overwrite]
+```
+
+A directory input processes every image inside into `<name>_ai<ext>` files.
+
 ## Other functions
 
 - `jpg_compress`
