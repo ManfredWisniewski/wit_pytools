@@ -4,7 +4,7 @@ import textwrap
 from io import BytesIO
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
 
 from wit_pytools.systools import checkfile
 
@@ -495,6 +495,81 @@ def add_watermark(
     return str(target)
 
 
+# Badge geometry on a 512x512 canvas (from the photocraft document)
+_AI_BADGE_X = 53 / 512
+_AI_BADGE_Y = 336 / 512
+_AI_BADGE_SIZE = 118 / 512
+_AI_BADGE_RING = 5 / 512
+_AI_BADGE_DEFAULT = os.path.join(script_dir, 'imgtools', 'LABEL_AI_black.png')
+
+
+def add_ai_label(
+    input_path,
+    output_path=None,
+    size=512,
+    *,
+    badge_path=None,
+    ring_color=(255, 255, 255),
+    ring_width=None,
+    overwrite=False,
+):
+    """Resize to size x size (center-crop) and render the AI badge bottom-left."""
+    source = Path(input_path)
+    if not source.is_file():
+        raise FileNotFoundError(source)
+    target = Path(output_path) if output_path is not None else source.with_name(
+        f'{source.stem}_ai{source.suffix}'
+    )
+    if target.resolve() == source.resolve():
+        raise ValueError('The output path must differ from the source path')
+    if target.exists() and not overwrite:
+        raise FileExistsError(target)
+
+    image = ImageOps.exif_transpose(Image.open(source))
+    exif = image.info.get('exif')
+    icc_profile = image.info.get('icc_profile')
+    base = ImageOps.fit(image, (size, size), Image.Resampling.LANCZOS).convert('RGBA')
+
+    badge = Image.open(badge_path or _AI_BADGE_DEFAULT).convert('RGBA')
+    bbox = badge.getchannel('A').getbbox()
+    if bbox:
+        badge = badge.crop(bbox)  # drop transparent padding
+    diameter = max(1, round(size * _AI_BADGE_SIZE))
+    badge = badge.resize((diameter, diameter), Image.Resampling.LANCZOS)
+
+    x = round(size * _AI_BADGE_X)
+    y = round(size * _AI_BADGE_Y)
+    base.alpha_composite(badge, (x, y))
+
+    # inside stroke: ring clipped to the badge alpha
+    width = ring_width if ring_width is not None else max(1, round(size * _AI_BADGE_RING))
+    ring = Image.new('RGBA', badge.size, (0, 0, 0, 0))
+    ImageDraw.Draw(ring).ellipse(
+        (0, 0, diameter - 1, diameter - 1),
+        outline=(*ring_color[:3], 255),
+        width=width,
+    )
+    ring.putalpha(ImageChops.multiply(ring.getchannel('A'), badge.getchannel('A')))
+    base.alpha_composite(ring, (x, y))
+    result = base
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    format_name = Image.registered_extensions().get(target.suffix.lower())
+    if not format_name:
+        raise ValueError(f'Unsupported output image extension: {target.suffix}')
+    save_kwargs = {}
+    if exif and format_name not in {'PNG', 'WEBP'}:
+        save_kwargs['exif'] = exif
+    if icc_profile:
+        save_kwargs['icc_profile'] = icc_profile
+    if format_name in {'JPEG', 'JPG'}:
+        result = result.convert('RGB')
+    result.save(target, format=format_name, **save_kwargs)
+    image.close()
+    badge.close()
+    return str(target)
+
+
 def img_getgps(sourcedir, image):
     """
     Extract GPS coordinates from an image's EXIF data.
@@ -544,3 +619,42 @@ def img_getgps(sourcedir, image):
 #png2jpg(sourceimage, os.path.join(target_dir, filename), quality=75)
 
 #img_getexif(script_dir, r"P:\git\witnctools\wit_pytools\tests\imgtools\testimage.jpg")
+
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='Resize images to a square canvas and render the AI badge.'
+    )
+    parser.add_argument('input', help='input image file or directory')
+    parser.add_argument('output', nargs='?', default=None,
+                        help='output file or directory (default: <name>_ai next to input)')
+    parser.add_argument('--size', type=int, default=512, help='canvas size in px (default 512)')
+    parser.add_argument('--badge', default=None, help='custom badge PNG path')
+    parser.add_argument('--overwrite', action='store_true')
+    args = parser.parse_args()
+
+    src = Path(args.input)
+    out = Path(args.output) if args.output else None
+    extensions = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tif', '.tiff'}
+
+    if src.is_dir():
+        out_dir = out or src
+        out_dir.mkdir(parents=True, exist_ok=True)
+        failures = 0
+        for f in sorted(src.iterdir()):
+            if f.suffix.lower() not in extensions:
+                continue
+            try:
+                result = add_ai_label(f, out_dir / f'{f.stem}_ai{f.suffix}',
+                                      size=args.size, badge_path=args.badge,
+                                      overwrite=args.overwrite)
+                print(result)
+            except (FileExistsError, ValueError) as e:
+                print(f'skipped {f.name}: {e}')
+                failures += 1
+        raise SystemExit(1 if failures else 0)
+
+    print(add_ai_label(src, out, size=args.size, badge_path=args.badge,
+                       overwrite=args.overwrite))
