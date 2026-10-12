@@ -34,6 +34,29 @@ def resolve_image_path(target, entry, repo):
     return (repo.resolve() / target).resolve()
 
 
+def ensure_media_doc(image_path, config, client, *, dry_run=False, alt=""):
+    """Return (media_id, uploaded) for a local file inside the repo.
+
+    Dedup key is the file's sha256; in dry-run the digest stands in as
+    deterministic id and nothing is uploaded.
+    """
+    source_path = image_path.relative_to(config.repo.resolve()).as_posix()
+    digest = sha256_file(image_path)
+    existing = client.find_doc(config.media_collection, "sourceHash", digest)
+    if existing is not None:
+        return str(existing.get("id")), False
+    if dry_run:
+        return digest, False
+    media_id = client.upload_media(
+        image_path,
+        collection=config.media_collection,
+        alt=alt,
+        source_hash=digest,
+        source_path=source_path,
+    )
+    return media_id, True
+
+
 def rewrite_image_refs(text, entry, config, client, *, dry_run=False,
                        line_offset=0):
     """Rewrite ![alt](relpath) to ![media:<docId>]() placeholders.
@@ -64,26 +87,10 @@ def rewrite_image_refs(text, entry, config, client, *, dry_run=False,
                 f"{entry.relpath}:{line}: missing image '{target}' "
                 f"(expected at {expected})"
             )
-        source_path = image_path.relative_to(
-            config.repo.resolve()
-        ).as_posix()
-        digest = sha256_file(image_path)
-        existing = client.find_doc(
-            config.media_collection, "sourceHash", digest
+        media_id, uploaded = ensure_media_doc(
+            image_path, config, client, dry_run=dry_run, alt=alt
         )
-        if existing is not None:
-            media_id = str(existing.get("id"))
-        elif dry_run:
-            media_id = digest
-        else:
-            media_id = client.upload_media(
-                image_path,
-                collection=config.media_collection,
-                alt=alt,
-                source_hash=digest,
-                source_path=source_path,
-            )
-            uploads += 1
+        uploads += int(uploaded)
         return f"![media:{media_id}]()"
 
     return IMAGE_RE.sub(replace, text), uploads

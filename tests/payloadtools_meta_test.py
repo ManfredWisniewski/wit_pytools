@@ -72,6 +72,33 @@ def test_meta_fields_not_in_content():
     assert meta["description"] == ""
 
 
+def test_post_front_matter():
+    path = REPO / "blog" / "alisa" / "first-post_webtext_locked.md"
+    meta = extract_meta(path.read_text(encoding="utf-8"), path.parent)
+    assert meta["title"] == "First Post"
+    assert meta["author"] == "alisa"
+    assert meta["date"] == "2026-10-01"
+    assert meta["categories"] == ["seo", "content"]
+    assert meta["tags"] == ["intern", "eeat"]
+    assert meta["excerpt"] == "First post teaser."
+    assert meta["cover"] == "media/shared.png"
+
+
+def test_post_comma_string_categories():
+    path = REPO / "blog" / "carson" / "second-post_webtext_locked.md"
+    meta = extract_meta(path.read_text(encoding="utf-8"), path.parent)
+    assert meta["categories"] == ["marketing"]
+    assert "tags" not in meta
+    assert "author" not in meta
+
+
+def test_post_keys_absent_on_pages():
+    text = "---\ntitle: T\n---\nBody.\n"
+    meta = extract_meta(text, REPO)
+    assert "author" not in meta
+    assert "categories" not in meta
+
+
 def test_strip_front_matter():
     text = "---\ntemplate: landing\nmeta_title: T\n---\n\n# Heading\n"
     assert strip_front_matter(text) == "# Heading\n"

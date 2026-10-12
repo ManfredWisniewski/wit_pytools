@@ -24,6 +24,8 @@ The `content-bot` API key must not be allowed to publish or delete. A 401/403 re
 
 ```yaml
 collection: pages
+collections:
+  "blog/**/*.md": posts
 media_collection: media
 include_glob: "**/*_webtext*.md"
 status_regex: "_webtext(?P<sep>[-_])(?P<status>[a-z-]+)$"
@@ -48,6 +50,26 @@ Filename rules:
 - `SEO_*` / `SEOP_*` files are companion briefings (meta fields), not content.
 - `slug_prefixes` are stripped from the filename slug.
 - Routes are derived from cleaned directory names plus the slug; `overrides` map an exact repo-relative path to a route and win over derivation.
+- `collections` maps glob patterns to Payload collections (first match wins; everything else goes to `collection`). Files matching `"blog/**/*.md"` become `posts` documents instead of `pages`.
+
+## Blog posts
+
+Files routed to `posts` carry the same base fields as pages plus blog keys from their own front matter (no `SEO_*` briefing fallback):
+
+```yaml
+---
+title: My post
+description: Meta description.
+author: alisa            # default: the <agent> dir under blog/
+date: 2026-10-01         # -> publishedAt
+categories: [seo]        # list or comma string
+tags: [intern, eeat]
+excerpt: Teaser text.
+cover: media/cover.png   # sha256-deduped like inline images; media:<id> works too
+---
+```
+
+Post routes derive like pages (`blog/alisa/x_webtext_locked.md` → `/blog/alisa/x`). The frontend serves `/blog` (index), `/blog/<agent>` (author view), `/blog/<agent>/<slug>` (post), `/blog/kategorie/<slug>` and `/blog/tag/<slug>` archives. Agent display data lives in `+structure/agents.yml` (`agents` structure doc: `slug`, `name`, `role`, `bio`, `avatar` as media sourcePath); optional `+structure/taxonomies.yml` supplies archive labels/descriptions.
 
 ## CLI
 
@@ -74,7 +96,7 @@ failed     kategorie_products/broken_webtext_locked.md  (missing image img/missi
 
 1. Scan `include_glob`; parse status from filename; non-publishable files are `skipped`.
 2. Derive route and slug.
-3. Extract `meta.title`/`meta.description`/`template` (front matter or `key: value` lines, then `SEO_*` briefing; title falls back to the first `#`/`##` heading). `template` names a frontend render variant — empty means default.
+3. Extract `meta.title`/`meta.description`/`template` (front matter or `key: value` lines, then `SEO_*` briefing; title falls back to the first `#`/`##` heading). `template` names a frontend render variant — empty means default. Posts (`collections` glob match) also read `author`, `date`, `categories`, `tags`, `excerpt`, `cover` from front matter, and `template` is not sent.
 4. Rewrite `![alt](relpath)` to `![media:<docId>]()` — refs resolve page-relative first, then repo-root relative (a shared `media/` directory works from any page depth; a leading `/` anchors at the repo root). The image is sha256-hashed, looked up via `sourceHash`, and uploaded only if absent. The alt text is preserved on the Media document.
 5. Rewrite internal `…file.md` links to their derived `/route` via an index of the whole scan set.
 6. Apply configured `transforms` regex rules.

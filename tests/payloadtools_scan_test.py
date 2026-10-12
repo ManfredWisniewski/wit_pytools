@@ -92,7 +92,10 @@ def test_derive_route_root_and_override():
 
 def test_scan_repo_publishable_flags():
     entries = {e.relpath: e for e in scan_repo(load_config(REPO))}
-    assert len(entries) == 8
+    assert len(entries) == 10
+    assert entries["blog/alisa/first-post_webtext_locked.md"].route == (
+        "/blog/alisa/first-post"
+    )
     assert entries["notes_webtext_entwurf.md"].publishable is False
     assert entries["notes_webtext_entwurf.md"].status == "entwurf"
     assert entries["plain_webtext.md"].publishable is True

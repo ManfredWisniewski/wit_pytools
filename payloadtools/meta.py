@@ -16,6 +16,10 @@ _TITLE_KEYS = ("title", "meta_title", "meta-title")
 _DESC_KEYS = ("description", "meta_description", "meta-description")
 _TEMPLATE_KEYS = ("template",)
 
+# blog-only front matter keys (posts collection); empty values are omitted
+_POST_SCALAR_KEYS = ("author", "date", "excerpt", "cover")
+_POST_LIST_KEYS = ("categories", "tags")
+
 
 def _front_matter(text):
     """Parse a leading YAML front matter block into a dict."""
@@ -46,6 +50,35 @@ def _pick(mapping, keys):
     return ""
 
 
+def _pick_list(mapping, keys):
+    """Pick the first non-empty key value as a list of strings.
+
+    Front matter lists are used verbatim; comma-separated strings are
+    split (key-value line style).
+    """
+    for key in keys:
+        value = mapping.get(key)
+        if isinstance(value, (list, tuple)):
+            return [str(v).strip() for v in value if str(v).strip()]
+        if isinstance(value, str) and value.strip():
+            return [v.strip() for v in value.split(",") if v.strip()]
+    return []
+
+
+def _post_meta(data):
+    """Blog-only keys from a front matter dict; empty values omitted."""
+    extras = {}
+    for key in _POST_SCALAR_KEYS:
+        value = _pick(data, (key,))
+        if value:
+            extras[key] = value
+    for key in _POST_LIST_KEYS:
+        value = _pick_list(data, (key,))
+        if value:
+            extras[key] = value
+    return extras
+
+
 def _meta_from_text(text):
     """Extract (title, description, template) from front matter/key lines."""
     data = _front_matter(text)
@@ -65,11 +98,14 @@ def _meta_from_text(text):
 
 
 def extract_meta(text, file_dir, briefing_glob=""):
-    """Return {"title", "description", "template"} for a webtext file.
+    """Return meta dict for a webtext file.
 
-    Order: file front matter / key lines, then companion briefing files
-    matching briefing_glob in the same directory, then first heading
-    (title only; template has no fallback — empty means default).
+    Always contains title/description/template; post keys (author, date,
+    categories, tags, excerpt, cover) are added when the file's own front
+    matter sets them. Order: file front matter / key lines, then
+    companion briefing files matching briefing_glob in the same
+    directory, then first heading (title only; template has no
+    fallback — empty means default).
     """
     title, description, template = _meta_from_text(text)
     if briefing_glob and (not title or not description or not template):
@@ -87,5 +123,7 @@ def extract_meta(text, file_dir, briefing_glob=""):
     if not title:
         heading = HEADING_RE.search(text)
         title = heading.group(1).strip() if heading else ""
-    return {"title": title, "description": description,
+    meta = {"title": title, "description": description,
             "template": template}
+    meta.update(_post_meta(_front_matter(text)))
+    return meta

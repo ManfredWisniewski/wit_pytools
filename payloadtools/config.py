@@ -3,7 +3,8 @@
 import os
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
+from fnmatch import fnmatchcase
+from pathlib import Path, PurePosixPath
 
 import yaml
 
@@ -27,6 +28,9 @@ class RouteConfig:
 class Config:
     repo: Path
     collection: str = "pages"
+    # glob -> collection routing (e.g. "blog/**/*.md" -> posts); first
+    # match wins, unmatched files go to `collection`
+    collections: dict = field(default_factory=dict)
     media_collection: str = "media"
     include_glob: str = "**/*_webtext*.md"
     status_regex: str = r"_webtext(?P<sep>[-_])(?P<status>[a-z-]+)$"
@@ -37,6 +41,32 @@ class Config:
     transforms: list = field(default_factory=list)
     links: dict = field(default_factory=dict)
     source_repo: str = ""
+
+
+def glob_match(pattern, relpath):
+    """Match a posix relpath against a glob pattern with '**' support."""
+    pat_parts = PurePosixPath(pattern).parts
+    path_parts = PurePosixPath(relpath).parts
+
+    def _match(pat, parts):
+        if not pat:
+            return not parts
+        head, rest = pat[0], pat[1:]
+        if head == "**":  # zero or more segments
+            return any(_match(rest, parts[i:]) for i in range(len(parts) + 1))
+        if not parts or not fnmatchcase(parts[0], head):
+            return False
+        return _match(rest, parts[1:])
+
+    return _match(list(pat_parts), list(path_parts))
+
+
+def collection_for(config, relpath):
+    """Target collection for a repo-relative path; default config.collection."""
+    for pattern, collection in config.collections.items():
+        if glob_match(pattern, relpath):
+            return collection
+    return config.collection
 
 
 def resolve_repo(repo_arg=None):
@@ -75,6 +105,7 @@ def load_config(repo=None) -> Config:
     return Config(
         repo=repo,
         collection=raw.get("collection", "pages"),
+        collections=dict(raw.get("collections") or {}),
         media_collection=raw.get("media_collection", "media"),
         include_glob=raw.get("include_glob", "**/*_webtext*.md"),
         status_regex=status_regex,

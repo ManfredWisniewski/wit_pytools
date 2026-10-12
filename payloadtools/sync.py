@@ -1,21 +1,27 @@
 """Sync pipeline: per-file processing, upsert decisions, result reporting."""
 
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import yaml
 
 from .client import PayloadAuthError
-from .config import PayloadConfigError
-from .links import rewrite_internal_links, rewrite_markers
-from .media import rewrite_image_refs, sha256_file
+from .config import PayloadConfigError, collection_for
+from .links import is_external, rewrite_internal_links, rewrite_markers
+from .media import (
+    ensure_media_doc, resolve_image_path, rewrite_image_refs, sha256_file,
+)
 from .meta import extract_meta, strip_front_matter
 from .scan import build_route_index, scan_repo
 from .transforms import apply_transforms
 
-# doc fields compared to decide unchanged vs updated
+POSTS_COLLECTION = "posts"
+
+# doc fields compared to decide unchanged vs updated (fields absent from
+# the payload are skipped, so pages and posts share the list)
 _COMPARED_FIELDS = ("title", "slug", "path", "markdownRaw", "sourceRepo",
-                    "template")
+                    "template", "excerpt", "publishedAt", "author", "cover")
+_COMPARED_LIST_FIELDS = ("categories", "tags")
 _COMPARED_META_FIELDS = ("title", "description",)
 
 # +structure/*.yml|*.yaml each map to one `structures` document (name = stem)
@@ -41,28 +47,87 @@ class FileResult:
     detail: str = ""
 
 
-def build_payload(entry, markdown, meta_values, config):
-    """Assemble the Payload page document body."""
+def _default_author(relpath):
+    """Agent slug from the blog/<agent>/… layout ('' outside it)."""
+    parts = PurePosixPath(relpath).parts
+    if len(parts) > 2 and parts[0] == "blog":
+        return parts[1]
+    return ""
+
+
+def resolve_cover(meta_values, entry, config, client, *, dry_run=False):
+    """Resolve front-matter `cover` to a media doc id (None = unset).
+
+    `media:<id>` passes through; local files are deduped/uploaded like
+    inline images. Missing files and external URLs fail the entry.
+    """
+    target = (meta_values.get("cover") or "").strip()
+    if not target:
+        return None
+    if target.startswith("media:"):
+        return target[6:]
+    if is_external(target):
+        raise FileNotFoundError(
+            f"{entry.relpath}: external cover '{target}' is not supported"
+        )
+    image_path = resolve_image_path(target, entry, config.repo)
+    if not image_path.is_file():
+        raise FileNotFoundError(
+            f"{entry.relpath}: missing cover '{target}'"
+        )
+    media_id, _uploaded = ensure_media_doc(
+        image_path, config, client, dry_run=dry_run, alt=target
+    )
+    return media_id
+
+
+def build_payload(entry, markdown, meta_values, config, *,
+                  collection="pages", cover_id=None):
+    """Assemble the Payload page/post document body."""
     title = meta_values.get("title") or entry.slug
-    return {
+    payload = {
         "title": title,
         "slug": entry.slug,
         "path": entry.route,
         "markdownRaw": markdown,
         "sourcePath": entry.relpath,
         "sourceRepo": config.source_repo,
-        "template": meta_values.get("template") or "",
         "meta": {
             "title": meta_values.get("title") or "",
             "description": meta_values.get("description") or "",
         },
     }
+    if collection == POSTS_COLLECTION:
+        payload.update({
+            "excerpt": meta_values.get("excerpt") or "",
+            "publishedAt": meta_values.get("date") or None,
+            "author": meta_values.get("author")
+                or _default_author(entry.relpath),
+            "categories": meta_values.get("categories") or [],
+            "tags": meta_values.get("tags") or [],
+            "cover": cover_id,
+        })
+    else:
+        payload["template"] = meta_values.get("template") or ""
+    return payload
 
 
 def _unchanged(existing, payload):
     """True when the remote doc already matches the payload fields."""
     for field_name in _COMPARED_FIELDS:
-        if (existing.get(field_name) or "") != payload[field_name]:
+        if field_name not in payload:
+            continue
+        remote = existing.get(field_name)
+        if isinstance(remote, dict):  # populated relation (e.g. cover)
+            remote = remote.get("id")
+        if field_name == "publishedAt" and remote:
+            remote = str(remote)[:10]  # ISO datetime -> date
+        if str(remote or "") != str(payload[field_name] or ""):
+            return False
+    for field_name in _COMPARED_LIST_FIELDS:
+        if field_name in payload and (
+            (existing.get(field_name) or []) != payload[field_name]
+        ):
             return False
     existing_meta = existing.get("meta") or {}
     return all(
@@ -211,19 +276,26 @@ def process_entry(entry, config, client, route_index, *,
         text = rewrite_internal_links(text, entry, config.repo, route_index)
         text = rewrite_markers(text, config.links)
         text = apply_transforms(text, config.transforms)
-        payload = build_payload(entry, text, meta_values, config)
-
-        existing = client.find_doc(
-            config.collection, "sourcePath", entry.relpath
+        collection = collection_for(config, entry.relpath)
+        cover_id = None
+        if collection == POSTS_COLLECTION:
+            cover_id = resolve_cover(
+                meta_values, entry, config, client, dry_run=dry_run
+            )
+        payload = build_payload(
+            entry, text, meta_values, config,
+            collection=collection, cover_id=cover_id,
         )
+
+        existing = client.find_doc(collection, "sourcePath", entry.relpath)
         if existing is None:
             if not dry_run:
-                client.create_doc(config.collection, payload)
+                client.create_doc(collection, payload)
             return FileResult(entry.relpath, "created")
         if _unchanged(existing, payload):
             return FileResult(entry.relpath, "unchanged")
         if not dry_run:
-            client.update_doc(config.collection, existing["id"], payload)
+            client.update_doc(collection, existing["id"], payload)
         return FileResult(entry.relpath, "updated")
     except PayloadAuthError:
         raise  # auth errors are run-level, not per-file

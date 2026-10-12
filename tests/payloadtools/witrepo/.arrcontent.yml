@@ -1,4 +1,6 @@
 collection: pages
+collections:
+  "blog/**/*.md": posts
 media_collection: media
 include_glob: "**/*_webtext*.md"
 status_regex: "_webtext(?P<sep>[-_])(?P<status>[a-z-]+)$"

@@ -29,6 +29,8 @@ def test_full_sync_statuses():
     statuses = _statuses(results)
     assert statuses == {
         "_kategorie_hidden/page_webtext_online-locked.md": "created",
+        "blog/alisa/first-post_webtext_locked.md": "created",
+        "blog/carson/second-post_webtext_locked.md": "created",
         "home_webtext_locked.md": "created",
         "kategorie_products/broken_webtext_locked.md": "failed",
         "kategorie_products/prod_webtext_locked.md": "created",
@@ -272,3 +274,110 @@ def test_only_file_unknown_raises(tmp_path):
     config = _structure_repo(tmp_path, NAV_YAML)
     with pytest.raises(PayloadConfigError):
         sync_repo(config, FakeClient(), only_file="+structure/missing.yml")
+
+
+def test_post_payload_fields():
+    """blog/** routes to `posts` with taxonomy/cover fields."""
+    config = load_config(REPO)
+    client = FakeClient()
+    sync_repo(config, client)
+    posts = {
+        p["sourcePath"]: p for c, p in client.created if c == "posts"
+    }
+    post = posts["blog/alisa/first-post_webtext_locked.md"]
+    assert post["path"] == "/blog/alisa/first-post"
+    assert post["author"] == "alisa"
+    assert post["publishedAt"] == "2026-10-01"
+    assert post["categories"] == ["seo", "content"]
+    assert post["tags"] == ["intern", "eeat"]
+    assert post["excerpt"] == "First post teaser."
+    assert post["cover"] == "media-1"
+    assert "template" not in post
+    assert "_status" not in post
+
+
+def test_post_author_defaults_to_blog_dir():
+    """Without front-matter author the blog/<agent>/ segment is used."""
+    config = load_config(REPO)
+    client = FakeClient()
+    sync_repo(config, client)
+    posts = {
+        p["sourcePath"]: p for c, p in client.created if c == "posts"
+    }
+    post = posts["blog/carson/second-post_webtext_locked.md"]
+    assert post["author"] == "carson"
+    assert post["categories"] == ["marketing"]  # comma-string to list
+    assert post["tags"] == []
+    assert post["cover"] is None
+    assert post["publishedAt"] == "2026-10-05"
+
+
+def test_post_unchanged_when_doc_matches():
+    """ISO datetimes and populated cover relations compare equal."""
+    from wit_pytools.payloadtools.media import sha256_file
+
+    config = load_config(REPO)
+    probe = FakeClient()
+    sync_repo(config, probe)
+    post_payload = next(
+        p for c, p in probe.created
+        if p["sourcePath"] == "blog/alisa/first-post_webtext_locked.md"
+    )
+    existing = dict(post_payload)
+    existing["id"] = "post-1"
+    existing["publishedAt"] = "2026-10-01T00:00:00.000Z"
+    existing["cover"] = {"id": post_payload["cover"]}
+    digest = sha256_file(REPO / "media" / "shared.png")
+    client = FakeClient(
+        docs={
+            ("posts", "blog/alisa/first-post_webtext_locked.md"): existing,
+        },
+        media={digest: {"id": post_payload["cover"]}},
+    )
+    results = sync_repo(
+        config, client,
+        only_file="blog/alisa/first-post_webtext_locked.md",
+    )
+    assert _statuses(results) == {
+        "blog/alisa/first-post_webtext_locked.md": "unchanged"
+    }
+    assert client.updated == []
+
+
+def test_post_updated_when_tags_change():
+    config = load_config(REPO)
+    probe = FakeClient()
+    sync_repo(config, probe)
+    post_payload = next(
+        p for c, p in probe.created
+        if p["sourcePath"] == "blog/carson/second-post_webtext_locked.md"
+    )
+    existing = dict(post_payload)
+    existing["id"] = "post-2"
+    existing["tags"] = ["stale"]
+    client = FakeClient(
+        docs={
+            ("posts", "blog/carson/second-post_webtext_locked.md"): existing,
+        },
+    )
+    results = sync_repo(
+        config, client,
+        only_file="blog/carson/second-post_webtext_locked.md",
+    )
+    assert _statuses(results) == {
+        "blog/carson/second-post_webtext_locked.md": "updated"
+    }
+    assert client.updated[0][1] == "post-2"
+
+
+def test_post_missing_cover_fails():
+    """A cover path that resolves to nothing fails the entry."""
+    from wit_pytools.payloadtools.sync import resolve_cover
+
+    config = load_config(REPO)
+    entries = {e.relpath: e for e in scan_repo(config)}
+    entry = entries["blog/alisa/first-post_webtext_locked.md"]
+    with pytest.raises(FileNotFoundError):
+        resolve_cover(
+            {"cover": "media/missing.png"}, entry, config, FakeClient()
+        )
