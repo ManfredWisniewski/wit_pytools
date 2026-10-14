@@ -37,3 +37,38 @@ def test_load_credentials_missing_password(monkeypatch):
     monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: None)
     with pytest.raises(WebtoolsConfigError):
         load_credentials("amex")
+
+
+def test_mailbox_config_from_env(monkeypatch):
+    from wit_pytools.webtools.mailbox import load_mailbox_config
+
+    monkeypatch.setenv("CLAUDIA_IMAP_HOST", "post.witconsult.de")
+    monkeypatch.setenv("CLAUDIA_IMAP_USER", "claudia@wit.gmbh")
+    monkeypatch.setenv("CLAUDIA_IMAP_PASSWORD", "secret")
+    config = load_mailbox_config("claudia")
+    assert config["host"] == "post.witconsult.de"
+    assert config["port"] == 993
+    assert config["folder"] == "INBOX"
+
+
+def test_mailbox_config_missing(monkeypatch):
+    from wit_pytools.webtools.mailbox import load_mailbox_config
+
+    monkeypatch.delenv("CLAUDIA_IMAP_HOST", raising=False)
+    monkeypatch.delenv("CLAUDIA_IMAP_USER", raising=False)
+    monkeypatch.delenv("CLAUDIA_IMAP_PASSWORD", raising=False)
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: None)
+    with pytest.raises(WebtoolsConfigError):
+        load_mailbox_config("claudia")
+
+
+def test_extract_links():
+    from wit_pytools.webtools.mailbox import extract_links
+
+    text = (
+        "Click https://login.live.com/confirm?code=abc&x=1 to verify.\n"
+        "Or visit <https://example.com/help> for support."
+    )
+    links = extract_links(text)
+    assert links[0] == "https://login.live.com/confirm?code=abc&x=1"
+    assert links[1] == "https://example.com/help"

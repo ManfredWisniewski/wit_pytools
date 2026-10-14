@@ -35,6 +35,19 @@ Each site lives in its own module under `webtools/sites/` and registers
 a CLI subcommand via `COMMAND`, `DESCRIPTION`, `add_arguments(parser)`
 and `run(args)`. New sites are picked up automatically.
 
+## Assisted account signup
+
+```text
+python -m wit_pytools.webtools ms-account --mailbox claudia
+python -m wit_pytools.webtools google-account --mailbox claudia
+```
+
+Opens the provider signup page and keeps the browser open: the signup
+form, captcha and photo upload are manual steps. With `--mailbox TAG`
+the script polls the persona mailbox (env vars `<TAG>_IMAP_HOST`,
+`<TAG>_IMAP_USER`, `<TAG>_IMAP_PASSWORD`, optional `_PORT`/`_FOLDER`)
+for the verification mail and HTTP-GETs the confirmation link.
+
 ## Python
 
 ```python
