@@ -288,6 +288,9 @@ Rechnungen\WIT=;12302,K1176348023         ; content-only bowl
 Rechnungen=Rechnung,Invoice               ; filename-only bowl
 Rest=!DEFAULT
 
+[SETTINGS]
+remove_source=.eml,.docx   ; delete sorted originals that have markup
+
 [DOCPREP]                  ; shared with Doc_prep bowls
 mode=vision
 max_pages=50

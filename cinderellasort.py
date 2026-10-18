@@ -2212,7 +2212,7 @@ def _jev_tag_markup(source, markup_path, config_object, dryrun):
     print(message)
 
 
-def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, skip_unmatched=True, email_threads=True):
+def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, skip_unmatched=True, email_threads=True, remove_source=frozenset()):
     """Sort a file into an inbox bowl together with its markup sidecars.
 
     Supported documents get a Markdown variant next to the source via the
@@ -2297,7 +2297,15 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
     if default_bowl and bowl.lstrip('/') == default_bowl:
         _inbox_record_proposal(nfile, markup)
     destdir = targetdir + bowl
-    movefile(sourcedir, source, destdir, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+    # Listed extensions only travel as markup: the source is removed once
+    # an .md exists; without markup the source is moved to keep the data.
+    if (
+        source.suffix.lower() in remove_source
+        and markup
+    ):
+        delfile(sourcedir, source.name, dryrun=dryrun)
+    else:
+        movefile(sourcedir, source, destdir, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
     # Move markup and pdf2md sidecars along with the document.
     for sidecar in _inbox_sidecar_candidates(source, cleaned_stem):
         if sidecar == source or not sidecar.is_file():
@@ -2475,7 +2483,7 @@ def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
             log_message(f"Error handling PDF file {file.name}: {e}", level="ERROR")
     return
 
-def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None, skip_unmatched=True, check_content=False, ignore_append=False, email_threads=True):
+def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None, skip_unmatched=True, check_content=False, ignore_append=False, email_threads=True, remove_source=frozenset()):
     # First check if the file matches any of the specified file types
     file_matches_type = False
     file_ext = ''
@@ -2498,6 +2506,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
             filemode, replacements, dryrun, overwrite,
             skip_unmatched=skip_unmatched,
             email_threads=email_threads,
+            remove_source=remove_source,
         )
         return
 
@@ -2707,6 +2716,13 @@ def cinderellasort(
     use_directory_name = settings.get('usedirectoryname', 'false').strip().lower() == 'true'
     skip_unmatched = settings.get('skipunmatched', 'true').strip().lower() == 'true'
     email_threads = settings.get('email_threads', 'true').strip().lower() == 'true'
+    remove_source = {
+        ext if ext.startswith('.') else f'.{ext}'
+        for ext in (
+            (settings.get('remove_source', '') or '')
+            .replace(' ', '').lower().split(',')
+        ) if ext
+    }
     check_content = settings.get('check_content', 'false').strip().lower() == 'true'
     recursive = settings.get('recursive', 'true').strip().lower() == 'true'
     has_docprep_bowls = bool(bowllist_docprep(config_object))
@@ -2798,7 +2814,7 @@ def cinderellasort(
         file_path = Path(os.path.join(file_dir, file_name))
         
         if file_path.is_file():
-            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, skip_unmatched=skip_unmatched, check_content=check_content, ignore_append=ignore_append, email_threads=email_threads)
+            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, skip_unmatched=skip_unmatched, check_content=check_content, ignore_append=ignore_append, email_threads=email_threads, remove_source=remove_source)
         _anonymize_single_file(
             file_path,
             file_dir,
@@ -2893,7 +2909,7 @@ def cinderellasort(
                 # Get directory name and file count for this file
                 dirname = os.path.basename(root) if use_directory_name else None
                 dir_count = dir_file_counts.get(root, 0) if use_directory_name else None
-                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname, skip_unmatched, check_content=check_content, ignore_append=ignore_append, email_threads=email_threads)
+                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname, skip_unmatched, check_content=check_content, ignore_append=ignore_append, email_threads=email_threads, remove_source=remove_source)
                 processed_files += 1
         log_message(f"Processed {processed_files} files in {sourcedir} and subdirectories")
         

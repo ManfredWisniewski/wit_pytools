@@ -1823,6 +1823,51 @@ def test_inbox_eml_thread_shared_markup(tmp_path, monkeypatch):
     assert not list(source_dir.glob("*.md"))
 
 
+def test_inbox_remove_source_deletes_original(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Rechnungen": ";rechnung"},
+        extra_files=["newsletter.eml"],
+        ftype_sort=".eml",
+        settings_section={"remove_source": ".eml"},
+    )
+    (source_dir / "newsletter.eml").write_text(
+        "From: shop@example.com\n"
+        "To: me@example.com\n"
+        "Subject: Rechnung 123\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Sehr geehrte Kunden, anbei die Rechnung.",
+        encoding="utf-8",
+    )
+    cinderellasort(str(config_path), dryrun=False)
+
+    bowl = target_dir / "Rechnungen"
+    assert not (bowl / "newsletter.eml").exists()
+    assert not (source_dir / "newsletter.eml").exists()
+    assert (bowl / "newsletter.md").is_file()
+
+
+def test_inbox_remove_source_keeps_source_without_markup(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Rechnungen": "scan"},
+        ftype_sort=".pdf",
+        settings_section={"remove_source": ".pdf"},
+    )
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count,
+         lambda *a: (_ for _ in ()).throw(RuntimeError("fail"))),
+    )
+    cinderellasort(str(config_path), dryrun=False)
+
+    # conversion failed -> no markup -> source still moved, not deleted
+    assert (target_dir / "Rechnungen" / "scan001.pdf").is_file()
+    assert not list((target_dir / "Rechnungen").glob("*.md"))
+
+
 def test_inbox_eml_threads_disabled(tmp_path, monkeypatch):
     source_dir, target_dir, config_path = _inbox_setup(
         tmp_path,
