@@ -1555,6 +1555,19 @@ def test_bowldir_inbox_content_crit_ignores_filename(tmp_path):
     assert cs.bowldir_inbox("12302 scan.pdf", config, markup_path=markup) == "/Rest"
 
 
+def test_bowldir_inbox_content_crit_beats_filename(tmp_path):
+    config = ConfigParser()
+    config.optionxform = str
+    config["BOWLS_INBOX"] = {
+        "Auxilia": ";3604326300",
+        "Rechnungen": "Rechnung",
+    }
+    markup = tmp_path / "doc.md"
+    markup.write_text("Police 3604326300", encoding="utf-8")
+    # filename hits the generic bowl, the content identifier must win
+    assert cs.bowldir_inbox("Rechnung abc.pdf", config, markup_path=markup) == "/Auxilia"
+
+
 def test_bowldir_inbox_mixed_crits(tmp_path):
     config = ConfigParser()
     config.optionxform = str
@@ -1749,6 +1762,104 @@ def test_inbox_sorts_eml_with_markup(tmp_path, monkeypatch):
     assert "shop@example.com" in markup
     assert "Sehr geehrte Kunden" in markup
     assert "category: 02_Finance_And_Banking" in markup
+
+
+def test_inbox_eml_thread_shared_markup(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Rechnungen": ";rechnung"},
+        extra_files=["mail1.eml", "mail2.eml"],
+        ftype_sort=".eml",
+        jev_section={},
+    )
+    (source_dir / "mail1.eml").write_text(
+        "From: a@x.de\n"
+        "To: b@y.de\n"
+        "Subject: Rechnung 123\n"
+        "Date: Mon, 20 Oct 2025 10:00:00 +0200\n"
+        "Message-ID: <m1@x.de>\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Sehr geehrte Kunden, anbei die Rechnung 123.",
+        encoding="utf-8",
+    )
+    (source_dir / "mail2.eml").write_text(
+        "From: b@y.de\n"
+        "To: a@x.de\n"
+        "Subject: AW: Rechnung 123\n"
+        "Date: Tue, 21 Oct 2025 09:00:00 +0200\n"
+        "Message-ID: <m2@y.de>\n"
+        "In-Reply-To: <m1@x.de>\n"
+        "References: <m1@x.de>\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Danke, Zahlung veranlasst.\n"
+        "\n"
+        "-----Ursprüngliche Nachricht-----\n"
+        "Von: a@x.de\n"
+        "Sehr geehrte Kunden, anbei die Rechnung 123.",
+        encoding="utf-8",
+    )
+    calls = []
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(JEV_ANSWERS, calls),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    bowl = target_dir / "Rechnungen"
+    assert (bowl / "mail1.eml").is_file()
+    assert (bowl / "mail2.eml").is_file()
+    # one shared thread markup, named after the earliest member
+    text = (bowl / "mail1.md").read_text(encoding="utf-8")
+    assert "Sehr geehrte Kunden" in text
+    assert "Zahlung veranlasst" in text
+    assert "Ursprüngliche Nachricht" not in text
+    assert "category: 02_Finance_And_Banking" in text
+    assert not (bowl / "mail2.md").exists()
+    # the shared thread file was tagged once and left the inbox
+    assert len(calls) == 1
+    assert not list(source_dir.glob("*.md"))
+
+
+def test_inbox_eml_threads_disabled(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Rechnungen": ";rechnung"},
+        extra_files=["mail1.eml", "mail2.eml"],
+        ftype_sort=".eml",
+        settings_section={"email_threads": "false"},
+    )
+    (source_dir / "mail1.eml").write_text(
+        "From: a@x.de\n"
+        "To: b@y.de\n"
+        "Subject: Rechnung 123\n"
+        "Message-ID: <m1@x.de>\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Sehr geehrte Kunden, anbei die Rechnung 123.",
+        encoding="utf-8",
+    )
+    (source_dir / "mail2.eml").write_text(
+        "From: b@y.de\n"
+        "To: a@x.de\n"
+        "Subject: AW: Rechnung 123\n"
+        "Message-ID: <m2@y.de>\n"
+        "In-Reply-To: <m1@x.de>\n"
+        "References: <m1@x.de>\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Danke, Zahlung veranlasst.",
+        encoding="utf-8",
+    )
+    cinderellasort(str(config_path), dryrun=False)
+
+    bowl = target_dir / "Rechnungen"
+    m1 = (bowl / "mail1.md").read_text(encoding="utf-8")
+    m2 = (bowl / "mail2.md").read_text(encoding="utf-8")
+    assert "Zahlung veranlasst" not in m1
+    assert "Sehr geehrte Kunden" not in m2
 
 
 def _write_docx(path, paragraphs):

@@ -274,17 +274,7 @@ def bowldir_inbox(file, config_object='', markup_path=None):
     default_bowl = ''
     bowls = list(config_object.items("BOWLS_INBOX"))
 
-    # First pass: filename-based matching
-    for (bowl, critlist) in bowls:
-        if "!DEFAULT" in critlist:
-            default_bowl = bowl
-            continue
-
-        for crit in _split_inbox_crits(critlist)[0]:
-            if crit in file:
-                return '/' + bowl
-
-    # Second pass: content search in the markup variant
+    # First pass: content search in the markup variant (specific identifiers)
     if markup_path:
         markup_path = Path(markup_path)
         if markup_path.is_file():
@@ -293,10 +283,20 @@ def bowldir_inbox(file, config_object='', markup_path=None):
             ).casefold()
             for (bowl, critlist) in bowls:
                 if "!DEFAULT" in critlist:
+                    default_bowl = bowl
                     continue
                 for crit in _split_inbox_crits(critlist)[1]:
                     if crit.casefold() in content:
                         return '/' + bowl
+
+    # Second pass: filename-based matching (generic terms as fallback)
+    for (bowl, critlist) in bowls:
+        if "!DEFAULT" in critlist:
+            default_bowl = bowl
+            continue
+        for crit in _split_inbox_crits(critlist)[0]:
+            if crit in file:
+                return '/' + bowl
 
     if default_bowl:
         return '/' + default_bowl
@@ -2082,6 +2082,33 @@ _jev_classified = 0
 _inbox_proposals = {}
 
 
+# Thread groups per directory, computed once per run before members move away.
+_inbox_eml_threads = {}
+
+
+def _inbox_eml_thread_file(source, sourcedir, clean, clean_nocase, replacements):
+    """Return the thread members of an .eml source, or None if it is alone."""
+    from wit_pytools.mailtools import eml_thread_members
+    key = str(Path(sourcedir).resolve())
+    if key not in _inbox_eml_threads:
+        groups = {}
+        for path in Path(sourcedir).glob('*.eml'):
+            groups[path.name] = eml_thread_members(sourcedir, path)
+        _inbox_eml_threads[key] = groups
+    members = _inbox_eml_threads[key].get(source.name) or []
+    return members if len(members) > 1 else None
+
+
+def _inbox_eml_thread_path(sourcedir, members, clean, clean_nocase, replacements):
+    """Shared thread markup path: '<cleaned stem of earliest member>.md'."""
+    earliest_stem = Path(
+        normalize_spaces(
+            cleanfilename(members[0][0].name, clean, clean_nocase, replacements)
+        )
+    ).stem
+    return Path(sourcedir) / f"{earliest_stem}.md"
+
+
 def _inbox_record_proposal(nfile, markup):
     """Remember an unsorted or !DEFAULT-routed file for the proposals INI."""
     fields = _md_frontmatter_fields(markup) if markup else {}
@@ -2185,7 +2212,7 @@ def _jev_tag_markup(source, markup_path, config_object, dryrun):
     print(message)
 
 
-def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, skip_unmatched=True):
+def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, skip_unmatched=True, email_threads=True):
     """Sort a file into an inbox bowl together with its markup sidecars.
 
     Supported documents get a Markdown variant next to the source via the
@@ -2204,7 +2231,35 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
 
     # Create the markup variant for convertible documents.
     markup_path = source.with_suffix('.md')
-    if (
+    eml_members = None
+    if source.suffix.lower() == '.eml' and email_threads:
+        eml_members = _inbox_eml_thread_file(
+            source, sourcedir, clean, clean_nocase, replacements
+        )
+    if eml_members:
+        # Members of a mail thread share one combined markup file named
+        # after the earliest member; it is created once and copied into
+        # each member's bowl.
+        markup_path = _inbox_eml_thread_path(
+            sourcedir, eml_members, clean, clean_nocase, replacements
+        )
+        if not markup_path.is_file():
+            if dryrun:
+                print(f"  Doc_prep (dryrun): thread markup {markup_path}")
+            else:
+                try:
+                    from wit_pytools.mailtools import eml_thread_to_markdown
+                    eml_thread_to_markdown(eml_members, markup_path)
+                    message = f"Doc_prep: created thread markup {markup_path}"
+                    log_message(message, level="INFO")
+                    print(message)
+                except Exception as e:
+                    log_message(
+                        f"Inbox: thread markup conversion failed for "
+                        f"{source.name}: {e}",
+                        level="ERROR",
+                    )
+    elif (
         source.suffix.lower() in DOCPREP_CONVERTERS
         and not markup_path.is_file()
     ):
@@ -2248,6 +2303,9 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
         if sidecar == source or not sidecar.is_file():
             continue
         if sidecar.suffix.lower() == '.md':
+            if eml_members:
+                # Shared thread markup is copied/moved below instead.
+                continue
             sidecar_name = f"{cleaned_stem}.md"
         else:
             sidecar_name = f"{cleaned_stem}_pdf2md.json"
@@ -2255,6 +2313,18 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
             sourcedir, sidecar.name, destdir, sidecar_name, filemode,
             overwrite=overwrite, dryrun=dryrun,
         )
+    # Mail thread: the shared markup exists once; the last remaining
+    # member moves it along so the thread file ends up in one bowl.
+    if eml_members and markup and markup.is_file():
+        remaining = [
+            member_path for member_path, _ in eml_members
+            if member_path.name != source.name and member_path.is_file()
+        ]
+        if not remaining:
+            movefile(
+                sourcedir, markup.name, destdir, markup.name,
+                filemode, overwrite=overwrite, dryrun=dryrun,
+            )
 
 
 GEN_IMG_REFERENCE_SUFFIXES = ('.png', '.jpg', '.jpeg', '.webp')
@@ -2405,7 +2475,7 @@ def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
             log_message(f"Error handling PDF file {file.name}: {e}", level="ERROR")
     return
 
-def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None, skip_unmatched=True, check_content=False, ignore_append=False):
+def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None, skip_unmatched=True, check_content=False, ignore_append=False, email_threads=True):
     # First check if the file matches any of the specified file types
     file_matches_type = False
     file_ext = ''
@@ -2427,6 +2497,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
             file, sourcedir, targetdir, clean, clean_nocase, config_object,
             filemode, replacements, dryrun, overwrite,
             skip_unmatched=skip_unmatched,
+            email_threads=email_threads,
         )
         return
 
@@ -2598,6 +2669,7 @@ def cinderellasort(
     _gen_img_jobs_done = 0
     _jev_classified = 0
     _inbox_proposals.clear()
+    _inbox_eml_threads.clear()
     files = ""
     time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
@@ -2634,6 +2706,7 @@ def cinderellasort(
     set_tags = settings.get('set_tags', 'false').strip().lower() == 'true'
     use_directory_name = settings.get('usedirectoryname', 'false').strip().lower() == 'true'
     skip_unmatched = settings.get('skipunmatched', 'true').strip().lower() == 'true'
+    email_threads = settings.get('email_threads', 'true').strip().lower() == 'true'
     check_content = settings.get('check_content', 'false').strip().lower() == 'true'
     recursive = settings.get('recursive', 'true').strip().lower() == 'true'
     has_docprep_bowls = bool(bowllist_docprep(config_object))
@@ -2725,7 +2798,7 @@ def cinderellasort(
         file_path = Path(os.path.join(file_dir, file_name))
         
         if file_path.is_file():
-            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, skip_unmatched=skip_unmatched, check_content=check_content, ignore_append=ignore_append)
+            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, skip_unmatched=skip_unmatched, check_content=check_content, ignore_append=ignore_append, email_threads=email_threads)
         _anonymize_single_file(
             file_path,
             file_dir,
@@ -2820,7 +2893,7 @@ def cinderellasort(
                 # Get directory name and file count for this file
                 dirname = os.path.basename(root) if use_directory_name else None
                 dir_count = dir_file_counts.get(root, 0) if use_directory_name else None
-                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname, skip_unmatched, check_content=check_content, ignore_append=ignore_append)
+                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname, skip_unmatched, check_content=check_content, ignore_append=ignore_append, email_threads=email_threads)
                 processed_files += 1
         log_message(f"Processed {processed_files} files in {sourcedir} and subdirectories")
         

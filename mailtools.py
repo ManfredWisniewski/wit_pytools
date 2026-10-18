@@ -44,7 +44,14 @@ def eml_to_markdown(source, output_path, settings=None):
         f"- To: {field('to')}",
         f"- Date: {field('date')}",
         '',
+        strip_quoted_text(_eml_body(parsed)),
     ]
+    output_path.write_text('\n'.join(lines).strip() + '\n', encoding='utf-8')
+    return output_path
+
+
+def _eml_body(parsed):
+    """Extract the text body of a parsed mail (plain preferred, html stripped)."""
     plain, html = [], []
     for part in parsed.get('body') or []:
         content = str(part.get('content') or '').strip()
@@ -54,11 +61,150 @@ def eml_to_markdown(source, output_path, settings=None):
             plain.append(content)
         elif 'html' in str(part.get('content_type', '')):
             html.append(content)
-    body = '\n\n'.join(plain)
-    if not body and html:
-        # strip tags so html-only mails stay searchable
-        body = re.sub(r'[ \t]+', ' ', re.sub(r'<[^>]+>', ' ', '\n\n'.join(html)))
-    lines.append(body)
+    if plain:
+        return '\n\n'.join(plain)
+    # strip tags so html-only mails stay searchable
+    return re.sub(r'[ \t]+', ' ', re.sub(r'<[^>]+>', ' ', '\n\n'.join(html)))
+
+
+# Lines where the quoted history of a reply/forward begins.
+_QUOTE_CUT = re.compile(
+    r'^\s*(-+\s*(urspr.ngliche\s+nachricht|original\s+message'
+    r'|weitergeleitete\s+nachricht|forwarded\s+message)\s*-+'
+    r'|(_{2,})\s*$'
+    r'|(on|am)\s+.+\s(wrote|schrieb)\s+.+:\s*$)',
+    re.IGNORECASE,
+)
+
+
+def strip_quoted_text(text):
+    """Remove quoted reply/forward history and '>' quote lines."""
+    out = []
+    for line in text.splitlines():
+        if _QUOTE_CUT.match(line):
+            break
+        if line.lstrip().startswith('>'):
+            continue
+        out.append(line)
+    return '\n'.join(out).strip()
+
+
+def _eml_id_list(values):
+    """Extract all <...> message ids from a header value or list."""
+    if isinstance(values, str):
+        values = [values]
+    ids = []
+    for value in values or []:
+        ids.extend(re.findall(email_pattern, str(value)))
+    return ids
+
+
+def eml_headers(source):
+    """Return threading headers (message_id, references, subject, date, from)."""
+    parsed = eml_parser.EmlParser().decode_email_bytes(Path(source).read_bytes())
+    header = parsed.get('header', {}) or {}
+    raw = header.get('header', {}) or {}
+
+    def first(value, fallback=''):
+        if isinstance(value, list):
+            value = value[0] if value else ''
+        return str(value) if value else fallback
+
+    subject = first(raw.get('subject'), str(header.get('subject') or ''))
+    return {
+        'message_id': first(_eml_id_list(raw.get('message-id'))),
+        'in_reply_to': first(_eml_id_list(raw.get('in-reply-to'))),
+        'references': _eml_id_list(raw.get('references')),
+        'subject': subject,
+        'thread_subject': _eml_base_subject(
+            first(raw.get('thread-topic'), subject)
+        ),
+        'from': first(raw.get('from'), str(header.get('from') or '')),
+        'date': header.get('date'),
+    }
+
+
+_subject_prefix = re.compile(r'^\s*(re|aw|fwd?|wg|antw)\s*[:;-]', re.IGNORECASE)
+
+
+def _eml_base_subject(subject):
+    """Subject without reply/forward prefixes, for header-less threading."""
+    while True:
+        stripped = _subject_prefix.sub('', subject, count=1).strip()
+        if stripped == subject:
+            return subject.casefold()
+        subject = stripped
+
+
+def eml_thread_members(directory, source):
+    """Return [(path, headers)] of the thread of source in directory, by date.
+
+    Mails are linked transitively by any shared message id (Message-ID,
+    In-Reply-To, References) or by the same normalized subject, so partial
+    header exports still group.
+    """
+    directory, source = Path(directory), Path(source)
+    infos = {}
+    for path in sorted(directory.glob('*.eml')):
+        try:
+            infos[path] = eml_headers(path)
+        except Exception:
+            continue
+    if source not in infos:
+        try:
+            infos[source] = eml_headers(source)
+        except Exception:
+            infos[source] = {
+                'message_id': '', 'in_reply_to': '', 'references': [],
+                'subject': source.stem, 'thread_subject': source.stem,
+                'from': '', 'date': '',
+            }
+
+    # Union-find over shared ids and the normalized subject.
+    parent = {p: p for p in infos}
+
+    def find(path):
+        while parent[path] != path:
+            parent[path] = parent[parent[path]]
+            path = parent[path]
+        return path
+
+    owners = {}
+    for path, headers in infos.items():
+        keys = (
+            headers['references']
+            + [headers['in_reply_to'], headers['message_id']]
+            + ['subject:' + headers['thread_subject']]
+        )
+        for key in keys:
+            if not key or key == 'subject:':
+                continue
+            if key in owners:
+                parent[find(owners[key])] = find(path)
+            else:
+                owners[key] = path
+
+    root = find(source)
+    members = [(p, h) for p, h in infos.items() if find(p) == root]
+    members.sort(key=lambda member: (str(member[1].get('date') or ''), member[0].name))
+    return members
+
+
+def eml_thread_to_markdown(members, output_path):
+    """Write one Markdown file for a mail thread, quote-stripped, by date."""
+    output_path = Path(output_path)
+    subject = members[0][1].get('subject') or members[0][0].stem
+    lines = [f"# {subject}", '']
+    for path, headers in members:
+        parsed = eml_parser.EmlParser(include_raw_body=True).decode_email_bytes(
+            path.read_bytes()
+        )
+        lines += [
+            f"## {headers.get('date') or ''} - {headers.get('from') or ''}",
+            '',
+            strip_quoted_text(_eml_body(parsed)),
+            '',
+        ]
     output_path.write_text('\n'.join(lines).strip() + '\n', encoding='utf-8')
     return output_path
 
