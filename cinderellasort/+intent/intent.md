@@ -290,6 +290,7 @@ Rest=!DEFAULT
 
 [SETTINGS]
 remove_source=.eml,.docx   ; delete sorted originals that have markup
+maintain_structure=true    ; keep the source directory tree inside bowls
 
 [DOCPREP]                  ; shared with Doc_prep bowls
 mode=vision

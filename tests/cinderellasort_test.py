@@ -1823,6 +1823,25 @@ def test_inbox_eml_thread_shared_markup(tmp_path, monkeypatch):
     assert not list(source_dir.glob("*.md"))
 
 
+def test_inbox_maintain_structure(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        pdf_name="Finanzen/scan.pdf",
+        inbox_bowls={"Rechnungen": "scan"},
+        ftype_sort=".pdf",
+        settings_section={
+            "recursive": "true",
+            "maintain_structure": "true",
+        },
+    )
+    _patch_inbox_converter(monkeypatch)
+    cinderellasort(str(config_path), dryrun=False)
+
+    bowl = target_dir / "Rechnungen" / "Finanzen"
+    assert (bowl / "scan.pdf").is_file()
+    assert (bowl / "scan.md").is_file()
+
+
 def test_inbox_remove_source_deletes_original(tmp_path, monkeypatch):
     source_dir, target_dir, config_path = _inbox_setup(
         tmp_path,
