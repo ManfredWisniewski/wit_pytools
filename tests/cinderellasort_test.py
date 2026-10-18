@@ -1811,8 +1811,8 @@ def test_inbox_eml_thread_shared_markup(tmp_path, monkeypatch):
     bowl = target_dir / "Rechnungen"
     assert (bowl / "mail1.eml").is_file()
     assert (bowl / "mail2.eml").is_file()
-    # one shared thread markup, named after the earliest member
-    text = (bowl / "mail1.md").read_text(encoding="utf-8")
+    # one shared thread markup, named date + earliest member stem
+    text = (bowl / "2025-10-20 mail1.md").read_text(encoding="utf-8")
     assert "Sehr geehrte Kunden" in text
     assert "Zahlung veranlasst" in text
     assert "Ursprüngliche Nachricht" not in text

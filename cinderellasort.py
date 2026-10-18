@@ -2100,13 +2100,16 @@ def _inbox_eml_thread_file(source, sourcedir, clean, clean_nocase, replacements)
 
 
 def _inbox_eml_thread_path(sourcedir, members, clean, clean_nocase, replacements):
-    """Shared thread markup path: '<cleaned stem of earliest member>.md'."""
+    """Shared thread markup path: '<date> <cleaned stem of earliest member>.md'."""
+    earliest_path, headers = members[0]
     earliest_stem = Path(
         normalize_spaces(
-            cleanfilename(members[0][0].name, clean, clean_nocase, replacements)
+            cleanfilename(earliest_path.name, clean, clean_nocase, replacements)
         )
     ).stem
-    return Path(sourcedir) / f"{earliest_stem}.md"
+    date = headers.get('date')
+    prefix = f"{date:%Y-%m-%d} " if hasattr(date, 'strftime') else ''
+    return Path(sourcedir) / f"{prefix}{earliest_stem}.md"
 
 
 def _inbox_record_proposal(nfile, markup):
