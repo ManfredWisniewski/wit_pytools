@@ -1,4 +1,5 @@
 import os, re, sys, shutil
+from pathlib import Path
 import extract_msg
 import eml_parser
 from wit_pytools.validators import valid_email_address
@@ -21,6 +22,46 @@ def parse_eml(file, dryrun=False):
     mailinfo.append(parsed_eml['header']['from'])
     mailinfo.append(parsed_eml['header']['subject'])
     return mailinfo
+
+
+def eml_to_markdown(source, output_path, settings=None):
+    """Convert an .eml email into a Markdown file with header fields and body."""
+    source = Path(source)
+    output_path = Path(output_path)
+    parsed = eml_parser.EmlParser(include_raw_body=True).decode_email_bytes(
+        source.read_bytes()
+    )
+    header = parsed.get('header', {})
+
+    def field(name):
+        value = header.get(name, '')
+        return ', '.join(value) if isinstance(value, list) else str(value)
+
+    lines = [
+        f"# {field('subject') or source.stem}",
+        '',
+        f"- From: {field('from')}",
+        f"- To: {field('to')}",
+        f"- Date: {field('date')}",
+        '',
+    ]
+    plain, html = [], []
+    for part in parsed.get('body') or []:
+        content = str(part.get('content') or '').strip()
+        if not content:
+            continue
+        if 'plain' in str(part.get('content_type', '')):
+            plain.append(content)
+        elif 'html' in str(part.get('content_type', '')):
+            html.append(content)
+    body = '\n\n'.join(plain)
+    if not body and html:
+        # strip tags so html-only mails stay searchable
+        body = re.sub(r'[ \t]+', ' ', re.sub(r'<[^>]+>', ' ', '\n\n'.join(html)))
+    lines.append(body)
+    output_path.write_text('\n'.join(lines).strip() + '\n', encoding='utf-8')
+    return output_path
+
 
 # Parse Outlook MSG file
 # https://pypi.org/project/extract-msg/

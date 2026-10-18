@@ -109,7 +109,7 @@ def merge_common_rules(config_object, common_configfile):
 
     for section in (
         'BOWLS', 'BOWLS_EMAIL', 'BOWLS_DOCPREP', 'BOWLS_ANONYMIZE',
-        'BOWLS_GEN_IMG',
+        'BOWLS_GEN_IMG', 'BOWLS_INBOX',
     ):
         if not common_config.has_section(section):
             continue
@@ -242,6 +242,64 @@ def bowldir_gen_img(file, config_object=''):
             crit = crit.strip()
             if crit and crit in file:
                 return '/' + bowl
+    return ''
+
+# list all inbox bowls
+def bowllist_inbox(config_object=''):
+    bowls = []
+    if config_object and len(config_object) > 0 and config_object.has_section("BOWLS_INBOX"):
+        # Get bowls from config while preserving case
+        for bowl, _ in config_object.items("BOWLS_INBOX", raw=True):
+            bowls.append(bowl)
+    return bowls
+
+def _split_inbox_crits(critlist):
+    """Split an inbox critlist into filename and content criteria.
+
+    Format: 'name_crits;content_crits' - left of ';' matches the cleaned
+    filename only, right of ';' matches the markup content only.
+    """
+    name_part, _, content_part = critlist.partition(';')
+    parse = lambda part: [
+        crit.strip() for crit in part.split(',') if crit.strip()
+    ]
+    return parse(name_part), parse(content_part)
+
+
+# check if file matches a criteria for an inbox bowl and return the corresponding bowl
+def bowldir_inbox(file, config_object='', markup_path=None):
+    if not (config_object and len(config_object) > 0 and config_object.has_section("BOWLS_INBOX")):
+        return ''
+
+    default_bowl = ''
+    bowls = list(config_object.items("BOWLS_INBOX"))
+
+    # First pass: filename-based matching
+    for (bowl, critlist) in bowls:
+        if "!DEFAULT" in critlist:
+            default_bowl = bowl
+            continue
+
+        for crit in _split_inbox_crits(critlist)[0]:
+            if crit in file:
+                return '/' + bowl
+
+    # Second pass: content search in the markup variant
+    if markup_path:
+        markup_path = Path(markup_path)
+        if markup_path.is_file():
+            content = markup_path.read_text(
+                encoding='utf-8', errors='replace'
+            ).casefold()
+            for (bowl, critlist) in bowls:
+                if "!DEFAULT" in critlist:
+                    continue
+                for crit in _split_inbox_crits(critlist)[1]:
+                    if crit.casefold() in content:
+                        return '/' + bowl
+
+    if default_bowl:
+        return '/' + default_bowl
     return ''
 
 # check if file matches a criteria for a bowl and return the corresponding bowl
@@ -610,6 +668,16 @@ def prepsort(config_object, targetdir, prepfilter = False):
             except Exception as e:
                 log_message(f"Error creating directory {directory}: {e}", level="ERROR")
 
+    # Create directories from BOWLS_INBOX section
+    for bowl in bowllist_inbox(config_object):
+        directory = targetdir / str(bowl).replace('\\', '/').replace('//', '/')
+        if not directory.exists():
+            log_message(f"Creating directory: {directory}", level="INFO")
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                log_message(f"Error creating directory {directory}: {e}", level="ERROR")
+
     if prepfilter:
         print(f"(Scan for all existing directories in the target directory: {targetdir})")
         dirnames = []
@@ -797,6 +865,31 @@ def _docprep_pdf(source, output_path, settings):
         if sidecar.exists():
             sidecar.unlink()
     return output
+
+
+def _eml_page_count(file_path):
+    # Mails have no pages; count as one so max_pages never blocks them.
+    return 1
+
+
+def _docprep_eml(source, output_path, settings):
+    from wit_pytools.mailtools import eml_to_markdown
+    return eml_to_markdown(source, output_path, settings)
+
+
+def _word_page_count(file_path):
+    # No page count without rendering; max_pages must not block these.
+    return 1
+
+
+def _docprep_docx(source, output_path, settings):
+    from wit_pytools.documenttools import docx_to_markdown
+    return docx_to_markdown(source, output_path=output_path)
+
+
+def _docprep_doc(source, output_path, settings):
+    from wit_pytools.documenttools import doc_to_markdown
+    return doc_to_markdown(source, output_path=output_path)
 
 
 def _anonymize_single_file(
@@ -1390,9 +1483,12 @@ def handle_anonymization(
 
 
 
-# Converter registry: extension -> (page counter, converter). Only PDF for now.
+# Converter registry: extension -> (page counter, converter).
 DOCPREP_CONVERTERS = {
     '.pdf': (_pdf_page_count, _docprep_pdf),
+    '.eml': (_eml_page_count, _docprep_eml),
+    '.docx': (_word_page_count, _docprep_docx),
+    '.doc': (_word_page_count, _docprep_doc),
 }
 
 # Text extensions anonymized via plain replacement in ANONYMIZE bowls.
@@ -1849,6 +1945,318 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
     return True
 
 
+def _inbox_is_sidecar(source):
+    """True for files that travel with a convertible source document."""
+    if source.name.casefold().endswith('_pdf2md.json'):
+        return True
+    return (
+        source.suffix.lower() == '.md'
+        and _docprep_source_has_document(source)
+    )
+
+
+def _inbox_sidecar_candidates(source, cleaned_stem):
+    """Markup and pdf2md sidecars that belong to a source document."""
+    stems = dict.fromkeys((source.stem, cleaned_stem))
+    return [
+        candidate
+        for stem in stems
+        for candidate in (
+            source.parent / f"{stem}.md",
+            source.parent / f"{stem}_pdf2md.json",
+        )
+    ]
+
+
+def jev_settings(config_object):
+    """Read the [JEV] section with defaults."""
+    section = (
+        config_object['JEV'] if config_object.has_section('JEV') else {}
+    )
+    return {
+        'definitions_file': (
+            section.get('definitions_file', '') or ''
+        ).strip() or None,
+        'model': (section.get('model', '') or '').strip() or None,
+        'max_chars': int(section.get('max_chars', '8000')),
+        'min_confidence': float(section.get('min_confidence', '0') or '0'),
+    }
+
+
+def jev_definitions(path):
+    """Load JEV choice questions from an INI definitions file.
+
+    Every section except [INSTRUCTIONS] becomes one 'choice' question; the
+    lowercased section name is the question id and the frontmatter field.
+    """
+    defs = ConfigParser()
+    defs.optionxform = str
+    defs.read(path, encoding='utf-8')
+    questions = {}
+    for section in defs.sections():
+        if section == 'INSTRUCTIONS':
+            continue
+        question = section.casefold()
+        instructions = f'Assign the {question}.'
+        if defs.has_section('INSTRUCTIONS'):
+            instructions = defs.get(
+                'INSTRUCTIONS', question, raw=True, fallback=instructions
+            )
+        criteria = dict(defs.items(section, raw=True))
+        invalid = [name for name in criteria if ' ' in name]
+        if invalid:
+            raise ValueError(
+                f"JEV definitions {path}: [{section}] criteria must not "
+                f"contain spaces (tags): {', '.join(invalid)}"
+            )
+        questions[question] = {
+            'type': 'choice',
+            'instructions': instructions,
+            'criteria': criteria,
+        }
+    return questions
+
+
+def _md_frontmatter_fields(markup_path):
+    """Return existing frontmatter fields of a markdown file."""
+    lines = (
+        Path(markup_path)
+        .read_text(encoding='utf-8', errors='replace')
+        .splitlines()
+    )
+    fields = {}
+    if not lines or lines[0].strip() != '---':
+        return fields
+    last_key = None
+    for line in lines[1:]:
+        if line.strip() == '---':
+            break
+        stripped = line.strip()
+        if stripped.startswith('- '):
+            # List items belong to the preceding empty-value key.
+            if last_key is not None and fields.get(last_key) == '':
+                fields[last_key] = []
+            if isinstance(fields.get(last_key), list):
+                fields[last_key].append(stripped[2:].strip())
+            continue
+        key, sep, value = line.partition(':')
+        if sep:
+            fields[key.strip()] = value.strip()
+            last_key = key.strip()
+        else:
+            last_key = None
+    return fields
+
+
+def _md_update_frontmatter(markup_path, fields):
+    """Insert or update frontmatter fields at the top of a markdown file."""
+    path = Path(markup_path)
+    lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
+    existing = {}
+    body = lines
+    if lines and lines[0].strip() == '---':
+        for index in range(1, len(lines)):
+            if lines[index].strip() == '---':
+                body = lines[index + 1:]
+                existing = _md_frontmatter_fields(path)
+                break
+    merged = {
+        **existing,
+        **{key: value for key, value in fields.items() if value is not None},
+    }
+    block = ['---']
+    for key, value in merged.items():
+        if isinstance(value, list):
+            block.append(f'{key}:')
+            block.extend(f'- {item}' for item in value)
+        else:
+            block.append(f'{key}: {value}')
+    block += ['---', '']
+    path.write_text('\n'.join(block + body) + '\n', encoding='utf-8')
+
+
+# Markup files classified via JEV in the current run, reset by cinderellasort().
+_jev_classified = 0
+
+# Inbox files left unsorted or routed to !DEFAULT: name -> (bowl, crit).
+_inbox_proposals = {}
+
+
+def _inbox_record_proposal(nfile, markup):
+    """Remember an unsorted or !DEFAULT-routed file for the proposals INI."""
+    fields = _md_frontmatter_fields(markup) if markup else {}
+    proposed_bowl = fields.get('category') or '99_Unclassified'
+    document_type = fields.get('document_type')
+    crit = f';{document_type}' if document_type else Path(nfile).stem
+    _inbox_proposals[nfile] = (proposed_bowl, crit)
+
+
+def _write_inbox_proposals(targetdir, dryrun):
+    """Write sorting proposals for unsorted or !DEFAULT inbox files."""
+    if not _inbox_proposals:
+        return
+    slug = Path(str(targetdir).rstrip('/\\')).name or 'inbox'
+    path = Path(targetdir) / f'sorting-proposals_{slug}.ini'
+    if dryrun:
+        print(
+            f"  Proposals (dryrun): {path} "
+            f"({len(_inbox_proposals)} files)"
+        )
+        return
+    bowls = {}
+    for nfile in sorted(_inbox_proposals):
+        bowl, crit = _inbox_proposals[nfile]
+        bowls.setdefault(bowl, []).append((nfile, crit))
+    lines = [
+        '; Sorting proposals generated by cinderellasort BOWLS_INBOX',
+        '; Review and merge into your bowl criteria.',
+        '',
+    ]
+    for bowl in sorted(bowls):
+        lines.append(f'[{bowl}]')
+        for nfile, crit in bowls[bowl]:
+            lines.append(f'{nfile}={crit}')
+        lines.append('')
+    path.write_text('\n'.join(lines), encoding='utf-8')
+    message = (
+        f"Inbox proposals written: {path} "
+        f"({len(_inbox_proposals)} files)"
+    )
+    log_message(message, level="INFO")
+    print(message)
+
+
+def _jev_tag_markup(source, markup_path, config_object, dryrun):
+    """Classify a markup file via JEV and write the result as frontmatter."""
+    global _jev_classified
+    settings = jev_settings(config_object)
+    if not settings['definitions_file']:
+        return
+    markup_path = Path(markup_path)
+    if _md_frontmatter_fields(markup_path).get('category'):
+        return  # already classified
+    if dryrun:
+        print(f"  JEV (dryrun): classify {markup_path.name}")
+        return
+    questions = jev_definitions(settings['definitions_file'])
+    if not questions:
+        return
+    text = markup_path.read_text(encoding='utf-8', errors='replace')
+    state = {
+        'filename': Path(source).name,
+        'text': text[:settings['max_chars']],
+    }
+    try:
+        from wit_pytools.aitools import openrouter
+        answers = openrouter.decide(
+            state, questions, model=settings['model']
+        )
+    except Exception as e:
+        message = f"JEV: classification failed for {Path(source).name}: {e}"
+        log_message(message, level="ERROR")
+        print(message)
+        return
+    fields = {}
+    tags = []
+    for question, answer in answers.items():
+        if not isinstance(answer, dict) or answer.get('type') != 'choice':
+            continue
+        choice = answer.get('choice')
+        if not choice:
+            continue
+        confidence = answer.get('confidence')
+        if confidence is not None and confidence < settings['min_confidence']:
+            criteria = questions.get(question, {}).get('criteria', {})
+            for fallback in ('99_Unclassified', 'Unclassified', 'other'):
+                if fallback in criteria:
+                    choice = fallback
+                    break
+        fields[question] = choice
+        if confidence is not None:
+            fields[f'{question}_confidence'] = f'{confidence:.2f}'
+        tags.append(str(choice).replace(' ', '-'))
+    if not fields:
+        return
+    fields['tags'] = tags
+    _md_update_frontmatter(markup_path, fields)
+    _jev_classified += 1
+    message = f"JEV: {Path(source).name} -> {fields.get('category', '?')}"
+    log_message(message, level="INFO")
+    print(message)
+
+
+def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, skip_unmatched=True):
+    """Sort a file into an inbox bowl together with its markup sidecars.
+
+    Supported documents get a Markdown variant next to the source via the
+    shared Doc_prep converters; the bowl match then uses the cleaned
+    filename and the Markdown content instead of the original document.
+    """
+    source = file if isinstance(file, Path) else Path(os.path.join(sourcedir, str(file)))
+    # Sidecars are not sorted on their own; they move with the source document.
+    if not source.is_file() or _inbox_is_sidecar(source):
+        return
+    nfile = normalize_spaces(
+        cleanfilename(source.name, clean, clean_nocase, replacements)
+    )
+    cleaned_stem = Path(nfile).stem
+    log_message(_('Handling Inbox: {}').format(source), level="INFO")
+
+    # Create the markup variant for convertible documents.
+    markup_path = source.with_suffix('.md')
+    if (
+        source.suffix.lower() in DOCPREP_CONVERTERS
+        and not markup_path.is_file()
+    ):
+        try:
+            handle_docprep(
+                source, sourcedir, targetdir, '', clean, clean_nocase,
+                config_object, filemode, replacements, dryrun, overwrite,
+            )
+        except Exception as e:
+            log_message(
+                f"Inbox: markup conversion failed for {source.name}: {e}",
+                level="ERROR",
+            )
+    markup = markup_path if markup_path.is_file() else None
+
+    # JEV classification tags the markup before matching and moving.
+    if markup and source.suffix.lower() in DOCPREP_CONVERTERS:
+        _jev_tag_markup(source, markup, config_object, dryrun)
+
+    default_bowl = next(
+        (
+            bowl_name
+            for bowl_name, critlist in config_object.items('BOWLS_INBOX')
+            if '!DEFAULT' in critlist
+        ),
+        None,
+    )
+    bowl = bowldir_inbox(nfile, config_object, markup_path=markup)
+    if not bowl or bowl.strip() == '':
+        if skip_unmatched:
+            print(f"  No inbox bowl match, skipping: {nfile}")
+            _inbox_record_proposal(nfile, markup)
+            return
+        bowl = ''
+    if default_bowl and bowl.lstrip('/') == default_bowl:
+        _inbox_record_proposal(nfile, markup)
+    destdir = targetdir + bowl
+    movefile(sourcedir, source, destdir, nfile, filemode, overwrite=overwrite, dryrun=dryrun)
+    # Move markup and pdf2md sidecars along with the document.
+    for sidecar in _inbox_sidecar_candidates(source, cleaned_stem):
+        if sidecar == source or not sidecar.is_file():
+            continue
+        if sidecar.suffix.lower() == '.md':
+            sidecar_name = f"{cleaned_stem}.md"
+        else:
+            sidecar_name = f"{cleaned_stem}_pdf2md.json"
+        movefile(
+            sourcedir, sidecar.name, destdir, sidecar_name, filemode,
+            overwrite=overwrite, dryrun=dryrun,
+        )
+
+
 GEN_IMG_REFERENCE_SUFFIXES = ('.png', '.jpg', '.jpeg', '.webp')
 GEN_IMG_GENERAL_REFERENCE = 'reference'
 GEN_IMG_PROMPT_SUFFIX = '_prompt'
@@ -2010,6 +2418,16 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
 
     if not file_matches_type:
         print(f" - Skipping file {file.name}: not a specified type ({ftype_sort})")
+        return
+
+    ## Handle Inbox bowls (markup conversion + sorting in one pass) ##
+    if bowllist_inbox(config_object):
+        print("Handle Inbox Bowls")
+        handle_inbox(
+            file, sourcedir, targetdir, clean, clean_nocase, config_object,
+            filemode, replacements, dryrun, overwrite,
+            skip_unmatched=skip_unmatched,
+        )
         return
 
     ## Handle Doc_prep Bowls (conversion before sorting) ##
@@ -2176,8 +2594,10 @@ def cinderellasort(
         dryrun=False,
         common_configfile=None):
     #TODO check configfile for valid ini file
-    global _gen_img_jobs_done
+    global _gen_img_jobs_done, _jev_classified
     _gen_img_jobs_done = 0
+    _jev_classified = 0
+    _inbox_proposals.clear()
     files = ""
     time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
@@ -2463,3 +2883,12 @@ def cinderellasort(
     if clear_empty_directories:
         print(f"\n## Removing empty directories:")
         rmemptydir(sourcedir,dryrun)
+
+    _write_inbox_proposals(targetdir, dryrun)
+
+    if _jev_classified:
+        print("\n## JEV")
+        print(
+            "Please remember to update your criteria for files sorted to "
+            "!DEFAULT to improve sorting."
+        )

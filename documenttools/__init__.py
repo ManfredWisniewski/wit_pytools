@@ -47,14 +47,20 @@ try:
 except ImportError:  # pragma: no cover
     pdfplumber = None
 
-_LAZY_EXPORTS = {"pdf_to_markdown", "pdf_to_markdown_text"}
+_LAZY_EXPORTS = {
+    "pdf_to_markdown": "pdf2md",
+    "pdf_to_markdown_text": "pdf2md",
+    "docx_to_markdown": "doc2md",
+    "doc_to_markdown": "doc2md",
+}
 
 
 def __getattr__(name: str):
     if name in _LAZY_EXPORTS:
         import importlib
 
-        return getattr(importlib.import_module(f"{__name__}.pdf2md"), name)
+        module = importlib.import_module(f"{__name__}.{_LAZY_EXPORTS[name]}")
+        return getattr(module, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

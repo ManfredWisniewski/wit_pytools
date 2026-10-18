@@ -1325,5 +1325,577 @@ def test_gen_img_settings_defaults():
     }
 
 
+# --- Inbox bowls -----------------------------------------------------------
+
+
+def _inbox_setup(
+    tmp_path,
+    *,
+    inbox_bowls=None,
+    pdf_name="scan001.pdf",
+    extra_files=None,
+    settings_section=None,
+    jev_section=None,
+    ftype_sort=".pdf",
+):
+    source_dir = tmp_path / "source"
+    target_dir = tmp_path / "target"
+    source_dir.mkdir()
+    target_dir.mkdir()
+    source_file = source_dir / pdf_name
+    source_file.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(TEST_PDF, source_file)
+    for extra in extra_files or ():
+        path = source_dir / extra
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("extra", encoding="utf-8")
+    config = ConfigParser()
+    config.optionxform = str
+    config["TABLE"] = {
+        "sourcedir": str(source_dir),
+        "targetdir": str(target_dir),
+        "ftype_sort": ftype_sort,
+        "filemode": "win",
+    }
+    config["SETTINGS"] = {"overwrite": "false", **(settings_section or {})}
+    config["BOWLS_INBOX"] = inbox_bowls or {"Rechnungen": "Rechnung"}
+    if jev_section is not None:
+        definitions_path = tmp_path / "jev_definitions.ini"
+        definitions = ConfigParser()
+        definitions.optionxform = str
+        definitions["CATEGORY"] = {
+            "Rest": "Everything else.",
+            "99_Unclassified": "Cannot be assigned.",
+        }
+        definitions["DOCUMENT_TYPE"] = {"other": "No specific type."}
+        with definitions_path.open("w", encoding="utf-8") as fp:
+            definitions.write(fp)
+        config["JEV"] = {
+            "definitions_file": str(definitions_path),
+            **jev_section,
+        }
+    config_path = tmp_path / "inbox.ini"
+    with config_path.open("w", encoding="utf-8") as fp:
+        config.write(fp)
+    return source_dir, target_dir, config_path
+
+
+def _fake_decide(answers, calls=None, fail=None):
+    def decide(state, questions, model=None, **kwargs):
+        if calls is not None:
+            calls.append({"state": state, "questions": questions, "model": model})
+        if fail:
+            raise RuntimeError(fail)
+        return answers
+    return decide
+
+
+JEV_ANSWERS = {
+    "category": {
+        "type": "choice",
+        "choice": "02_Finance_And_Banking",
+        "confidence": 0.9,
+    },
+    "document_type": {
+        "type": "choice",
+        "choice": "invoice",
+        "confidence": 0.8,
+    },
+}
+
+
+def _fake_converter_with_content(content):
+    def convert(source, output_path, settings):
+        output_path.write_text(content, encoding="utf-8")
+        return output_path
+    return convert
+
+
+def _patch_inbox_converter(monkeypatch, content="# converted"):
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count, _fake_converter_with_content(content)),
+    )
+
+
+def test_inbox_sorts_pdf_with_markup_and_sidecars(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        pdf_name="Rechnung 2026.pdf",
+        extra_files=["Rechnung 2026_pdf2md.json"],
+    )
+    _patch_inbox_converter(monkeypatch)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    bowl = target_dir / "Rechnungen"
+    assert (bowl / "Rechnung 2026.pdf").is_file()
+    assert (bowl / "Rechnung 2026.md").read_text(encoding="utf-8") == "# converted"
+    assert (bowl / "Rechnung 2026_pdf2md.json").is_file()
+    assert not (source_dir / "Rechnung 2026.pdf").exists()
+    assert not (source_dir / "Rechnung 2026.md").exists()
+    assert not (source_dir / "Rechnung 2026_pdf2md.json").exists()
+
+
+def test_inbox_content_match_uses_markup(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path, inbox_bowls={"Rechnungen": ";rechnung"}
+    )
+    _patch_inbox_converter(monkeypatch, "# Doc\nRECHNUNG 12345")
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "Rechnungen" / "scan001.pdf").is_file()
+    assert (target_dir / "Rechnungen" / "scan001.md").is_file()
+
+
+def test_inbox_unmatched_file_and_markup_stay(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(tmp_path)
+    _patch_inbox_converter(monkeypatch, "nothing relevant")
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (source_dir / "scan001.pdf").is_file()
+    assert (source_dir / "scan001.md").is_file()
+    assert not (target_dir / "Rechnungen" / "scan001.pdf").exists()
+
+
+def test_inbox_default_bowl_catches_unmatched(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Rechnungen": "Rechnung", "Rest": "!DEFAULT"},
+    )
+    _patch_inbox_converter(monkeypatch, "nothing relevant")
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "Rest" / "scan001.pdf").is_file()
+    assert (target_dir / "Rest" / "scan001.md").is_file()
+
+
+def test_inbox_sidecar_is_not_sorted_alone(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        pdf_name="Rechnung 2026.pdf",
+        extra_files=["Rechnung 2026.md"],
+        ftype_sort=".pdf,.md",
+    )
+    calls = []
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count, _fake_converter(calls)),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    bowl = target_dir / "Rechnungen"
+    assert calls == [], "existing markup must not be re-converted"
+    assert (bowl / "Rechnung 2026.pdf").is_file()
+    assert (bowl / "Rechnung 2026.md").read_text(encoding="utf-8") == "extra"
+    assert not (source_dir / "Rechnung 2026.pdf").exists()
+    assert not (source_dir / "Rechnung 2026.md").exists()
+
+
+def test_inbox_dryrun_converts_and_moves_nothing(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path, pdf_name="Rechnung 2026.pdf"
+    )
+    calls = []
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count, _fake_converter(calls)),
+    )
+
+    cinderellasort(str(config_path), dryrun=True)
+
+    assert calls == []
+    assert (source_dir / "Rechnung 2026.pdf").is_file()
+    assert not (source_dir / "Rechnung 2026.md").exists()
+    assert not (target_dir / "Rechnungen" / "Rechnung 2026.pdf").exists()
+
+
+def test_bowldir_inbox_filename_and_default():
+    config = ConfigParser()
+    config.optionxform = str
+    config["BOWLS_INBOX"] = {"Rechnungen": "Rechnung", "Rest": "!DEFAULT"}
+    assert cs.bowldir_inbox("Rechnung x.pdf", config) == "/Rechnungen"
+    assert cs.bowldir_inbox("other.pdf", config) == "/Rest"
+
+
+def test_bowldir_inbox_markup_content(tmp_path):
+    config = ConfigParser()
+    config.optionxform = str
+    config["BOWLS_INBOX"] = {"Rechnungen": ";rechnung", "Rest": "!DEFAULT"}
+    markup = tmp_path / "scan.md"
+    markup.write_text("Some rechnung text", encoding="utf-8")
+    assert cs.bowldir_inbox("scan.pdf", config, markup_path=markup) == "/Rechnungen"
+    assert cs.bowldir_inbox("scan.pdf", config, markup_path=None) == "/Rest"
+
+
+def test_bowldir_inbox_filename_crit_ignores_content(tmp_path):
+    config = ConfigParser()
+    config.optionxform = str
+    config["BOWLS_INBOX"] = {"Rechnungen": "Rechnung", "Rest": "!DEFAULT"}
+    markup = tmp_path / "vertrag.md"
+    markup.write_text("Anschrift und Rechnungsadresse", encoding="utf-8")
+    # "Rechnung" appears in the markup but is a filename-only criterion
+    assert cs.bowldir_inbox("vertrag.pdf", config, markup_path=markup) == "/Rest"
+
+
+def test_bowldir_inbox_content_crit_ignores_filename(tmp_path):
+    config = ConfigParser()
+    config.optionxform = str
+    config["BOWLS_INBOX"] = {"Kunde": ";12302", "Rest": "!DEFAULT"}
+    markup = tmp_path / "doc.md"
+    markup.write_text("nothing", encoding="utf-8")
+    # "12302" appears in the filename but is a content-only criterion
+    assert cs.bowldir_inbox("12302 scan.pdf", config, markup_path=markup) == "/Rest"
+
+
+def test_bowldir_inbox_mixed_crits(tmp_path):
+    config = ConfigParser()
+    config.optionxform = str
+    config["BOWLS_INBOX"] = {"Mixed": "alpha;beta"}
+    markup = tmp_path / "scan.md"
+    markup.write_text("contains beta only", encoding="utf-8")
+    assert cs.bowldir_inbox("alpha file.pdf", config) == "/Mixed"
+    assert cs.bowldir_inbox("scan.pdf", config, markup_path=markup) == "/Mixed"
+    assert cs.bowldir_inbox("beta file.pdf", config, markup_path=markup) == "/Mixed"
+    assert cs.bowldir_inbox("scan.pdf", config) == ""
+
+
+def test_inbox_jev_tags_markup_before_move(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path, pdf_name="Rechnung 2026.pdf", jev_section={}
+    )
+    calls = []
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(JEV_ANSWERS, calls),
+    )
+    _patch_inbox_converter(monkeypatch)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert len(calls) == 1
+    assert calls[0]["state"]["filename"] == "Rechnung 2026.pdf"
+    markup = (target_dir / "Rechnungen" / "Rechnung 2026.md").read_text(encoding="utf-8")
+    assert markup.startswith("---")
+    assert "category: 02_Finance_And_Banking" in markup
+    assert "document_type: invoice" in markup
+    assert "category_confidence: 0.90" in markup
+    assert "tags:\n- 02_Finance_And_Banking\n- invoice" in markup
+    assert "# converted" in markup
+
+
+def test_inbox_jev_skips_existing_classification(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        pdf_name="Rechnung 2026.pdf",
+        extra_files=["Rechnung 2026.md"],
+        jev_section={},
+    )
+    (source_dir / "Rechnung 2026.md").write_text(
+        "---\ncategory: 03_Insurance\n---\n\nold", encoding="utf-8"
+    )
+    calls = []
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(JEV_ANSWERS, calls),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert calls == [], "existing category frontmatter must skip JEV"
+    markup = (target_dir / "Rechnungen" / "Rechnung 2026.md").read_text(encoding="utf-8")
+    assert "category: 03_Insurance" in markup
+
+
+def test_jev_definitions_rejects_spaced_criteria(tmp_path):
+    definitions = ConfigParser()
+    definitions.optionxform = str
+    definitions["CLASSIFICATION"] = {
+        "intern": "Internal.",
+        "streng vertraulich": "Strict.",
+    }
+    path = tmp_path / "defs.ini"
+    with path.open("w", encoding="utf-8") as fp:
+        definitions.write(fp)
+
+    with pytest.raises(ValueError, match="streng vertraulich"):
+        cs.jev_definitions(path)
+
+
+def test_inbox_jev_tags_replace_spaces(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path, pdf_name="Rechnung 2026.pdf", jev_section={}
+    )
+    answers = {
+        **JEV_ANSWERS,
+        "classification": {
+            "type": "choice",
+            "choice": "streng vertraulich",
+            "confidence": 0.9,
+        },
+    }
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(answers),
+    )
+    _patch_inbox_converter(monkeypatch)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    markup = (target_dir / "Rechnungen" / "Rechnung 2026.md").read_text(
+        encoding="utf-8"
+    )
+    assert "classification: streng vertraulich" in markup
+    assert "- streng-vertraulich" in markup
+
+
+def test_inbox_jev_failure_still_sorts(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path, pdf_name="Rechnung 2026.pdf", jev_section={}
+    )
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide({}, fail="api down"),
+    )
+    _patch_inbox_converter(monkeypatch)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "Rechnungen" / "Rechnung 2026.pdf").is_file()
+
+
+def test_inbox_jev_min_confidence(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        pdf_name="Rechnung 2026.pdf",
+        jev_section={"min_confidence": "0.95"},
+    )
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(JEV_ANSWERS),
+    )
+    _patch_inbox_converter(monkeypatch)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    markup = (target_dir / "Rechnungen" / "Rechnung 2026.md").read_text(encoding="utf-8")
+    assert "category: 99_Unclassified" in markup
+    assert "document_type: other" in markup
+
+
+def test_md_update_frontmatter_insert_and_merge(tmp_path):
+    markup = tmp_path / "doc.md"
+    markup.write_text("# title\nbody", encoding="utf-8")
+    cs._md_update_frontmatter(markup, {"category": "01_X"})
+    text = markup.read_text(encoding="utf-8")
+    assert text.startswith("---\ncategory: 01_X\n---\n\n# title")
+
+    cs._md_update_frontmatter(
+        markup, {"tags": ["a", "b"], "category": "02_Y"}
+    )
+    text = markup.read_text(encoding="utf-8")
+    assert "category: 02_Y" in text
+    assert "tags:\n- a\n- b" in text
+    assert text.count("---") == 2
+
+
+def test_md_update_frontmatter_merge_preserves_list(tmp_path):
+    markup = tmp_path / "doc.md"
+    markup.write_text(
+        "---\ncategory: 01_X\ntags:\n- a\n- b\n---\n\nbody",
+        encoding="utf-8",
+    )
+    cs._md_update_frontmatter(markup, {"category": "02_Y"})
+    text = markup.read_text(encoding="utf-8")
+    assert "category: 02_Y" in text
+    assert "tags:\n- a\n- b" in text
+
+
+def test_inbox_sorts_eml_with_markup(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Rechnungen": ";rechnung"},
+        extra_files=["newsletter.eml"],
+        ftype_sort=".eml",
+        jev_section={},
+    )
+    (source_dir / "newsletter.eml").write_text(
+        "From: shop@example.com\n"
+        "To: me@example.com\n"
+        "Subject: Rechnung 123\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Sehr geehrte Kunden, anbei die Rechnung.",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(JEV_ANSWERS),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    bowl = target_dir / "Rechnungen"
+    assert (bowl / "newsletter.eml").is_file()
+    markup = (bowl / "newsletter.md").read_text(encoding="utf-8")
+    assert "Rechnung 123" in markup
+    assert "shop@example.com" in markup
+    assert "Sehr geehrte Kunden" in markup
+    assert "category: 02_Finance_And_Banking" in markup
+
+
+def _write_docx(path, paragraphs):
+    """Write a minimal valid .docx containing the given paragraphs."""
+    import zipfile
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0"?>'
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+            '</Types>',
+        )
+        z.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+            '</Relationships>',
+        )
+        body = "".join(
+            f"<w:p><w:r><w:t>{p}</w:t></w:r></w:p>" for p in paragraphs
+        )
+        z.writestr(
+            "word/document.xml",
+            '<?xml version="1.0"?>'
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            f"<w:body>{body}</w:body></w:document>",
+        )
+
+
+def test_inbox_sorts_docx_with_markup(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Rechnungen": ";rechnung"},
+        ftype_sort=".docx",
+        jev_section={},
+    )
+    _write_docx(source_dir / "brief.docx", ["Anbei die Rechnung 123"])
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(JEV_ANSWERS),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    bowl = target_dir / "Rechnungen"
+    assert (bowl / "brief.docx").is_file()
+    markup = (bowl / "brief.md").read_text(encoding="utf-8")
+    assert "Rechnung 123" in markup
+    assert "category: 02_Finance_And_Banking" in markup
+
+
+def test_inbox_doc_conversion_failure_still_sorts_by_name(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Rechnungen": "Rechnung"},
+        extra_files=["Rechnung alt.doc"],
+        ftype_sort=".doc",
+    )
+    monkeypatch.setattr(
+        "wit_pytools.documenttools.doc_to_markdown",
+        lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("no soffice")),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    bowl = target_dir / "Rechnungen"
+    assert (bowl / "Rechnung alt.doc").is_file()
+    assert not (bowl / "Rechnung alt.md").exists()
+
+
+def test_inbox_proposals_written_for_skipped_file(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(tmp_path)
+    _patch_inbox_converter(monkeypatch)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    proposals = target_dir / "sorting-proposals_target.ini"
+    assert proposals.is_file()
+    text = proposals.read_text(encoding="utf-8")
+    assert "[99_Unclassified]" in text
+    assert "scan001.pdf=scan001" in text
+
+
+def test_inbox_proposals_written_for_default_bowl(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Rechnungen": "Rechnung", "Rest": "!DEFAULT"},
+        jev_section={},
+    )
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(JEV_ANSWERS),
+    )
+    _patch_inbox_converter(monkeypatch)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "Rest" / "scan001.pdf").is_file()
+    text = (target_dir / "sorting-proposals_target.ini").read_text(
+        encoding="utf-8"
+    )
+    assert "[02_Finance_And_Banking]" in text
+    assert "scan001.pdf=;invoice" in text
+
+
+def test_inbox_no_proposals_when_all_sorted(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path, pdf_name="Rechnung 2026.pdf"
+    )
+    _patch_inbox_converter(monkeypatch)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not (target_dir / "sorting-proposals_target.ini").exists()
+
+
+def test_jev_run_prints_default_bowl_reminder(tmp_path, monkeypatch, capsys):
+    _inbox_setup(
+        tmp_path, pdf_name="Rechnung 2026.pdf", jev_section={}
+    )
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(JEV_ANSWERS),
+    )
+    _patch_inbox_converter(monkeypatch)
+    config_path = tmp_path / "inbox.ini"
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    out = capsys.readouterr().out
+    assert "update your criteria for files sorted to !DEFAULT" in out
+
+
+def test_run_without_jev_prints_no_reminder(tmp_path, monkeypatch, capsys):
+    _inbox_setup(tmp_path, pdf_name="Rechnung 2026.pdf")
+    _patch_inbox_converter(monkeypatch)
+    config_path = tmp_path / "inbox.ini"
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    out = capsys.readouterr().out
+    assert "update your criteria for files sorted to !DEFAULT" not in out
+
+
 if __name__ == '__main__':
     pytest.main()

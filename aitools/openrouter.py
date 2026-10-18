@@ -67,7 +67,10 @@ def request(
     api_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Call an OpenRouter endpoint and return the parsed JSON body."""
-    url = f"{BASE_URL}/{endpoint.lstrip('/')}"
+    if endpoint.startswith(("http://", "https://")):
+        url = endpoint
+    else:
+        url = f"{BASE_URL}/{endpoint.lstrip('/')}"
     log_message(f"OpenRouter {method} {endpoint}", level="INFO")
     response = requests.request(
         method,
@@ -114,6 +117,42 @@ def chat(
         return body["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError) as exc:
         raise RuntimeError(f"Unexpected chat response: {body}") from exc
+
+
+def decide(
+    state: Union[str, Dict[str, Any]],
+    questions: Dict[str, Any],
+    model: Optional[str] = None,
+    *,
+    api_key: Optional[str] = None,
+    timeout: int = CHAT_TIMEOUT,
+    **params: Any,
+) -> Dict[str, Any]:
+    """Call the Decisions API (Jev) and return the typed answers mapping.
+
+    ``questions`` maps question IDs to primitives, e.g.
+    ``{"category": {"type": "choice", "instructions": "...", "criteria":
+    {"a": "desc", ...}}}``. Each answer carries a ``type`` field
+    (``choice``/``noul``/``score``/``box``) plus the typed value.
+    """
+    payload: Dict[str, Any] = {
+        "model": model
+        or os.environ.get("OPENROUTER_JEV_MODEL")
+        or "typesafe/jev-1.14",
+        "state": state,
+        "questions": questions,
+    }
+    payload.update({key: value for key, value in params.items() if value is not None})
+    body = request(
+        "https://openrouter.ai/api/alpha/decisions",
+        payload,
+        timeout=timeout,
+        api_key=api_key,
+    )
+    answers = body.get("answers")
+    if not isinstance(answers, dict):
+        raise RuntimeError(f"Unexpected decisions response: {body}")
+    return answers
 
 
 def list_models(

@@ -11,7 +11,7 @@ The implementation currently lives in `wit_pytools/cinderellasort.py`; this dire
 - **Source directory** (`sourcedir`): files are read from here and its subdirectories.
 - **Target directory** (`targetdir`): normally the root below which bowls are created; for Doc_prep it is the separate root for moved originals.
 - **Bowl**: a target subdirectory plus the criteria that route files into it. Bowl name = key, criteria = comma-separated values. Bowl names may contain `/` to address nested directories.
-- **Bowl type**: a configuration section that defines how criteria are evaluated (`BOWLS`, `BOWLS_EMAIL`, `BOWLS_GPS`, `BOWLS_GPS_TAGS`, `BOWLS_DOCPREP`, `BOWLS_ANONYMIZE`, `BOWLS_GEN_IMG`).
+- **Bowl type**: a configuration section that defines how criteria are evaluated (`BOWLS`, `BOWLS_EMAIL`, `BOWLS_GPS`, `BOWLS_GPS_TAGS`, `BOWLS_DOCPREP`, `BOWLS_ANONYMIZE`, `BOWLS_GEN_IMG`, `BOWLS_INBOX`).
 - **Special tokens** in criteria: `!DEFAULT` marks the fallback bowl of a section; `!MALFORMED` (`BOWLS_EMAIL` only) receives files whose generated name has no valid e-mail address.
 - **File modes**: `win` moves with `os.rename`; `nc` moves through Nextcloud (`occ files:move`) and rescans directories so Nextcloud indexes the changes.
 - **Run modes**: all-files mode walks `sourcedir`; `single` mode handles one file passed by a Nextcloud Flow.
@@ -67,9 +67,13 @@ See "Anonymize bowls" below.
 
 See "GEN_IMG bowls" below.
 
+### `[BOWLS_INBOX]`
+
+See "Inbox bowls" below.
+
 ### Common rules
 
-In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, `BOWLS_DOCPREP`, `BOWLS_ANONYMIZE`, and `BOWLS_GEN_IMG` of the central `/etc/nctools/nctools.ini` are merged into the project configuration at runtime (`merge_common_rules`). Criteria of bowls present in both files are combined and deduplicated; the project file is never modified. `[DOCPREP]`, `[ANONYMIZE]`, and `[GEN_IMG]` are project-specific and not merged.
+In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, `BOWLS_DOCPREP`, `BOWLS_ANONYMIZE`, `BOWLS_GEN_IMG`, and `BOWLS_INBOX` of the central `/etc/nctools/nctools.ini` are merged into the project configuration at runtime (`merge_common_rules`). Criteria of bowls present in both files are combined and deduplicated; the project file is never modified. `[DOCPREP]`, `[ANONYMIZE]`, and `[GEN_IMG]` are project-specific and not merged.
 
 ## Processing order
 
@@ -92,14 +96,15 @@ In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, `BOWLS_DOCPREP`, `BOWLS_ANONYM
 `handlefile` evaluates bowl types in this fixed priority and stops at the first that handles the file:
 
 1. File extension not in `ftype_sort` → skip.
-2. **Doc_prep**: extension has a registered converter and the cleaned filename matches a `[BOWLS_DOCPREP]` criterion → `handle_docprep`.
-3. **GEN_IMG**: `<slug>_prompt.txt` matching a `[BOWLS_GEN_IMG]` criterion → `handle_gen_img`.
-4. `.pdf` → `handle_pdf` (uses `[BOWLS]`, optional content check).
-5. `[BOWLS_EMAIL]` configured → `handle_emails`.
-6. `[BOWLS_GPS_TAGS]` configured and `set_tags=true` → `handle_gps_tags` (does not stop processing).
-7. `[BOWLS_GPS]` configured → `handle_gps`; files without GPS data are renamed `*_nogps`.
-8. `[BOWLS]` → `bowldir`; unmatched files are skipped (`skipunmatched`) or moved to `targetdir`.
-9. **Anonymize**: file still in `sourcedir` and the cleaned filename matches a `[BOWLS_ANONYMIZE]` criterion → marked for the post-run anonymization pass (`process_pending_anonymization`).
+2. **Inbox**: `[BOWLS_INBOX]` configured → `handle_inbox` handles every sortable file (see "Inbox bowls" below).
+3. **Doc_prep**: extension has a registered converter and the cleaned filename matches a `[BOWLS_DOCPREP]` criterion → `handle_docprep`.
+4. **GEN_IMG**: `<slug>_prompt.txt` matching a `[BOWLS_GEN_IMG]` criterion → `handle_gen_img`.
+5. `.pdf` → `handle_pdf` (uses `[BOWLS]`, optional content check).
+6. `[BOWLS_EMAIL]` configured → `handle_emails`.
+7. `[BOWLS_GPS_TAGS]` configured and `set_tags=true` → `handle_gps_tags` (does not stop processing).
+8. `[BOWLS_GPS]` configured → `handle_gps`; files without GPS data are renamed `*_nogps`.
+9. `[BOWLS]` → `bowldir`; unmatched files are skipped (`skipunmatched`) or moved to `targetdir`.
+10. **Anonymize**: file still in `sourcedir` and the cleaned filename matches a `[BOWLS_ANONYMIZE]` criterion → marked for the post-run anonymization pass (`process_pending_anonymization`).
 
 Decision: anonymize bowls run last. A file moved by any earlier bowl type is
 gone from `sourcedir` and is never anonymized — which bowl wins is decided
@@ -146,7 +151,7 @@ sync-deletes=false     ; remove Markdown/sidecars without a registered source do
 4. An existing `.md` beside the source skips conversion, no API cost. A `.md` found below `targetdir` (leftover from older versions) is moved beside the source instead.
 5. Otherwise convert with `documenttools.pdf_to_markdown` (`yes=True`, no interactive cost prompt), writing `.md` and `_pdf2md.json` beside the source.
 6. The original stays in the source directory. Conversion errors leave it untouched.
-7. Before normal sorting, `sync-deletes=true` removes `.md`/`_pdf2md.json` files in `sourcedir` whose registered source document no longer exists. Source documents are identified by every extension registered in `DOCPREP_CONVERTERS`, currently `.pdf`; future converters automatically extend this check. Renames are intentionally not detected because a rename cannot be distinguished from deleting one document and adding a similar one.
+7. Before normal sorting, `sync-deletes=true` removes `.md`/`_pdf2md.json` files in `sourcedir` whose registered source document no longer exists. Source documents are identified by every extension registered in `DOCPREP_CONVERTERS` (`.pdf`, `.eml`, `.docx`, `.doc`); future converters automatically extend this check. Renames are intentionally not detected because a rename cannot be distinguished from deleting one document and adding a similar one.
 8. If anonymize bowls are configured, approved mappings are applied to mirrored target directory names before processing and existing unanonymized target directories are renamed or merged into the anonymized directory.
 
 Decision: the produced `.md` beside the original is the only output mode
@@ -216,7 +221,7 @@ new,Person-def,Max Beispiel,name,document.md,line 8,1,,
 
 ### Converters
 
-`DOCPREP_CONVERTERS` maps an extension to `(page_counter, converter)`. Only `.pdf` is registered. Additional formats (for example `docx` → Markdown, `xlsx` → CSV) are added by registering an entry; the dispatch and move logic stay unchanged.
+`DOCPREP_CONVERTERS` maps an extension to `(page_counter, converter)`. `.pdf` converts via `documenttools.pdf_to_markdown`, `.eml` via `mailtools.eml_to_markdown` (headers + body text, no API call), `.docx` via `documenttools.docx_to_markdown` (mammoth, no API call), `.doc` via `documenttools.doc_to_markdown` (LibreOffice `soffice` headless; fails gracefully if absent). Additional formats (for example `docx` → Markdown, `xlsx` → CSV) are added by registering an entry; the dispatch and move logic stay unchanged.
 
 ### Non-goals
 
@@ -270,6 +275,72 @@ For a prompt `<slug>_prompt.txt` in `sourcedir` (recursive); `<slug>` is the job
 - No moving or deleting of prompt files.
 - Existing sidecars do not prevent regeneration; each run uses the next free enumeration.
 
+## Inbox bowls
+
+Inbox is a bowl type that combines markup creation, JEV classification, and sorting in one pass — the INBOX_SORT process for a directory of unsorted files. Every sortable file is evaluated: documents with a registered `DOCPREP_CONVERTERS` converter first get a `.md` variant next to the source (same conversion machinery and `[DOCPREP]` settings as `handle_docprep`, including existing-markup reuse, `max_pages`, and the `_pdf2md.json` sidecar). The bowl match then runs on the cleaned filename and — instead of the `check_content` PDF text search — on the content of the `.md` variant, when one exists.
+
+### Configuration
+
+```ini
+[BOWLS_INBOX]
+Rechnungen\FAW=Rechnung RG;jp18,zooplus   ; filename crits ; content crits
+Rechnungen\WIT=;12302,K1176348023         ; content-only bowl
+Rechnungen=Rechnung,Invoice               ; filename-only bowl
+Rest=!DEFAULT
+
+[DOCPREP]                  ; shared with Doc_prep bowls
+mode=vision
+max_pages=50
+sidecar=true
+
+[JEV]                      ; optional markup classification
+definitions_file=P:\sort\jev-categories-wit.ini   ; enables JEV when set
+model=typesafe/jev-1.14    ; empty: OPENROUTER_JEV_MODEL, then jev-1.14
+max_chars=8000             ; markup characters sent as JEV state
+min_confidence=0.0         ; below this, choice is replaced by the fallback
+```
+
+The definitions INI provides the JEV `choice` criteria. Every section
+except `[INSTRUCTIONS]` becomes one question; the lowercased section name
+is the question id and the frontmatter field. `[INSTRUCTIONS]` holds the
+prompt text per question id:
+
+```ini
+[INSTRUCTIONS]
+category=Assign exactly ONE primary category...
+document_type=Assign the document type...
+classification=Assign the ISO 4669-1 marking level...
+
+[CATEGORY]
+Finanzen=Finance and accounting: ...
+...
+
+[DOCUMENT_TYPE]
+Eingangsrechnung=Incoming invoice...
+...
+
+[CLASSIFICATION]
+oeffentlich=Public information...
+intern=...
+```
+
+Criteria are split at the first `;`: left of `;` are filename criteria, right
+of `;` are content criteria matched against the `.md` markup. No `;` means
+filename-only. General terms belong to the filename group (so `Rechnung` does
+not hit `Rechnungsadresse` in document text), specific tokens like customer
+numbers belong to the content group.
+
+### Behavior per file
+
+1. `*_pdf2md.json` files and `.md` files that have a convertible source beside them are sidecars: they are never sorted on their own and travel with their source document.
+2. Converter-supported files whose `.md` is missing are converted beside the source (conversion failures are logged and leave the file sortable by filename only).
+3. With `[JEV]` configured, the markup of every converter-supported file is classified via the OpenRouter Decisions API before matching, so every document gets tags. The answers are written as frontmatter fields (one per question, e.g. `category`, `document_type`, `classification`, plus `*_confidence`; `tags` is a YAML list of all choices in Obsidian style) into the `.md`; files that already carry a `category` field are skipped, so re-runs cost nothing. Because the frontmatter is part of the markup, bowl content criteria can match `category: 02_...` or tag strings directly. A markup whose source has no registered converter (e.g. a standalone `.md`) is not classified.
+4. Matching: first the filename criteria against the cleaned filename (substring, case-sensitive, like `bowldir`), then the content criteria against the `.md` content (substring, case-insensitive); `!DEFAULT` marks the fallback bowl.
+5. On a match the original moves to the bowl together with its `.md` and `*_pdf2md.json` sidecars; sidecars are renamed to the cleaned stem.
+6. No match: the file and its markup stay in the source (`skipunmatched`); with `skipunmatched=false` they move to `targetdir` base.
+7. After the run, files that stayed unsorted or landed in the `!DEFAULT` bowl are collected into `sorting-proposals_<targetdir-name>.ini` in `targetdir`: one section per proposed bowl (the JEV `category`, else `99_Unclassified`), each file mapped to a suggested criterion (`;document_type` content crit for classified files, cleaned stem as filename crit otherwise).
+8. `[BOWLS_INBOX]` claims every sortable file — when configured it runs before all other bowl types, so it should not be combined with `[BOWLS_DOCPREP]` or `[BOWLS]` for the same files.
+
 ## Functions
 
 Configuration and rules:
@@ -280,10 +351,12 @@ Configuration and rules:
 - `docprep_settings(config_object)` — `[DOCPREP]` with defaults.
 - `anonymize_settings(config_object)` — `[ANONYMIZE]` with defaults; adds `enabled` (`BOWLS_ANONYMIZE` non-empty) and `source_markers` used for orphan detection.
 - `gen_img_settings(config_object)` — `[GEN_IMG]` with defaults.
+- `jev_settings(config_object)` — `[JEV]` with defaults.
+- `jev_definitions(path)` — build JEV `choice` questions from a definitions INI (`[CATEGORIES]`, `[DOCUMENT_TYPES]`, `[INSTRUCTIONS]`).
 
 Bowl listing:
 
-- `bowllist`, `bowllist_email`, `bowllist_gps`, `bowllist_gps_tags`, `bowllist_docprep`, `bowllist_anonymize`, `bowllist_gen_img`.
+- `bowllist`, `bowllist_email`, `bowllist_gps`, `bowllist_gps_tags`, `bowllist_docprep`, `bowllist_anonymize`, `bowllist_gen_img`, `bowllist_inbox`.
 
 Bowl matching (return `'/<bowl>'` or `''`):
 
@@ -294,6 +367,7 @@ Bowl matching (return `'/<bowl>'` or `''`):
 - `bowldir_docprep(file, config_object)`
 - `bowldir_anonymize(file, config_object)`
 - `bowldir_gen_img(file, config_object)`; `is_gen_img_prompt(file)` accepts only `<slug>_prompt.txt`; `gen_img_slug(file)` returns `<slug>`; `gen_img_reference(directory, slug)` resolves the slug or general reference image.
+- `bowldir_inbox(file, config_object, markup_path=None)` — like `bowldir`, but the content pass searches the `.md` markup file instead of the PDF.
 
 Filenames:
 
@@ -304,7 +378,7 @@ Filenames:
 Preparation and handlers:
 
 - `prepsort(config_object, targetdir, prepfilter=False)` — create bowl directories; optionally write `filter-examples.txt`.
-- `handle_docprep`, `handle_anonymization`, `handle_gen_img`, `handle_pdf`, `handle_emails`, `handle_gps`, `handle_gps_tags`, `handle_oldfiles` (unfinished).
+- `handle_docprep`, `handle_inbox`, `handle_anonymization`, `handle_gen_img`, `handle_pdf`, `handle_emails`, `handle_gps`, `handle_gps_tags`, `handle_oldfiles` (unfinished).
 - `process_pending_anonymization`, `_prepare_anonymize_directories`, `_write_anonymize_lastmap`, `ANONYMIZE_SUPPORTED_SUFFIXES`.
 - `GEN_IMG_GENERATOR` — indirection to `aitools.generate_image`, replaceable in tests.
 - `handlefile(...)` — dispatcher described above.
