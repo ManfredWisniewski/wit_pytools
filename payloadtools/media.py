@@ -24,14 +24,26 @@ def resolve_image_path(target, entry, repo):
     Page-relative first; falls back to repo-root relative so a shared
     `media/` directory works from any page depth. A leading '/' anchors
     at the repo root. Returns the first hit, else the root-relative
-    candidate for error reporting.
+    candidate for error reporting. Paths resolving outside the repo are
+    never probed (prevents UNC/SMB access on Windows before the
+    containment check downstream).
     """
+    root = repo.resolve()
+
+    def inside(path):
+        resolved = path.resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            return None
+        return resolved
+
     if target.startswith("/"):
-        return (repo.resolve() / target.lstrip("/")).resolve()
-    page_path = (entry.path.parent / target).resolve()
-    if page_path.is_file():
+        return inside(root / target.lstrip("/")) or root / "__missing__"
+    page_path = inside(entry.path.parent / target)
+    if page_path is not None and page_path.is_file():
         return page_path
-    return (repo.resolve() / target).resolve()
+    return inside(root / target) or root / "__missing__"
 
 
 def ensure_media_doc(image_path, config, client, *, dry_run=False, alt=""):
@@ -53,6 +65,7 @@ def ensure_media_doc(image_path, config, client, *, dry_run=False, alt=""):
         alt=alt,
         source_hash=digest,
         source_path=source_path,
+        source_repo=config.source_repo,
     )
     return media_id, True
 

@@ -61,7 +61,7 @@ class FakeClient:
         }
 
     def upload_media(self, path, *, collection, alt="", caption="",
-                     source_hash="", source_path=""):
+                     source_hash="", source_path="", source_repo=""):
         from pathlib import Path
 
         self._write()

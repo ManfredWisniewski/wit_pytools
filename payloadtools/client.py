@@ -123,7 +123,8 @@ class PayloadClient:
         self._request("DELETE", f"{collection}/{doc_id}")
 
     def upload_media(self, image_path, *, collection, alt="",
-                     caption="", source_hash="", source_path=""):
+                     caption="", source_hash="", source_path="",
+                     source_repo=""):
         """POST a media file as multipart/form-data; returns the doc id."""
         path = Path(image_path)
         mime = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
@@ -132,6 +133,7 @@ class PayloadClient:
             "caption": caption,
             "sourceHash": source_hash,
             "sourcePath": source_path,
+            "sourceRepo": source_repo,
         })
         with path.open("rb") as handle:
             response = self._request(

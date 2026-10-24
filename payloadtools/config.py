@@ -76,7 +76,9 @@ def resolve_repo(repo_arg=None):
     try:
         from dotenv import load_dotenv
 
-        load_dotenv()
+        # explicit path: implicit discovery could pick up a stray .env on
+        # the module-ancestor search path and mix credentials/endpoints
+        load_dotenv(Path.cwd() / ".env")
     except ImportError:
         pass
     return Path(os.environ.get("ARRCONTENT_REPO") or ".").resolve()
@@ -131,7 +133,9 @@ def load_credentials():
     try:
         from dotenv import load_dotenv
 
-        load_dotenv()
+        # explicit path: implicit discovery could pick up a stray .env on
+        # the module-ancestor search path and mix credentials/endpoints
+        load_dotenv(Path.cwd() / ".env")
     except ImportError:
         pass
     base_url = os.environ.get("PAYLOAD_BASE_URL", "").rstrip("/")

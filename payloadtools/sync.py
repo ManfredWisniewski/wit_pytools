@@ -143,7 +143,9 @@ def scan_structures(config):
         for pattern in STRUCTURE_PATTERNS
         for path in config.repo.glob(pattern)
     ]
-    return sorted(path for path in paths if path.is_file())
+    return sorted(
+        path for path in paths if path.is_file() and not path.is_symlink()
+    )
 
 
 def _unchanged_structure(existing, payload):
@@ -201,7 +203,9 @@ def scan_media_dir(config):
     return {
         path.relative_to(config.repo).as_posix(): path
         for path in sorted(media_dir.rglob("*"))
-        if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS
+        if path.is_file()
+        and not path.is_symlink()
+        and path.suffix.lower() in MEDIA_EXTENSIONS
     }
 
 
@@ -217,7 +221,9 @@ def sync_media_dir(config, client, *, dry_run=False):
     skipped = [
         path.relative_to(config.repo).as_posix()
         for path in sorted(media_dir.rglob("*"))
-        if path.is_file() and path.suffix.lower() not in MEDIA_EXTENSIONS
+        if path.is_file()
+        and not path.is_symlink()
+        and path.suffix.lower() not in MEDIA_EXTENSIONS
     ] if media_dir.is_dir() else []
     results = [
         FileResult(relpath, "skipped", "not a media type")
@@ -237,12 +243,15 @@ def sync_media_dir(config, client, *, dry_run=False):
                 alt=path.stem,
                 source_hash=digest,
                 source_path=relpath,
+                source_repo=config.source_repo,
             )
         results.append(FileResult(relpath, "created"))
     prefix = f"{MEDIA_DIR}/"
     for doc in client.find_docs(config.media_collection):
         source_path = doc.get("sourcePath") or ""
         if not source_path.startswith(prefix) or source_path in local:
+            continue
+        if doc.get("sourceRepo") != config.source_repo:
             continue
         if doc.get("sourceHash") in local_hashes:
             continue
@@ -292,6 +301,12 @@ def process_entry(entry, config, client, route_index, *,
             if not dry_run:
                 client.create_doc(collection, payload)
             return FileResult(entry.relpath, "created")
+        if (existing.get("sourceRepo") or "") != payload["sourceRepo"]:
+            return FileResult(
+                entry.relpath, "failed",
+                f"sourcePath already used by repo "
+                f"'{existing.get('sourceRepo')}'",
+            )
         if _unchanged(existing, payload):
             return FileResult(entry.relpath, "unchanged")
         if not dry_run:

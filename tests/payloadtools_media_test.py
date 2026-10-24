@@ -122,7 +122,7 @@ def test_media_dir_unchanged_when_doc_exists():
     config = load_config(REPO)
     digest = sha256_file(REPO / "media" / "shared.png")
     client = FakeClient(media={digest: {"id": "m-1", "sourceHash": digest,
-                                        "sourcePath": "media/shared.png"}})
+                                        "sourcePath": "media/shared.png", "sourceRepo": "witrepo"}})
     results = sync_media_dir(config, client)
     assert [(r.relpath, r.status) for r in results] == [
         ("media/notes.txt", "skipped"),
@@ -136,7 +136,7 @@ def test_media_dir_deletes_remote_for_excluded_type():
     config = load_config(REPO)
     client = FakeClient(media={
         "txthash": {"id": "m-4", "sourceHash": "txthash",
-                    "sourcePath": "media/notes.txt"},
+                    "sourcePath": "media/notes.txt", "sourceRepo": "witrepo"},
     })
     results = sync_media_dir(config, client)
     assert client.deleted == [("media", "m-4")]
@@ -149,7 +149,7 @@ def test_media_dir_deletes_missing_remote():
     config = load_config(REPO)
     client = FakeClient(media={
         "oldhash": {"id": "m-9", "sourceHash": "oldhash",
-                    "sourcePath": "media/old.png"},
+                    "sourcePath": "media/old.png", "sourceRepo": "witrepo"},
     })
     results = sync_media_dir(config, client)
     assert client.deleted == [("media", "m-9")]
@@ -174,7 +174,7 @@ def test_media_dir_keeps_doc_when_hash_still_present():
     digest = sha256_file(REPO / "media" / "shared.png")
     client = FakeClient(media={
         digest: {"id": "m-7", "sourceHash": digest,
-                 "sourcePath": "media/old.png"},
+                 "sourcePath": "media/old.png", "sourceRepo": "witrepo"},
     })
     sync_media_dir(config, client)
     assert client.deleted == []
@@ -184,7 +184,7 @@ def test_media_dir_dry_run_reports_only():
     config = load_config(REPO)
     client = FakeClient(
         media={"oldhash": {"id": "m-9", "sourceHash": "oldhash",
-                           "sourcePath": "media/old.png"}},
+                           "sourcePath": "media/old.png", "sourceRepo": "witrepo"}},
         fail_writes=True,
     )
     results = sync_media_dir(config, client, dry_run=True)

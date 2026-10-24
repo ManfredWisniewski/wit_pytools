@@ -269,17 +269,33 @@ def _run_site(args, client=None):
     base_url, api_key = load_credentials()
     client = client or PayloadClient(base_url, api_key)
     try:
+        root = site_path.parent.resolve()
+
+        def _site_asset(value, key):
+            resolved = (root / str(value)).resolve()
+            try:
+                resolved.relative_to(root)
+            except ValueError:
+                raise PayloadConfigError(
+                    f"site.yml {key} escapes the repo: {value}"
+                )
+            if resolved.is_symlink():
+                raise PayloadConfigError(
+                    f"site.yml {key} is a symlink: {value}"
+                )
+            return resolved
+
         payload = {}
         if data.get("logo"):
             payload["logo"] = _ensure_media(
                 client,
-                site_path.parent / str(data["logo"]),
+                _site_asset(data["logo"], "logo"),
                 alt=str(data.get("logo_alt") or ""),
             )
         if data.get("favicon"):
             payload["favicon"] = _ensure_media(
                 client,
-                site_path.parent / str(data["favicon"]),
+                _site_asset(data["favicon"], "favicon"),
                 alt=str(data.get("favicon_alt") or ""),
             )
         if data.get("site_name"):

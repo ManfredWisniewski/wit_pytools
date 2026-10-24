@@ -78,7 +78,7 @@ def scan_repo(config):
     entries = []
     status_pattern = re.compile(config.status_regex)
     for path in sorted(config.repo.glob(config.include_glob)):
-        if not path.is_file():
+        if not path.is_file() or path.is_symlink():
             continue
         relpath = path.relative_to(config.repo).as_posix()
         base, status = parse_stem(path.stem, status_pattern)
