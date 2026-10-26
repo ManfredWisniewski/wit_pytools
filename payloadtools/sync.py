@@ -36,7 +36,7 @@ MEDIA_DIR = "media"
 MEDIA_EXTENSIONS = {
     ".avif", ".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".webp",
     ".otf", ".ttf", ".woff", ".woff2",
-    ".mp4", ".pdf", ".webm",
+    ".mp4", ".pdf", ".vcf", ".webm",
 }
 
 
