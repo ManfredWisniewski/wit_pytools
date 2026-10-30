@@ -16,6 +16,10 @@ _TITLE_KEYS = ("title", "meta_title", "meta-title")
 _DESC_KEYS = ("description", "meta_description", "meta-description")
 _TEMPLATE_KEYS = ("template",)
 
+# front matter `type` values that select the reveal.js slide template;
+# other values stay unmapped (explicit `template:` wins either way)
+_SLIDE_TYPES = ("slide",)
+
 # blog-only front matter keys (posts collection); empty values are omitted
 _POST_SCALAR_KEYS = ("author", "date", "excerpt", "cover")
 _POST_LIST_KEYS = ("categories", "tags")
@@ -85,6 +89,9 @@ def _meta_from_text(text):
     title = _pick(data, _TITLE_KEYS)
     description = _pick(data, _DESC_KEYS)
     template = _pick(data, _TEMPLATE_KEYS)
+    if not template and str(data.get("type") or "").strip().lower() \
+            in _SLIDE_TYPES:
+        template = "slide"  # HedgeDoc slide-mode document
     if not title or not description or not template:
         for match in KEY_VALUE_RE.finditer(text):
             key, value = match.group(1).lower(), match.group(2)
@@ -123,7 +130,12 @@ def extract_meta(text, file_dir, briefing_glob=""):
     if not title:
         heading = HEADING_RE.search(text)
         title = heading.group(1).strip() if heading else ""
+    data = _front_matter(text)
     meta = {"title": title, "description": description,
             "template": template}
-    meta.update(_post_meta(_front_matter(text)))
+    # HedgeDoc `slideOptions` map -> `slideOptions` json field (reveal.js)
+    options = data.get("slideOptions")
+    if isinstance(options, dict) and options:
+        meta["slideOptions"] = options
+    meta.update(_post_meta(data))
     return meta

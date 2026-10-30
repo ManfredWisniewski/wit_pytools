@@ -20,7 +20,8 @@ POSTS_COLLECTION = "posts"
 # doc fields compared to decide unchanged vs updated (fields absent from
 # the payload are skipped, so pages and posts share the list)
 _COMPARED_FIELDS = ("title", "slug", "path", "markdownRaw", "sourceRepo",
-                    "template", "excerpt", "publishedAt", "author", "cover")
+                    "template", "slideOptions", "excerpt", "publishedAt",
+                    "author", "cover")
 _COMPARED_LIST_FIELDS = ("categories", "tags")
 _COMPARED_META_FIELDS = ("title", "description",)
 
@@ -107,8 +108,9 @@ def build_payload(entry, markdown, meta_values, config, *,
             "tags": meta_values.get("tags") or [],
             "cover": cover_id,
         })
-    else:
-        payload["template"] = meta_values.get("template") or ""
+    payload["template"] = meta_values.get("template") or ""
+    # HedgeDoc slideOptions dict or None (clears a stale value)
+    payload["slideOptions"] = meta_values.get("slideOptions") or None
     return payload
 
 
@@ -118,6 +120,11 @@ def _unchanged(existing, payload):
         if field_name not in payload:
             continue
         remote = existing.get(field_name)
+        if isinstance(remote, dict) and isinstance(
+                payload[field_name], dict):  # jsonb (e.g. slideOptions)
+            if remote != payload[field_name]:
+                return False
+            continue
         if isinstance(remote, dict):  # populated relation (e.g. cover)
             remote = remote.get("id")
         if field_name == "publishedAt" and remote:

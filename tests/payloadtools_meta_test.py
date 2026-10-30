@@ -45,6 +45,36 @@ def test_template_absent_defaults_empty():
     assert meta["template"] == ""
 
 
+def test_slide_type_maps_to_template():
+    """HedgeDoc `type: slide` selects the slide template."""
+    text = "---\ntype: slide\ntitle: T\n---\nBody.\n"
+    meta = extract_meta(text, REPO)
+    assert meta["template"] == "slide"
+
+
+def test_explicit_template_beats_slide_type():
+    text = "---\ntype: slide\ntemplate: landing\n---\nBody.\n"
+    meta = extract_meta(text, REPO)
+    assert meta["template"] == "landing"
+
+
+def test_other_types_do_not_map():
+    meta = extract_meta("---\ntype: article\n---\nBody.\n", REPO)
+    assert meta["template"] == ""
+
+
+def test_slide_options_extracted():
+    text = ("---\ntype: slide\nslideOptions:\n  theme: serif\n"
+            "  transition: fade\n---\nBody.\n")
+    meta = extract_meta(text, REPO)
+    assert meta["slideOptions"] == {"theme": "serif", "transition": "fade"}
+
+
+def test_slide_options_absent():
+    meta = extract_meta("---\ntitle: T\n---\nBody.\n", REPO)
+    assert "slideOptions" not in meta
+
+
 def test_briefing_fallback():
     path = REPO / "kategorie_products" / "prod_webtext_locked.md"
     meta = extract_meta(

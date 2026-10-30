@@ -153,6 +153,21 @@ def test_build_payload_includes_template():
     assert "_status" not in payload
 
 
+def test_build_payload_slide_fields_on_posts():
+    """Posts carry template + slideOptions like pages do."""
+    config = load_config(REPO)
+    entries = {e.relpath: e for e in scan_repo(config)}
+    entry = entries["blog/alisa/first-post_webtext_locked.md"]
+    payload = build_payload(
+        entry, "text",
+        {"title": "", "description": "", "template": "slide",
+         "slideOptions": {"theme": "serif"}},
+        config, collection="posts",
+    )
+    assert payload["template"] == "slide"
+    assert payload["slideOptions"] == {"theme": "serif"}
+
+
 NAV_YAML = "items:\n  - {label: Home, path: /}\n  - {label: MDM, path: /mdm}\n"
 
 
@@ -292,7 +307,8 @@ def test_post_payload_fields():
     assert post["tags"] == ["intern", "eeat"]
     assert post["excerpt"] == "First post teaser."
     assert post["cover"] == "media-1"
-    assert "template" not in post
+    assert post["template"] == ""
+    assert post["slideOptions"] is None
     assert "_status" not in post
 
 
