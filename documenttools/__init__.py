@@ -1077,6 +1077,7 @@ def update_directory_mapping(
     ignore_corporate: bool = False,
     save_ignored_as_list: bool = False,
     ignore_append: bool = False,
+    ignore_dirs: Optional[Sequence[str]] = None,
     name_catalog=None,
 ) -> Path:
     """Add candidates found in source directory names."""
@@ -1088,6 +1089,17 @@ def update_directory_mapping(
         if recursive
         else []
     )
+    if ignore_dirs:
+        tokens = [token.casefold() for token in ignore_dirs if token]
+        # skip ignored directories and their subtrees
+        directories = [
+            directory for directory in directories
+            if not any(
+                token in part.casefold()
+                for part in directory.relative_to(source_root).parts
+                for token in tokens
+            )
+        ]
     text_sources = [
         (
             directory.name,

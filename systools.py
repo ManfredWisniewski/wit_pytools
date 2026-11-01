@@ -35,8 +35,17 @@ def checkfile(sourcedir, file):
         return True
 
 # delete empty subdirectories
-def rmemptydir(rootdir, dryrun = (False)):
-    walk = list(os.walk(rootdir))
+def rmemptydir(rootdir, dryrun = (False), ignore_dirs = None):
+    tokens = [token.casefold() for token in (ignore_dirs or []) if token]
+    walk = []
+    for path, dirs, files in os.walk(rootdir):
+        if tokens:
+            # do not descend into ignored directories
+            dirs[:] = [
+                d for d in dirs
+                if not any(token in d.casefold() for token in tokens)
+            ]
+        walk.append((path, dirs, files))
     for path, _, _ in walk[::-1]:
         if not (path == rootdir ):
             if len(os.listdir(path)) == 0:

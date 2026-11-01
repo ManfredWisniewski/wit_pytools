@@ -11,7 +11,21 @@ def replace_text_part(part: str, mapping: Dict[str, str]) -> str:
     pattern = re.compile(
         r"(?<!\w)(?:" + "|".join(re.escape(key) for key in keys) + r")(?!\w)"
     )
-    return pattern.sub(lambda match: mapping[match.group(0)], part)
+    result = pattern.sub(lambda match: mapping[match.group(0)], part)
+    # collapse consecutive identical replacements (e.g. "TIM Tim" -> "Person-x Person-x")
+    replacements = sorted(
+        {value for value in mapping.values() if value},
+        key=len,
+        reverse=True,
+    )
+    if replacements:
+        collapse = re.compile(
+            r"(?<!\w)("
+            + "|".join(re.escape(value) for value in replacements)
+            + r")((?:\s+)\1)+(?!\w)"
+        )
+        result = collapse.sub(lambda match: match.group(1), result)
+    return result
 
 
 def replace_text_parts(

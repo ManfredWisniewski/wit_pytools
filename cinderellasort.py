@@ -76,10 +76,14 @@ def _flush_nc_rescans():
 
 
 # check for valid searches in subdirectories of the target directory
-def isvalidsort(sourcedir, ftype_sort):
+def isvalidsort(sourcedir, ftype_sort, ignore_files='', ignore_dirs=''):
     # check if any files match the sort types
     for subdir, dirs, files in walklevel(sourcedir, 2):
+        if _is_ignored_dir(subdir, sourcedir, ignore_dirs):
+            continue
         for file in files:
+            if matchstring(file.casefold(), ignore_files):
+                continue
             for ftype in ftype_sort.split(','):
                 if file.casefold().endswith(ftype.strip()):
                     print(f' #  valid sort found for file type: {ftype}')
@@ -97,6 +101,20 @@ def matchstring(file, matchtable=''):
         if token in file:
             return True
     return False
+
+def _is_ignored_dir(path, root, ignore_dirs):
+    """True when path or an ancestor (relative to root) matches ignore_dirs."""
+    if not ignore_dirs:
+        return False
+    try:
+        parts = (
+            Path(path).resolve().relative_to(Path(root).resolve()).parts
+        )
+    except ValueError:
+        parts = Path(path).parts
+    return any(
+        matchstring(part.casefold(), ignore_dirs) for part in parts
+    )
 
 def merge_common_rules(config_object, common_configfile):
     """Merge common BOWLS rules into a project configuration."""
@@ -979,6 +997,8 @@ def process_pending_anonymization(
     dryrun,
     *,
     ignore_append=False,
+    ignore_files='',
+    ignore_dirs='',
 ):
     """Anonymize bowl-matched source files and clean up stale outputs."""
     if not bowllist_anonymize(config_object):
@@ -997,7 +1017,9 @@ def process_pending_anonymization(
     source_root = Path(sourcedir).resolve()
     target_root = Path(targetdir).resolve()
     run = None if dryrun else _AnonymizeRun(settings, ignore_append)
-    for root, _, files in _walk_source(sourcedir, recursive):
+    for root, _, files in _walk_source(
+        sourcedir, recursive, ignore_files, ignore_dirs
+    ):
         for filename in sorted(files):
             source_path = Path(root) / filename
             if source_path.stem.casefold().endswith('_anon'):
@@ -1723,6 +1745,7 @@ def _prepare_anonymize_directories(
     dryrun,
     ignore_append,
     restrict_to=None,
+    ignore_dirs='',
 ):
     """Update directory proposals and rename matching target directories."""
     if not (settings['enabled'] and settings['mapping_file']):
@@ -1773,6 +1796,11 @@ def _prepare_anonymize_directories(
         settings['mapping_file'],
         recursive=recursive,
         ignore_append=ignore_append,
+        ignore_dirs=[
+            token.strip()
+            for token in ignore_dirs.split(',')
+            if token.strip()
+        ],
         **_anonymize_mapping_kwargs(settings),
     )
     if not recursive:
@@ -1782,6 +1810,7 @@ def _prepare_anonymize_directories(
             path
             for path in source_root.rglob('*')
             if path.is_dir()
+            and not _is_ignored_dir(path, source_root, ignore_dirs)
         ),
         key=lambda path: len(path.relative_to(source_root).parts),
         reverse=True,
@@ -1844,11 +1873,15 @@ def _sync_docprep_deletes(
     settings,
     recursive,
     dryrun,
+    ignore_files='',
+    ignore_dirs='',
 ):
     """Remove derived Markdown and sidecars whose source document is gone."""
     if not bowllist_docprep(config_object) or not settings['sync_deletes']:
         return
-    for root, _, files in _walk_source(sourcedir, recursive):
+    for root, _, files in _walk_source(
+        sourcedir, recursive, ignore_files, ignore_dirs
+    ):
         for filename in files:
             name = filename.casefold()
             path = Path(root) / filename
@@ -2086,13 +2119,15 @@ _inbox_proposals = {}
 _inbox_eml_threads = {}
 
 
-def _inbox_eml_thread_file(source, sourcedir, clean, clean_nocase, replacements):
+def _inbox_eml_thread_file(source, sourcedir, clean, clean_nocase, replacements, ignore_files=''):
     """Return the thread members of an .eml source, or None if it is alone."""
     from wit_pytools.mailtools import eml_thread_members
     key = str(Path(sourcedir).resolve())
     if key not in _inbox_eml_threads:
         groups = {}
         for path in Path(sourcedir).glob('*.eml'):
+            if matchstring(path.name.casefold(), ignore_files):
+                continue
             groups[path.name] = eml_thread_members(sourcedir, path)
         _inbox_eml_threads[key] = groups
     members = _inbox_eml_threads[key].get(source.name) or []
@@ -2215,7 +2250,7 @@ def _jev_tag_markup(source, markup_path, config_object, dryrun):
     print(message)
 
 
-def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, skip_unmatched=True, email_threads=True, remove_source=frozenset(), maintain_structure=False):
+def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, skip_unmatched=True, email_threads=True, remove_source=frozenset(), maintain_structure=False, ignore_files=''):
     """Sort a file into an inbox bowl together with its markup sidecars.
 
     Supported documents get a Markdown variant next to the source via the
@@ -2237,7 +2272,8 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
     eml_members = None
     if source.suffix.lower() == '.eml' and email_threads:
         eml_members = _inbox_eml_thread_file(
-            source, sourcedir, clean, clean_nocase, replacements
+            source, sourcedir, clean, clean_nocase, replacements,
+            ignore_files,
         )
     if eml_members:
         # Members of a mail thread share one combined markup file named
@@ -2499,7 +2535,7 @@ def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
             log_message(f"Error handling PDF file {file.name}: {e}", level="ERROR")
     return
 
-def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None, skip_unmatched=True, check_content=False, ignore_append=False, email_threads=True, remove_source=frozenset(), maintain_structure=False):
+def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None, skip_unmatched=True, check_content=False, ignore_append=False, email_threads=True, remove_source=frozenset(), maintain_structure=False, ignore_files=''):
     # First check if the file matches any of the specified file types
     file_matches_type = False
     file_ext = ''
@@ -2524,6 +2560,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
             email_threads=email_threads,
             remove_source=remove_source,
             maintain_structure=maintain_structure,
+            ignore_files=ignore_files,
         )
         return
 
@@ -2676,12 +2713,28 @@ def _validate_source_target_dirs(sourcedir, targetdir):
     raise ValueError('targetdir must not be inside sourcedir')
 
 
-def _walk_source(sourcedir, recursive):
+def _walk_source(sourcedir, recursive, ignore_files='', ignore_dirs=''):
     """Yield source directory contents recursively or at one level."""
     if recursive:
-        yield from os.walk(sourcedir)
+        for root, dirs, files in os.walk(sourcedir):
+            # prune ignored directories so their subtree is not followed
+            dirs[:] = [
+                d for d in dirs
+                if not matchstring(d.casefold(), ignore_dirs)
+            ]
+            yield root, dirs, [
+                f for f in files
+                if not matchstring(f.casefold(), ignore_files)
+            ]
         return
-    yield sourcedir, [], os.listdir(sourcedir)
+    yield sourcedir, [], [
+        f for f in os.listdir(sourcedir)
+        if not matchstring(f.casefold(), ignore_files)
+        and not (
+            os.path.isdir(os.path.join(sourcedir, f))
+            and matchstring(f.casefold(), ignore_dirs)
+        )
+    ]
 
 
 def cinderellasort(
@@ -2721,6 +2774,11 @@ def cinderellasort(
     trash_nocase = (table['trash_nocase'].casefold()) if "trash_nocase" in table else "NOTdefined"
     has_trash = trash != "NOTdefined"
     has_trash_nocase = trash_nocase != "notdefined"
+    ignore_files = (table['ignore_files'].casefold()) if "ignore_files" in table else ""
+    ignore_dirs = (table['ignore_dirs'].casefold()) if "ignore_dirs" in table else ""
+    ignore_dir_tokens = [
+        token.strip() for token in ignore_dirs.split(',') if token.strip()
+    ]
     
     filemode = (table['filemode'].casefold()) if "filemode" in table else "win"
 
@@ -2783,6 +2841,8 @@ def cinderellasort(
         print(' gps comp: ' + str(gps_compress))
         print(' skip unmatched: ' + str(skip_unmatched))
         print(' clear empty dirs: ' + str(clear_empty_directories)) 
+        print('  ignore files: ' + ignore_files)
+        print('   ignore dirs: ' + ignore_dirs)
 
     # ADD unzip
 
@@ -2792,6 +2852,7 @@ def cinderellasort(
         anonymize_config
     )
     single_relative_parent = None
+    single_ignored = False
     if single:
         from witnctools import getncabsdir, getncfilename
         single_dir = getncabsdir(single)
@@ -2802,15 +2863,27 @@ def cinderellasort(
             )
         except ValueError:
             single_relative_parent = None
-    _prepare_anonymize_directories(
-        sourcedir,
-        targetdir,
-        anonymize_config,
-        recursive,
-        dryrun,
-        ignore_append,
-        restrict_to=single_relative_parent if single else None,
-    )
+        single_ignored = matchstring(
+            getncfilename(single).casefold(), ignore_files
+        ) or any(
+            matchstring(part.casefold(), ignore_dirs)
+            for part in (
+                single_relative_parent.parts
+                if single_relative_parent is not None
+                else ()
+            )
+        )
+    if not single_ignored:
+        _prepare_anonymize_directories(
+            sourcedir,
+            targetdir,
+            anonymize_config,
+            recursive,
+            dryrun,
+            ignore_append,
+            restrict_to=single_relative_parent if single else None,
+            ignore_dirs=ignore_dirs,
+        )
     if not single:
         # Maintenance pass; skipped in single mode (runs on batch runs).
         _sync_docprep_deletes(
@@ -2819,6 +2892,8 @@ def cinderellasort(
             docprep_config,
             recursive,
             dryrun,
+            ignore_files=ignore_files,
+            ignore_dirs=ignore_dirs,
         )
 
     # prepare for sort process
@@ -2833,30 +2908,36 @@ def cinderellasort(
         file_name = getncfilename(single)
         file_path = Path(os.path.join(file_dir, file_name))
         
-        if file_path.is_file():
-            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, skip_unmatched=skip_unmatched, check_content=check_content, ignore_append=ignore_append, email_threads=email_threads, remove_source=remove_source, maintain_structure=maintain_structure)
-        _anonymize_single_file(
-            file_path,
-            file_dir,
-            sourcedir,
-            targetdir,
-            config_object,
-            anonymize_config,
-            clean,
-            clean_nocase,
-            replacements,
-            dryrun,
-            ignore_append,
-        )
+        if single_ignored:
+            print(f"Skipping ignored file: {file_name}")
+        elif file_path.is_file():
+            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, skip_unmatched=skip_unmatched, check_content=check_content, ignore_append=ignore_append, email_threads=email_threads, remove_source=remove_source, maintain_structure=maintain_structure, ignore_files=ignore_files)
+            _anonymize_single_file(
+                file_path,
+                file_dir,
+                sourcedir,
+                targetdir,
+                config_object,
+                anonymize_config,
+                clean,
+                clean_nocase,
+                replacements,
+                dryrun,
+                ignore_append,
+            )
     else:
         # First pass: delete unwanted files in directories with valid sorts
         print("Running cinderellasort in all-files mode")
         print("Sourcedir: " + sourcedir)
         print("\n## First pass: deleting unwanted files")
         valid_sort_dirs = set()
-        for root, dirs, files in _walk_source(sourcedir, recursive):
+        for root, dirs, files in _walk_source(
+            sourcedir, recursive, ignore_files, ignore_dirs
+        ):
             root_path = Path(root).resolve()
-            current_valid = isvalidsort(root, ftype_sort)
+            current_valid = isvalidsort(
+                root, ftype_sort, ignore_files, ignore_dirs
+            )
             if current_valid:
                 print(f'   Valid sort dir: {root}')
                 valid_sort_dirs.add(root_path)
@@ -2887,7 +2968,9 @@ def cinderellasort(
         dir_file_counts = {}
         if use_directory_name:
             print("  Counting valid files per directory...")
-            for root, dirs, files in _walk_source(sourcedir, recursive):
+            for root, dirs, files in _walk_source(
+                sourcedir, recursive, ignore_files, ignore_dirs
+            ):
                 valid_count = 0
                 for filename in files:
                     for ftype in ftype_sort.split(','):
@@ -2899,7 +2982,9 @@ def cinderellasort(
                     dir_file_counts[root] = valid_count
                     print(f"    {root}: {valid_count} valid files")
         
-        for root, dirs, files in _walk_source(sourcedir, recursive):
+        for root, dirs, files in _walk_source(
+            sourcedir, recursive, ignore_files, ignore_dirs
+        ):
             for filename in files:
                 lower_name = filename.casefold()
                 if not any(
@@ -2929,23 +3014,30 @@ def cinderellasort(
                 # Get directory name and file count for this file
                 dirname = os.path.basename(root) if use_directory_name else None
                 dir_count = dir_file_counts.get(root, 0) if use_directory_name else None
-                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname, skip_unmatched, check_content=check_content, ignore_append=ignore_append, email_threads=email_threads, remove_source=remove_source, maintain_structure=maintain_structure)
+                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname, skip_unmatched, check_content=check_content, ignore_append=ignore_append, email_threads=email_threads, remove_source=remove_source, maintain_structure=maintain_structure, ignore_files=ignore_files)
                 processed_files += 1
         log_message(f"Processed {processed_files} files in {sourcedir} and subdirectories")
         
     # Get list of all subdirectories for additional processing if needed
     dirlist = []
     if recursive and not single:
-        dirlist = [f for f in Path(sourcedir).resolve().glob('**/*') if f.is_dir()]
+        dirlist = [
+            f for f in Path(sourcedir).resolve().glob('**/*')
+            if f.is_dir() and not _is_ignored_dir(f, sourcedir, ignore_dirs)
+        ]
     print([str(d) for d in dirlist])
     for maindir in dirlist:
         print(f'Checking dir: {maindir}')
-        if isvalidsort(str(maindir), ftype_sort):
+        if isvalidsort(str(maindir), ftype_sort, ignore_files, ignore_dirs):
             print(' #  valid sort found:' + ftype_delete)
             for subdir, dirs, files in walklevel(str(maindir), 2):
+                if _is_ignored_dir(subdir, maindir, ignore_dirs):
+                    continue
                 print(f'   Scanning subdir: {subdir}, files: {files}')
                 #TODO replace with handlefile()
                 for file in files:
+                    if matchstring(file.casefold(), ignore_files):
+                        continue
                     # print('# remove unwanted filetypes')
                     for ftype in ftype_delete.split(','):
                         ftype_clean = ftype.strip().casefold()
@@ -2985,13 +3077,15 @@ def cinderellasort(
             recursive,
             dryrun,
             ignore_append=ignore_append,
+            ignore_files=ignore_files,
+            ignore_dirs=ignore_dirs,
         )
     _write_anonymize_lastmap(anonymize_config, dryrun)
     _flush_nc_rescans()
 
     if clear_empty_directories:
         print(f"\n## Removing empty directories:")
-        rmemptydir(sourcedir,dryrun)
+        rmemptydir(sourcedir, dryrun, ignore_dirs=ignore_dir_tokens)
 
     _write_inbox_proposals(targetdir, dryrun)
 
