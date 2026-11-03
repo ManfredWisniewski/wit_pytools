@@ -2378,6 +2378,124 @@ def _structure_snapshot_dirs(snapshot_file):
     return dirs
 
 
+def _write_structure_changes(snapshot_dir, domain, removed, added):
+    """Write a pending structure-changes file for the human to evaluate."""
+    path = Path(snapshot_dir) / f'structure-changes-{domain}.ini'
+    lines = [
+        f'; {domain}: domain directory structure changed',
+        '; keep lines for moved/renamed dirs as  old = new (edit target)',
+        '; remove lines for dirs that were truly deleted; save + re-run',
+        '; added dirs seen (candidates):',
+    ]
+    lines += [f';   + {d}' for d in added]
+    lines += ['[moves]']
+    added_by_name = {}
+    for a in added:
+        added_by_name.setdefault(
+            a.replace('\\', '/').rsplit('/', 1)[-1].casefold(), a)
+    for r in removed:
+        guess = added_by_name.get(
+            r.replace('\\', '/').rsplit('/', 1)[-1].casefold(), '')
+        lines.append(f'{r} = {guess}')
+    path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    return path
+
+
+def _apply_structure_changes(
+        config_object, targetdir, snapshot_dir, domain, live_root,
+        removed, dryrun=False):
+    """Apply an evaluated structure-changes-<domain>.ini.
+
+    Confirmed moves rewrite inbox-<domain>.ini bowl paths and move the
+    mirrored targetdir/<domain>/<old> subtree; the snapshot is
+    regenerated from the live tree and the evaluated file is archived
+    to structure-changes-<domain>.history.
+    """
+    path = Path(snapshot_dir) / f'structure-changes-{domain}.ini'
+    if not path.is_file():
+        return False
+    changes = ConfigParser()
+    changes.optionxform = str
+    changes.read(path, encoding='utf-8')
+    moves = {
+        old.strip().replace('\\', '/'): new.strip().replace('\\', '/')
+        for old, new in changes.items('moves', raw=True)
+        if new.strip()
+    }
+    # 1. rewrite bowl paths in inbox-<domain>.ini
+    domain_ini = Path(snapshot_dir) / f'inbox-{domain}.ini'
+    if moves and domain_ini.is_file():
+        out_lines = []
+        for line in domain_ini.read_text(encoding='utf-8').splitlines():
+            stripped = line.strip()
+            if (
+                stripped and '=' in line
+                and not stripped.startswith(('#', ';', '['))
+            ):
+                key, _, rest = line.partition('=')
+                norm = key.strip().replace('\\', '/')
+                for old, new in moves.items():
+                    if norm == old or norm.startswith(old + '/'):
+                        key = (
+                            (new + '/' + norm[len(old):].lstrip('/'))
+                            .replace('/', chr(92)).rstrip(chr(92))
+                        )
+                        break
+                line = key.rstrip() + '=' + rest
+            out_lines.append(line)
+        domain_ini.write_text(
+            '\n'.join(out_lines) + '\n', encoding='utf-8')
+    # 2. move the mirrored subtree with its filed documents
+    if moves and targetdir:
+        for old, new in moves.items():
+            src = Path(targetdir) / live_root.name / old
+            dst = Path(targetdir) / live_root.name / new
+            if src.is_dir() and not dryrun:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(src), str(dst))
+    # 3. regenerate the snapshot from the live tree
+    snap = Path(snapshot_dir) / f'domain-structure-{domain}.md'
+    if snap.is_file():
+        tree = sorted(
+            str(p.relative_to(live_root)).replace('\\', '/')
+            for p in live_root.rglob('*') if p.is_dir()
+        )
+        text = snap.read_text(encoding='utf-8').splitlines()
+        out, in_block, done = [], False, False
+        for line in text:
+            if line.strip() == '```text':
+                in_block, done = True, done or False
+                out.append(line)
+                continue
+            if in_block and line.strip() == '```':
+                in_block = False
+                if not done:
+                    out.append(f'{domain.upper()}/')
+                    out += [f'  {d}' for d in tree]
+                    done = True
+                out.append(line)
+                continue
+            if not in_block or done:
+                out.append(line)
+        snap.write_text('\n'.join(out) + '\n', encoding='utf-8')
+    # 4. archive the evaluated file under history/YYYY-MM-DD-<name>.ini
+    deleted = [r for r in removed if r.replace('\\', '/') not in moves]
+    if deleted:
+        with open(path, 'a', encoding='utf-8') as f:
+            f.write('; accepted deletions:\n')
+            for r in deleted:
+                f.write(f';   - {r}\n')
+    history_dir = Path(snapshot_dir) / 'history'
+    history_dir.mkdir(exist_ok=True)
+    if not dryrun:
+        shutil.move(
+            str(path),
+            str(history_dir / f'{datetime.now():%Y-%m-%d}-{path.name}'),
+        )
+        # already evaluated lists linger only if apply is re-entered
+    return True
+
+
 def check_domain_structures(config_object, targetdir=None):
     """Preflight: diff live domain trees against structure snapshots.
 
@@ -2424,6 +2542,14 @@ def check_domain_structures(config_object, targetdir=None):
                 f"({len(expected)} dirs)"
             )
             continue
+        if removed and _apply_structure_changes(
+                config_object, targetdir, snap_dir, domain, live_root,
+                removed):
+            print(
+                f"Preflight {domain}: structure moves applied, "
+                f"snapshot {snap.name} updated"
+            )
+            continue
         if removed:
             ok = False
         message = (
@@ -2438,10 +2564,12 @@ def check_domain_structures(config_object, targetdir=None):
             if len(items) > 20:
                 print(f"  {marker} ... {len(items) - 20} more")
         if removed:
+            path = _write_structure_changes(
+                snap_dir, domain, removed, added)
             print(
                 f"  STOP: {len(removed)} directories removed or renamed"
-                f" below {live_root} — handle them, update"
-                f" {snap.name}, then re-run."
+                f" below {live_root} — evaluate {path.name}"
+                " (keep renames, drop deletions), then re-run."
             )
             continue
         # additions only: mirror the new dirs into the filing targets

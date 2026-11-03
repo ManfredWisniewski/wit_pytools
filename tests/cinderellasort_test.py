@@ -2460,6 +2460,70 @@ def test_structure_preflight_add_only_mirrors(tmp_path, capsys):
     assert (target_dir / "WIT" / "a" / "new").is_dir()
 
 
+def test_structure_changes_apply_cycle(tmp_path, capsys):
+    live_root = tmp_path / "live"
+    (live_root / "WIT" / "Buchhaltung" / "neu").mkdir(parents=True)
+    snap_dir = tmp_path / "snaps"
+    snap_dir.mkdir()
+    (snap_dir / "domain-structure-wit.md").write_text(
+        "# x\n```text\nWIT/\n  Buchhaltung/alt\n```\n", encoding="utf-8"
+    )
+    # a domain ruleset whose bowl path points at the moved dir
+    (snap_dir / "inbox-wit.ini").write_text(
+        "[BOWLS_INBOX]\n"
+        "Buchhaltung\\alt\\rechnungen-in=Hetzner;\n"
+        "Buchhaltung\\other=x\n",
+        encoding="utf-8",
+    )
+    config = ConfigParser()
+    config.optionxform = str
+    config["SETTINGS"] = {
+        "structure_root": str(live_root),
+        "structure_snapshot_dir": str(snap_dir),
+    }
+    target_dir = tmp_path / "target"
+    # mirror containing a filed doc under the old path
+    filed = (
+        target_dir / "WIT" / "Buchhaltung" / "alt" / "rechnungen-in"
+    )
+    filed.mkdir(parents=True)
+    (filed / "doc.pdf").write_text("x")
+
+    # 1st pass: writes the pending change file and stops
+    assert cs.check_domain_structures(config, target_dir) is False
+    pending = snap_dir / "structure-changes-wit.ini"
+    assert pending.is_file()
+
+    # human confirms the rename
+    pending.write_text(
+        "[moves]\nBuchhaltung/alt = Buchhaltung/neu\n",
+        encoding="utf-8",
+    )
+
+    # 2nd pass: applies the moves and continues
+    assert cs.check_domain_structures(config, target_dir) is True
+    ini = (snap_dir / "inbox-wit.ini").read_text(encoding="utf-8")
+    assert "Buchhaltung\\neu\\rechnungen-in=Hetzner" in ini
+    assert "Buchhaltung\\other=x" in ini
+    assert (
+        target_dir / "WIT" / "Buchhaltung" / "neu" / "rechnungen-in"
+        / "doc.pdf"
+    ).is_file()
+    assert "Buchhaltung/neu" in (
+        snap_dir / "domain-structure-wit.md"
+    ).read_text(encoding="utf-8")
+    archived = list(
+        (snap_dir / "history").glob(
+            "*-structure-changes-wit.ini"
+        )
+    )
+    assert len(archived) == 1
+    assert "Buchhaltung/alt = Buchhaltung/neu" in archived[0].read_text(
+        encoding="utf-8"
+    )
+    assert not pending.exists()
+
+
 def test_structure_preflight_mirrors_dirs(tmp_path):
     live_root = tmp_path / "live"
     (live_root / "WIT" / "Buchhaltung" / "rechnungen-in").mkdir(
