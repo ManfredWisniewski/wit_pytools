@@ -2383,10 +2383,10 @@ def check_domain_structures(config_object, targetdir=None):
 
     Enabled by [SETTINGS] structure_root + structure_snapshot_dir; each
     domain-structure-<domain>.md snapshot is compared with
-    <structure_root>/<domain>. Differences are reported, not enforced.
-    When targetdir is given, the live directory tree (dirs only) is
-    reconstructed below targetdir/<domain> so human filing targets
-    exist.
+    <structure_root>/<domain>. New dirs are mirrored into
+    targetdir/<domain> silently. Removed dirs (a rename shows as
+    -old/+new) stop the run: return False so the caller aborts until
+    the structure is handled and the snapshot updated.
     """
     settings = (
         config_object['SETTINGS']
@@ -2395,7 +2395,8 @@ def check_domain_structures(config_object, targetdir=None):
     root = (settings.get('structure_root', '') or '').strip()
     snap_dir = (settings.get('structure_snapshot_dir', '') or '').strip()
     if not (root and snap_dir):
-        return
+        return True
+    ok = True
     root_dirs = {
         p.name.casefold(): p for p in Path(root).iterdir() if p.is_dir()
     }
@@ -2403,24 +2404,18 @@ def check_domain_structures(config_object, targetdir=None):
         domain = snap.stem.removeprefix('domain-structure-')
         live_root = root_dirs.get(domain.casefold())
         if live_root is None:
-            print(f"Preflight {domain}: live root missing below {root}")
+            message = (
+                f"Preflight {domain}: live root missing below {root}"
+            )
+            log_message(message, level="WARNING")
+            print(message)
+            ok = False
             continue
         expected = _structure_snapshot_dirs(snap)
         live = {
             str(p.relative_to(live_root)).replace('\\', '/')
             for p in live_root.rglob('*') if p.is_dir()
         }
-        if targetdir:
-            for rel in sorted(live):
-                try:
-                    (Path(targetdir) / live_root.name / rel).mkdir(
-                        parents=True, exist_ok=True
-                    )
-                except Exception as e:
-                    log_message(
-                        "Error creating directory "
-                        f"{Path(targetdir) / live_root.name / rel}: {e}",
-                        level="ERROR")
         added = sorted(live - expected)
         removed = sorted(expected - live)
         if not added and not removed:
@@ -2429,6 +2424,8 @@ def check_domain_structures(config_object, targetdir=None):
                 f"({len(expected)} dirs)"
             )
             continue
+        if removed:
+            ok = False
         message = (
             f"Preflight {domain}: structure changed "
             f"(+{len(added)}/-{len(removed)} dirs)"
@@ -2440,6 +2437,26 @@ def check_domain_structures(config_object, targetdir=None):
                 print(f"  {marker} {d}")
             if len(items) > 20:
                 print(f"  {marker} ... {len(items) - 20} more")
+        if removed:
+            print(
+                f"  STOP: {len(removed)} directories removed or renamed"
+                f" below {live_root} — handle them, update"
+                f" {snap.name}, then re-run."
+            )
+            continue
+        # additions only: mirror the new dirs into the filing targets
+        if targetdir:
+            for rel in sorted(added):
+                try:
+                    (Path(targetdir) / live_root.name / rel).mkdir(
+                        parents=True, exist_ok=True
+                    )
+                except Exception as e:
+                    log_message(
+                        "Error creating directory "
+                        f"{Path(targetdir) / live_root.name / rel}: {e}",
+                        level="ERROR")
+    return ok
 
 
 def _prepare_inbox_eval_dirs(config_object, targetdir):
@@ -3363,7 +3380,9 @@ def cinderellasort(
         )
 
     # prepare for sort process
-    check_domain_structures(config_object, targetdir)
+    if not check_domain_structures(config_object, targetdir):
+        print("## Preflight failed: domain structure changed — run aborted")
+        return
 
     prepsort(config_object, targetdir)
     if bowllist_inbox(config_object):

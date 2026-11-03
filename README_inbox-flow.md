@@ -20,8 +20,9 @@ tells you its state.
   0. PREFLIGHT                                            1. deterministic crits
      diff live H:\<domain> tree vs                           match_before_markup
      domain-structure snapshot;                              (filename ; existing .md)
-     mirror the live dir tree                                deep detail bowls first
-     into <domain>\ (filing targets)                               |
+     removed/renamed dirs -> STOP;                           domain crits only
+     new dirs -> mirrored into                               (details = 2nd pass)     |
+     <domain>\ (filing targets)                                     |
           |                                                         |
           |                                            +------------+------------+
           |                                            |                         |
@@ -72,6 +73,19 @@ tells you its state.
      INBOX-sort\inbox-negatives_INBOX-sort.ini    -> recorded rejections
                                                     (file can never match
                                                     that domain again)
+
+                        detail sort (per domain, same run)
+                                       |
+          +----------------------------+----------------------------+
+          |                                                         |
+          v                                                         v
+  inbox-<domain>.ini                                   staging stays:
+  sourcedir = INBOX-sort\INBOX-sort\<domain>           no detail match
+  targetdir = INBOX-sort\<domain>                      -> file later or
+          |                                              write crits
+          v
+   <domain>\<detail>  decided — deterministic detail bowls
+                      (unmatched files are left in staging)
 ```
 
 ## States at a glance
@@ -89,9 +103,9 @@ tells you its state.
 Notes:
 
 - Deterministic crits are decisions: a hit goes **directly** into
-  `<domain>[\<detail>]` — no review step. Bowl order decides; detail
-  bowls (`<domain>\<detail>`) are listed before the `<domain>` bowls in
-  `inbox.ini`, first match wins.
+  `<domain>[\<detail>]` — no review step. Detail crits live in
+  `inbox-<domain>.ini` (second pass on staging), domain crits in
+  `inbox.ini`.
 - JEV is probabilistic: a `domain` answer routes to the `INBOX-sort\<domain>`
   staging bowl (`[JEV] staging=INBOX-sort`) and stays there until you file it.
   Domain-level deterministic crits land there too — only *detail* crits

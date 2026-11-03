@@ -31,7 +31,8 @@ detail directory (e.g. `INBOX-sort\WIT\rechnung.pdf` →
 Run `inbox.bat` (add `--dryrun` to preview without moving).
 
 0. **Preflight** — diffs the live `H:\<domain>` tree against its
-   structure snapshot and mirrors the directory tree (dirs only) into
+   structure snapshot: removed/renamed dirs **stop the run** (handle +
+   update the snapshot first); new dirs are mirrored into
    `INBOX-sort\<domain>\` so filing targets exist.
 1. **Deterministic match** — filename and existing-markup criteria
    (deep detail bowls first). A hit moves the file straight to

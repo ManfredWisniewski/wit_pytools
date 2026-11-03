@@ -2413,6 +2413,53 @@ def test_structure_preflight_ok(tmp_path, capsys):
     assert "structure OK" in capsys.readouterr().out
 
 
+def test_structure_preflight_stops_on_removed_dir(tmp_path, capsys):
+    live_root = tmp_path / "live"
+    (live_root / "WIT" / "new").mkdir(parents=True)
+    snap_dir = tmp_path / "snaps"
+    snap_dir.mkdir()
+    (snap_dir / "domain-structure-wit.md").write_text(
+        "# x\n```text\nWIT/\n  gone\n```\n", encoding="utf-8"
+    )
+    config = ConfigParser()
+    config.optionxform = str
+    config["SETTINGS"] = {
+        "structure_root": str(live_root),
+        "structure_snapshot_dir": str(snap_dir),
+    }
+    target_dir = tmp_path / "target"
+
+    ok = cs.check_domain_structures(config, target_dir)
+
+    out = capsys.readouterr().out
+    assert ok is False
+    assert "STOP" in out
+    # removed dirs stop the run; new dirs are not mirrored either
+    assert not (target_dir / "WIT" / "new").exists()
+
+
+def test_structure_preflight_add_only_mirrors(tmp_path, capsys):
+    live_root = tmp_path / "live"
+    (live_root / "WIT" / "a" / "new").mkdir(parents=True)
+    snap_dir = tmp_path / "snaps"
+    snap_dir.mkdir()
+    (snap_dir / "domain-structure-wit.md").write_text(
+        "# x\n```text\nWIT/\n  a\n```\n", encoding="utf-8"
+    )
+    config = ConfigParser()
+    config.optionxform = str
+    config["SETTINGS"] = {
+        "structure_root": str(live_root),
+        "structure_snapshot_dir": str(snap_dir),
+    }
+    target_dir = tmp_path / "target"
+
+    ok = cs.check_domain_structures(config, target_dir)
+
+    assert ok is True
+    assert (target_dir / "WIT" / "a" / "new").is_dir()
+
+
 def test_structure_preflight_mirrors_dirs(tmp_path):
     live_root = tmp_path / "live"
     (live_root / "WIT" / "Buchhaltung" / "rechnungen-in").mkdir(
