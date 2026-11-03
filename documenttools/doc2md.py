@@ -17,6 +17,7 @@ def docx_to_markdown(
     *,
     output_path: Optional[Union[str, Path]] = None,
     overwrite: bool = False,
+    include_images: bool = False,
 ) -> Path:
     """Convert a .docx file to Markdown via mammoth."""
     import mammoth
@@ -25,8 +26,10 @@ def docx_to_markdown(
     target = Path(output_path) if output_path else source.with_suffix(".md")
     if target.exists() and not overwrite:
         raise FileExistsError(target)
+    # Mammoth inlines images as base64 data URIs; drop them by default.
+    convert_image = None if include_images else lambda image: []
     with source.open("rb") as fp:
-        result = mammoth.convert_to_markdown(fp)
+        result = mammoth.convert_to_markdown(fp, convert_image=convert_image)
     target.write_text(result.value, encoding="utf-8")
     return target
 

@@ -2072,5 +2072,494 @@ def test_run_without_jev_prints_no_reminder(tmp_path, monkeypatch, capsys):
     assert "update your criteria for files sorted to !DEFAULT" not in out
 
 
+def test_inbox_match_before_markup_skips_conversion(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        pdf_name="Rechnung 2026.pdf",
+        settings_section={"match_before_markup": "true"},
+        jev_section={},
+    )
+    calls = []
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count, _fake_converter(calls)),
+    )
+    jev_calls = []
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(JEV_ANSWERS, jev_calls),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert calls == [], "deterministic match must not convert"
+    assert jev_calls == [], "deterministic match must not classify"
+    assert (target_dir / "Rechnungen" / "Rechnung 2026.pdf").is_file()
+    assert not (target_dir / "Rechnungen" / "Rechnung 2026.md").exists()
+
+
+def test_inbox_match_before_markup_uses_existing_markup(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Rechnungen": ";rechnung", "Rest": "!DEFAULT"},
+        extra_files=["scan001.md"],
+        settings_section={"match_before_markup": "true"},
+    )
+    (source_dir / "scan001.md").write_text("RECHNUNG 12345", encoding="utf-8")
+    calls = []
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count, _fake_converter(calls)),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert calls == [], "existing markup match must not convert"
+    assert (target_dir / "Rechnungen" / "scan001.pdf").is_file()
+    assert (target_dir / "Rechnungen" / "scan001.md").is_file()
+
+
+def test_inbox_match_before_markup_default_still_converts(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Rechnungen": "Rechnung", "Rest": "!DEFAULT"},
+        settings_section={"match_before_markup": "true"},
+    )
+    calls = []
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count, _fake_converter(calls)),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert len(calls) == 1, "unmatched file must go through conversion"
+    assert (target_dir / "Rest" / "scan001.pdf").is_file()
+
+
+def test_inbox_jev_routing_question(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"WIT": "nevermatch", "INBOX-eval": "!DEFAULT"},
+        jev_section={"routing_question": "domain"},
+    )
+    answers = {
+        **JEV_ANSWERS,
+        "domain": {"type": "choice", "choice": "WIT", "confidence": 0.9},
+    }
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(answers),
+    )
+    _patch_inbox_converter(monkeypatch)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "WIT" / "scan001.pdf").is_file()
+    assert (target_dir / "WIT" / "scan001.md").is_file()
+
+
+def _eval_setup(tmp_path, *, eval_files, **setup_kwargs):
+    """Inbox config with an INBOX-eval default bowl and eval fixtures."""
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls=setup_kwargs.pop(
+            "inbox_bowls",
+            {"WIT": ";domain: wit", "INBOX-eval": "!DEFAULT"},
+        ),
+        **setup_kwargs,
+    )
+    for rel_path, content in eval_files.items():
+        path = target_dir / "INBOX-eval" / rel_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    return source_dir, target_dir, config_path
+
+
+def test_inbox_eval_rescan_confirmed_moves(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _eval_setup(
+        tmp_path,
+        eval_files={
+            "WIT/doc.pdf": "fake",
+            "WIT/doc.md": "---\ndomain: wit\n---\n\nbody",
+        },
+        settings_section={"eval_rescan": "true"},
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "WIT" / "doc.pdf").is_file()
+    assert (target_dir / "WIT" / "doc.md").is_file()
+    assert not (target_dir / "INBOX-eval" / "WIT" / "doc.pdf").exists()
+
+
+def test_inbox_eval_rescan_unconfirmed_stays(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _eval_setup(
+        tmp_path,
+        inbox_bowls={
+            "FAW": ";domain: faw",
+            "WIT": ";domain: wit",
+            "INBOX-eval": "!DEFAULT",
+        },
+        eval_files={
+            "WIT/doc.pdf": "fake",
+            "WIT/doc.md": "---\ndomain: faw\n---\n\nRechnung K1176348023",
+        },
+        settings_section={"eval_rescan": "true"},
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    # resolves FAW but asserted WIT: stays and seeds a WIT proposal
+    # with the identifier found in the markup, not a document_type
+    assert (target_dir / "INBOX-eval" / "WIT" / "doc.pdf").is_file()
+    assert not (target_dir / "FAW" / "doc.pdf").exists()
+    text = (target_dir / "sorting-proposals_target.ini").read_text(
+        encoding="utf-8"
+    )
+    assert "[WIT]" in text
+    assert "doc.pdf=;K1176348023" in text
+
+
+def test_inbox_eval_rescan_unasserted_moves(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _eval_setup(
+        tmp_path,
+        eval_files={
+            "doc.pdf": "fake",
+            "doc.md": "---\ndomain: wit\n---\n\nbody",
+        },
+        settings_section={"eval_rescan": "true"},
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "WIT" / "doc.pdf").is_file()
+    assert (target_dir / "WIT" / "doc.md").is_file()
+
+
+def test_inbox_eval_rescan_jev_reclassifies(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _eval_setup(
+        tmp_path,
+        inbox_bowls={"WIT": "nomatch", "INBOX-eval": "!DEFAULT"},
+        eval_files={
+            "WIT/doc.pdf": "fake",
+            "WIT/doc.md": "---\ncategory: 99_Unclassified\n---\n\nbody",
+        },
+        settings_section={"eval_rescan": "true"},
+        jev_section={"routing_question": "domain"},
+    )
+    answers = {
+        **JEV_ANSWERS,
+        "domain": {"type": "choice", "choice": "WIT", "confidence": 0.9},
+    }
+    calls = []
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(answers, calls),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert len(calls) == 1, "eval files must be re-classified"
+    assert (target_dir / "WIT" / "doc.pdf").is_file()
+    assert (target_dir / "WIT" / "doc.md").is_file()
+
+
+def test_inbox_eval_rescan_disabled_by_default(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _eval_setup(
+        tmp_path,
+        eval_files={
+            "WIT/doc.pdf": "fake",
+            "WIT/doc.md": "---\ndomain: wit\n---\n\nbody",
+        },
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "INBOX-eval" / "WIT" / "doc.pdf").is_file()
+    assert not (target_dir / "WIT" / "doc.pdf").exists()
+
+
+def test_inbox_eval_negative_returns_to_inbox(tmp_path):
+    source_dir, target_dir, config_path = _eval_setup(
+        tmp_path,
+        eval_files={
+            "WIT-negative/doc.pdf": "fake",
+            "WIT-negative/doc.md": "---\ndomain: wit\n---\n\nbody",
+        },
+        settings_section={"eval_rescan": "true"},
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (source_dir / "doc.pdf").is_file()
+    assert (source_dir / "doc.md").is_file()
+    assert not (target_dir / "WIT" / "doc.pdf").exists()
+    text = (target_dir / "inbox-negatives_target.ini").read_text(
+        encoding="utf-8"
+    )
+    assert "doc.pdf = WIT" in text
+
+
+def test_inbox_eval_asserted_moves_to_review_bowl(tmp_path):
+    # asserted eval files confirmed by the ruleset land in review\<domain>;
+    # the approved <domain> dir is populated manually only
+    source_dir, target_dir, config_path = _eval_setup(
+        tmp_path,
+        inbox_bowls={
+            "review\\WIT": ";domain: wit",
+            "INBOX-eval": "!DEFAULT",
+        },
+        eval_files={
+            "WIT/doc.pdf": "fake",
+            "WIT/doc.md": "---\ndomain: wit\n---\n\nbody",
+        },
+        settings_section={"eval_rescan": "true"},
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "review" / "WIT" / "doc.pdf").is_file()
+    assert not (target_dir / "WIT" / "doc.pdf").exists()
+
+
+def test_inbox_machine_routed_lands_in_review(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={
+            "review\\WIT": ";domain: wit",
+            "INBOX-eval": "!DEFAULT",
+        },
+        jev_section={"routing_question": "domain"},
+    )
+    answers = {
+        **JEV_ANSWERS,
+        "domain": {"type": "choice", "choice": "WIT", "confidence": 0.9},
+    }
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(answers),
+    )
+    _patch_inbox_converter(monkeypatch)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "review" / "WIT" / "scan001.pdf").is_file()
+
+
+def test_inbox_eval_dirs_created(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={
+            "review\\WIT": ";domain: wit",
+            "review\\FAW": ";domain: faw",
+            "INBOX-eval": "!DEFAULT",
+        },
+    )
+    _patch_inbox_converter(monkeypatch)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    for domain in ("WIT", "FAW"):
+        assert (target_dir / domain).is_dir()
+        assert (target_dir / "INBOX-eval" / domain).is_dir()
+        assert (target_dir / "INBOX-eval" / f"{domain}-negative").is_dir()
+
+
+def test_structure_preflight_reports_drift(tmp_path, capsys):
+    live_root = tmp_path / "live"
+    (live_root / "WIT" / "a" / "b").mkdir(parents=True)
+    (live_root / "WIT" / "new").mkdir(parents=True)
+    snap_dir = tmp_path / "snaps"
+    snap_dir.mkdir()
+    (snap_dir / "domain-structure-wit.md").write_text(
+        "# x\n```text\nWIT/\n  a\n  a/b\n  gone\n```\n",
+        encoding="utf-8",
+    )
+    config = ConfigParser()
+    config.optionxform = str
+    config["SETTINGS"] = {
+        "structure_root": str(live_root),
+        "structure_snapshot_dir": str(snap_dir),
+    }
+
+    cs.check_domain_structures(config)
+
+    out = capsys.readouterr().out
+    assert "+ new" in out
+    assert "- gone" in out
+
+
+def test_structure_preflight_ok(tmp_path, capsys):
+    live_root = tmp_path / "live"
+    (live_root / "WIT" / "a" / "b").mkdir(parents=True)
+    snap_dir = tmp_path / "snaps"
+    snap_dir.mkdir()
+    (snap_dir / "domain-structure-wit.md").write_text(
+        "# x\n```text\nWIT/\n  a\n  a/b\n```\n", encoding="utf-8"
+    )
+    config = ConfigParser()
+    config.optionxform = str
+    config["SETTINGS"] = {
+        "structure_root": str(live_root),
+        "structure_snapshot_dir": str(snap_dir),
+    }
+
+    cs.check_domain_structures(config)
+
+    assert "structure OK" in capsys.readouterr().out
+
+
+def test_structure_preflight_mirrors_dirs(tmp_path):
+    live_root = tmp_path / "live"
+    (live_root / "WIT" / "Buchhaltung" / "rechnungen-in").mkdir(
+        parents=True
+    )
+    snap_dir = tmp_path / "snaps"
+    snap_dir.mkdir()
+    (snap_dir / "domain-structure-wit.md").write_text(
+        "# x\n```text\nWIT/\n```\n", encoding="utf-8"
+    )
+    config = ConfigParser()
+    config.optionxform = str
+    config["SETTINGS"] = {
+        "structure_root": str(live_root),
+        "structure_snapshot_dir": str(snap_dir),
+    }
+    target_dir = tmp_path / "target"
+
+    cs.check_domain_structures(config, target_dir)
+
+    assert (
+        target_dir / "WIT" / "Buchhaltung" / "rechnungen-in"
+    ).is_dir()
+
+
+def test_inbox_jev_routes_to_shallowest_bowl(tmp_path, monkeypatch):
+    # a 'WIT' domain answer routes to review\WIT even when a deeper
+    # review\WIT\... bowl exists (detail bowls only win via crits)
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={
+            "review\\WIT\\Buchhaltung\\rechnungen-in": ";hetzner",
+            "review\\WIT": ";domain: wit",
+            "INBOX-eval": "!DEFAULT",
+        },
+        jev_section={"routing_question": "domain"},
+    )
+    answers = {
+        **JEV_ANSWERS,
+        "domain": {"type": "choice", "choice": "WIT", "confidence": 0.9},
+    }
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(answers),
+    )
+    _patch_inbox_converter(monkeypatch)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "review" / "WIT" / "scan001.pdf").is_file()
+    assert not list(
+        (target_dir / "review" / "WIT" / "Buchhaltung").rglob("*.pdf")
+    )
+
+
+def test_inbox_eval_asserted_confirms_deep_bowl(tmp_path):
+    # asserted WIT + markup hits a deep WIT crit -> deep bowl path
+    source_dir, target_dir, config_path = _eval_setup(
+        tmp_path,
+        inbox_bowls={
+            "review\\WIT\\Buchhaltung\\rechnungen-in": ";hetzner",
+            "review\\WIT": ";domain: wit",
+            "INBOX-eval": "!DEFAULT",
+        },
+        eval_files={
+            "WIT/doc.pdf": "fake",
+            "WIT/doc.md": "Hetzner Online GmbH",
+        },
+        settings_section={"eval_rescan": "true"},
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (
+        target_dir / "review" / "WIT" / "Buchhaltung"
+        / "rechnungen-in" / "doc.pdf"
+    ).is_file()
+
+
+def test_inbox_jev_prefers_staging_bowl(tmp_path, monkeypatch):
+    # JEV 'WIT' lands in the review\WIT staging bowl even though a
+    # direct WIT bowl exists — deterministic hits bypass review
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={
+            "WIT\\Buchhaltung\\rechnungen-in": ";hetzner",
+            "WIT": "hetznerfile;",
+            "review\\WIT": "",
+            "INBOX-eval": "!DEFAULT",
+        },
+        jev_section={"routing_question": "domain"},
+    )
+    answers = {
+        **JEV_ANSWERS,
+        "domain": {"type": "choice", "choice": "WIT", "confidence": 0.9},
+    }
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(answers),
+    )
+    _patch_inbox_converter(monkeypatch)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "review" / "WIT" / "scan001.pdf").is_file()
+
+
+def test_inbox_deterministic_match_is_direct(tmp_path, monkeypatch):
+    # a deterministic detail match lands directly in <domain>\<detail>
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={
+            "WIT\\Buchhaltung\\rechnungen-in": ";hetzner",
+            "review\\WIT": "",
+            "INBOX-eval": "!DEFAULT",
+        },
+    )
+    _patch_inbox_converter(
+        monkeypatch, content="invoice from Hetzner"
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (
+        target_dir / "WIT" / "Buchhaltung" / "rechnungen-in"
+        / "scan001.pdf"
+    ).is_file()
+    assert not (target_dir / "review" / "WIT").exists() or not list(
+        (target_dir / "review" / "WIT").rglob("*.pdf")
+    )
+
+
+def test_inbox_negative_blocks_domain_match(tmp_path, monkeypatch):
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"WIT": "scan001", "INBOX-eval": "!DEFAULT"},
+    )
+    (target_dir / "inbox-negatives_target.ini").write_text(
+        "[negatives]\nscan001.pdf=WIT\n", encoding="utf-8"
+    )
+    _patch_inbox_converter(monkeypatch)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not (target_dir / "WIT" / "scan001.pdf").exists()
+    assert (target_dir / "INBOX-eval" / "scan001.pdf").is_file()
+
+
 if __name__ == '__main__':
     pytest.main()

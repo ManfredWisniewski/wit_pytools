@@ -42,13 +42,13 @@
 - JSON mapping support is a future UI-oriented option; CSV remains the current
   manually editable format.
 
-## PRESORT bowls
+## Presort stage (INBOX extension)
 
 - Implement the INBOX → DOMAINS presort stage described in
-  `intent-presort.md`: `[BOWLS_PRESORT]` + `[PRESORT]` settings, eval-dir
-  queue with human triage rescan, JEV ruleset proposals. Worklist:
-  `+team/handoff/2026-11-03-presort-inbox-flow_handoff.md`. Open points
-  are listed at the end of that intent section.
+  `intent-presort.md` as an extension of `BOWLS_INBOX` (no new bowl
+  type): `match_before_markup`, `[JEV] routing_question`, `eval_rescan`
+  of the `!DEFAULT` bowl, asserted-domain proposals. Worklist:
+  `+team/handoff/2026-11-03-presort-inbox-flow_handoff.md`.
 
 ## GEN_IMG bowls
 

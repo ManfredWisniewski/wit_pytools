@@ -1,4 +1,4 @@
-# cinderellasort — DOCPREP + ANONYMIZE flow
+# cinderellasort — DOCPREP + ANONYMIZE + INBOX PRESORT flow
 
 Flow of the `[DOCPREP]` conversion and the separate `[BOWLS_ANONYMIZE]` /
 `[ANONYMIZE]` anonymization pipeline in `cinderellasort.py`, including all
@@ -112,6 +112,35 @@ flowchart TD
     K --> M["retract identical<br/>plaintext copy"]
     L --> M
     M --> Z2["return"]
+```
+
+## INBOX PRESORT flow (`[BOWLS_INBOX]` extension)
+
+Presort turns the inbox `!DEFAULT` bowl into a human triage queue:
+deterministic crits first, DOCPREP markup + JEV second, domain routing by
+the JEV `routing_question` answer, and an eval rescan that only releases
+files when the ruleset confirms the human-asserted domain.
+
+```mermaid
+flowchart TD
+    A["handle_inbox(file)<br/>match_before_markup=true"] --> B{"bowldir_inbox<br/>name crits + existing .md<br/>(no conversion)"}
+    B -- "match (not !DEFAULT)" --> M["move to targetdir/&lt;bowl&gt;<br/>with sidecars"]
+    B -- no --> C["create .md beside source<br/>(DOCPREP converters)"]
+    C --> D["_jev_tag_markup()<br/>frontmatter fields"]
+    D --> E{"routing_question answer<br/>names a bowl?"}
+    E -- yes --> M
+    E -- no --> F{"bowldir_inbox crits"}
+    F -- match --> M
+    F -- no --> G["!DEFAULT bowl = eval queue<br/>targetdir/INBOX-eval"]
+    M --> H["process_inbox_eval()<br/>(eval_rescan=true, run level)"]
+    G --> H
+    H --> I{"per eval file:<br/>asserted domain =<br/>subdir name if a bowl"}
+    I --> J["re-classify (force)<br/>+ re-evaluate"]
+    J --> K{"resolved == asserted<br/>or unasserted + any bowl?"}
+    K -- yes --> L["move to targetdir/&lt;bowl&gt;<br/>with sidecars"]
+    K -- no --> N2["stay + proposal<br/>(asserted domain seeds bowl)"]
+    L --> O["_write_inbox_proposals()<br/>sorting-proposals_*.ini"]
+    N2 --> O
 ```
 
 ## `[DOCPREP]` options

@@ -2013,6 +2013,10 @@ def jev_settings(config_object):
         'model': (section.get('model', '') or '').strip() or None,
         'max_chars': int(section.get('max_chars', '8000')),
         'min_confidence': float(section.get('min_confidence', '0') or '0'),
+        'routing_question': (
+            section.get('routing_question', '') or ''
+        ).strip() or None,
+        'staging': (section.get('staging', 'review') or '').strip(),
     }
 
 
@@ -2114,6 +2118,63 @@ _jev_classified = 0
 # Inbox files left unsorted or routed to !DEFAULT: name -> (bowl, crit).
 _inbox_proposals = {}
 
+# Negative-domain ledger: cleaned filename -> set of rejected bowl names.
+_inbox_negatives = {}
+
+
+def _inbox_negatives_path(targetdir):
+    """Ledger file recording human-rejected domain assignments."""
+    slug = Path(str(targetdir).rstrip('/\\')).name or 'inbox'
+    return Path(targetdir) / f'inbox-negatives_{slug}.ini'
+
+
+def _inbox_negatives_load(targetdir):
+    """Read the negative ledger into {cleaned name: {rejected bowls}}."""
+    negatives = {}
+    path = _inbox_negatives_path(targetdir)
+    if not path.is_file():
+        return negatives
+    ini = ConfigParser()
+    ini.optionxform = str
+    ini.read(path, encoding='utf-8')
+    if ini.has_section('negatives'):
+        for nfile, bowls in ini.items('negatives', raw=True):
+            negatives[nfile] = {
+                bowl.strip() for bowl in bowls.split(',') if bowl.strip()
+            }
+    return negatives
+
+
+def _inbox_negatives_write(targetdir):
+    """Persist the negative ledger to its INI file."""
+    path = _inbox_negatives_path(targetdir)
+    ini = ConfigParser()
+    ini.optionxform = str
+    ini.add_section('negatives')
+    for nfile in sorted(_inbox_negatives):
+        ini.set('negatives', nfile, ','.join(sorted(_inbox_negatives[nfile])))
+    with path.open('w', encoding='utf-8') as fp:
+        ini.write(fp)
+
+
+def _inbox_negative_add(targetdir, nfile, bowl, dryrun):
+    """Record a rejected domain for a file in the negative ledger."""
+    _inbox_negatives.setdefault(nfile, set()).add(bowl)
+    if not dryrun:
+        _inbox_negatives_write(targetdir)
+
+
+def _inbox_negative_remove(targetdir, nfile, bowl, dryrun):
+    """Drop a rejected domain once a positive assertion confirms it."""
+    rejected = _inbox_negatives.get(nfile)
+    if not rejected or bowl not in rejected:
+        return
+    rejected.discard(bowl)
+    if not rejected:
+        del _inbox_negatives[nfile]
+    if not dryrun:
+        _inbox_negatives_write(targetdir)
+
 
 # Thread groups per directory, computed once per run before members move away.
 _inbox_eml_threads = {}
@@ -2147,13 +2208,51 @@ def _inbox_eml_thread_path(sourcedir, members, clean, clean_nocase, replacements
     return Path(sourcedir) / f"{prefix}{earliest_stem}.md"
 
 
-def _inbox_record_proposal(nfile, markup):
+_INBOX_ID_RE = re.compile(r'(?=[A-Za-z0-9-]*\d)[A-Za-z0-9-]{6,}')
+
+
+def _inbox_identifier_crits(markup, limit=8):
+    """Suggest content crits: identifier-like tokens found in the markup.
+
+    Picks tokens of 6+ chars containing 4+ digits (account, customer and
+    invoice numbers) — the discriminators domain crits are built from.
+    """
+    if not markup or not Path(markup).is_file():
+        return []
+    text = Path(markup).read_text(encoding='utf-8', errors='replace')
+    found = []
+    seen = set()
+    for match in _INBOX_ID_RE.finditer(text):
+        token = match.group(0)
+        if sum(char.isdigit() for char in token) < 4:
+            continue
+        key = token.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        found.append(token)
+        if len(found) >= limit:
+            break
+    return found
+
+
+def _inbox_record_proposal(nfile, markup, proposed_bowl=None, routing_question=None):
     """Remember an unsorted or !DEFAULT-routed file for the proposals INI."""
     fields = _md_frontmatter_fields(markup) if markup else {}
-    proposed_bowl = fields.get('category') or '99_Unclassified'
-    document_type = fields.get('document_type')
-    crit = f';{document_type}' if document_type else Path(nfile).stem
-    _inbox_proposals[nfile] = (proposed_bowl, crit)
+    jev_domain = fields.get(routing_question) if routing_question else None
+    bowl = (
+        proposed_bowl
+        or jev_domain
+        or fields.get('category')
+        or '99_Unclassified'
+    )
+    identifiers = _inbox_identifier_crits(markup)
+    if identifiers:
+        crit = ';' + ','.join(identifiers)
+    else:
+        document_type = fields.get('document_type')
+        crit = f';{document_type}' if document_type else Path(nfile).stem
+    _inbox_proposals[nfile] = (bowl, crit)
 
 
 def _write_inbox_proposals(targetdir, dryrun):
@@ -2191,14 +2290,14 @@ def _write_inbox_proposals(targetdir, dryrun):
     print(message)
 
 
-def _jev_tag_markup(source, markup_path, config_object, dryrun):
+def _jev_tag_markup(source, markup_path, config_object, dryrun, force=False):
     """Classify a markup file via JEV and write the result as frontmatter."""
     global _jev_classified
     settings = jev_settings(config_object)
     if not settings['definitions_file']:
         return
     markup_path = Path(markup_path)
-    if _md_frontmatter_fields(markup_path).get('category'):
+    if not force and _md_frontmatter_fields(markup_path).get('category'):
         return  # already classified
     if dryrun:
         print(f"  JEV (dryrun): classify {markup_path.name}")
@@ -2250,7 +2349,187 @@ def _jev_tag_markup(source, markup_path, config_object, dryrun):
     print(message)
 
 
-def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, skip_unmatched=True, email_threads=True, remove_source=frozenset(), maintain_structure=False, ignore_files=''):
+def _inbox_default_bowl(config_object):
+    """Name of the !DEFAULT inbox bowl, or None."""
+    return next(
+        (
+            bowl
+            for bowl, critlist in config_object.items('BOWLS_INBOX')
+            if '!DEFAULT' in critlist
+        ),
+        None,
+    )
+
+
+def _structure_snapshot_dirs(snapshot_file):
+    """Read the tree block of a domain-structure snapshot doc."""
+    dirs = set()
+    in_block = False
+    for line in Path(snapshot_file).read_text(
+        encoding='utf-8'
+    ).splitlines():
+        if line.strip() == '```text':
+            in_block = True
+            continue
+        if in_block and line.strip() == '```':
+            break
+        if in_block and line.startswith('  '):
+            dirs.add(line.strip())
+    return dirs
+
+
+def check_domain_structures(config_object, targetdir=None):
+    """Preflight: diff live domain trees against structure snapshots.
+
+    Enabled by [SETTINGS] structure_root + structure_snapshot_dir; each
+    domain-structure-<domain>.md snapshot is compared with
+    <structure_root>/<domain>. Differences are reported, not enforced.
+    When targetdir is given, the live directory tree (dirs only) is
+    reconstructed below targetdir/<domain> so human filing targets
+    exist.
+    """
+    settings = (
+        config_object['SETTINGS']
+        if config_object.has_section('SETTINGS') else {}
+    )
+    root = (settings.get('structure_root', '') or '').strip()
+    snap_dir = (settings.get('structure_snapshot_dir', '') or '').strip()
+    if not (root and snap_dir):
+        return
+    root_dirs = {
+        p.name.casefold(): p for p in Path(root).iterdir() if p.is_dir()
+    }
+    for snap in sorted(Path(snap_dir).glob('domain-structure-*.md')):
+        domain = snap.stem.removeprefix('domain-structure-')
+        live_root = root_dirs.get(domain.casefold())
+        if live_root is None:
+            print(f"Preflight {domain}: live root missing below {root}")
+            continue
+        expected = _structure_snapshot_dirs(snap)
+        live = {
+            str(p.relative_to(live_root)).replace('\\', '/')
+            for p in live_root.rglob('*') if p.is_dir()
+        }
+        if targetdir:
+            for rel in sorted(live):
+                try:
+                    (Path(targetdir) / live_root.name / rel).mkdir(
+                        parents=True, exist_ok=True
+                    )
+                except Exception as e:
+                    log_message(
+                        "Error creating directory "
+                        f"{Path(targetdir) / live_root.name / rel}: {e}",
+                        level="ERROR")
+        added = sorted(live - expected)
+        removed = sorted(expected - live)
+        if not added and not removed:
+            print(
+                f"Preflight {domain}: structure OK "
+                f"({len(expected)} dirs)"
+            )
+            continue
+        message = (
+            f"Preflight {domain}: structure changed "
+            f"(+{len(added)}/-{len(removed)} dirs)"
+        )
+        log_message(message, level="WARNING")
+        print(message)
+        for marker, items in (('+', added), ('-', removed)):
+            for d in items[:20]:
+                print(f"  {marker} {d}")
+            if len(items) > 20:
+                print(f"  {marker} ... {len(items) - 20} more")
+
+
+def _prepare_inbox_eval_dirs(config_object, targetdir):
+    """Create the eval triage dirs and approved domain dirs for humans.
+
+    <eval>/<domain> and <eval>/<domain>-negative exist so triage is a
+    drop-into-folder action; <domain> at targetdir root is the manual
+    acceptance target.
+    """
+    default_bowl = _inbox_default_bowl(config_object)
+    if not default_bowl:
+        return
+    staging = jev_settings(config_object).get('staging') or 'review'
+    domains = {
+        _inbox_bowl_domain(bowl, staging)
+        for bowl, critlist in config_object.items('BOWLS_INBOX')
+        if '!DEFAULT' not in critlist
+    }
+    eval_root = Path(targetdir) / default_bowl
+    for domain in sorted(domains):
+        for path in (
+            Path(targetdir) / domain,
+            eval_root / domain,
+            eval_root / f'{domain}-negative',
+        ):
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                log_message(
+                    f"Error creating directory {path}: {e}", level="ERROR"
+                )
+
+
+def _inbox_bowl_domain(bowl, staging='review'):
+    """Domain named by a bowl: the component below the staging prefix.
+
+    'review\\WIT' and 'review\\WIT\\Buchhaltung' -> 'WIT' for the
+    default staging 'review'; every other bowl's first path
+    component is the domain ('WIT\\Buchhaltung' -> 'WIT',
+    '3D-print' -> '3D-print').
+    """
+    parts = bowl.replace('\\', '/').split('/')
+    if (
+        len(parts) > 1
+        and parts[0].casefold() == staging.casefold()
+    ):
+        return parts[1]
+    return parts[0]
+
+
+def _inbox_jev_bowl(markup_path, config_object):
+    """Bowl named by the JEV routing answer in the markup frontmatter.
+
+    JEV results are probabilistic, so they land in the staging bowl
+    '<staging>/<answer>' when configured ('review\\WIT'); otherwise
+    the shallowest bowl naming that domain wins — deterministic
+    (decided) bowls live outside the staging prefix.
+    """
+    question = jev_settings(config_object).get('routing_question')
+    if not (question and markup_path):
+        return ''
+    answer = _md_frontmatter_fields(markup_path).get(question)
+    if not answer:
+        return ''
+    answer = str(answer).strip().casefold()
+    staging = jev_settings(config_object).get('staging') or ''
+    if staging:
+        staged = (staging + '/' + answer).casefold()
+        for bowl, critlist in config_object.items('BOWLS_INBOX'):
+            if '!DEFAULT' in critlist:
+                continue
+            if bowl.replace('\\', '/').casefold() == staged:
+                return '/' + bowl
+    candidates = [
+        bowl
+        for bowl, critlist in config_object.items('BOWLS_INBOX')
+        if '!DEFAULT' not in critlist
+        and (
+            bowl.casefold() == answer
+            or _inbox_bowl_domain(bowl, staging).casefold() == answer
+        )
+    ]
+    if not candidates:
+        return ''
+    return '/' + min(
+        candidates, key=lambda b: b.replace('\\', '/').count('/')
+    )
+
+
+def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, skip_unmatched=True, email_threads=True, remove_source=frozenset(), maintain_structure=False, ignore_files='', match_before_markup=False):
     """Sort a file into an inbox bowl together with its markup sidecars.
 
     Supported documents get a Markdown variant next to the source via the
@@ -2267,74 +2546,103 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
     cleaned_stem = Path(nfile).stem
     log_message(_('Handling Inbox: {}').format(source), level="INFO")
 
-    # Create the markup variant for convertible documents.
     markup_path = source.with_suffix('.md')
     eml_members = None
-    if source.suffix.lower() == '.eml' and email_threads:
-        eml_members = _inbox_eml_thread_file(
-            source, sourcedir, clean, clean_nocase, replacements,
-            ignore_files,
+    default_bowl = _inbox_default_bowl(config_object)
+
+    # Deterministic match first: a cleaned-name or existing-markup match
+    # decides the bowl without conversion or JEV cost.
+    bowl = ''
+    if match_before_markup:
+        bowl = bowldir_inbox(
+            nfile, config_object,
+            markup_path=markup_path if markup_path.is_file() else None,
         )
-    if eml_members:
-        # Members of a mail thread share one combined markup file named
-        # after the earliest member; it is created once and copied into
-        # each member's bowl.
-        markup_path = _inbox_eml_thread_path(
-            sourcedir, eml_members, clean, clean_nocase, replacements
-        )
-        if not markup_path.is_file():
-            if dryrun:
-                print(f"  Doc_prep (dryrun): thread markup {markup_path}")
-            else:
-                try:
-                    from wit_pytools.mailtools import eml_thread_to_markdown
-                    eml_thread_to_markdown(eml_members, markup_path)
-                    message = f"Doc_prep: created thread markup {markup_path}"
-                    log_message(message, level="INFO")
-                    print(message)
-                except Exception as e:
-                    log_message(
-                        f"Inbox: thread markup conversion failed for "
-                        f"{source.name}: {e}",
-                        level="ERROR",
-                    )
-    elif (
-        source.suffix.lower() in DOCPREP_CONVERTERS
-        and not markup_path.is_file()
-    ):
-        try:
-            handle_docprep(
-                source, sourcedir, targetdir, '', clean, clean_nocase,
-                config_object, filemode, replacements, dryrun, overwrite,
+        if bowl.lstrip('/') == (default_bowl or ''):
+            bowl = ''
+    if not bowl:
+        # Create the markup variant for convertible documents.
+        if source.suffix.lower() == '.eml' and email_threads:
+            eml_members = _inbox_eml_thread_file(
+                source, sourcedir, clean, clean_nocase, replacements,
+                ignore_files,
             )
-        except Exception as e:
-            log_message(
-                f"Inbox: markup conversion failed for {source.name}: {e}",
-                level="ERROR",
+        if eml_members:
+            # Members of a mail thread share one combined markup file named
+            # after the earliest member; it is created once and copied into
+            # each member's bowl.
+            markup_path = _inbox_eml_thread_path(
+                sourcedir, eml_members, clean, clean_nocase, replacements
             )
+            if not markup_path.is_file():
+                if dryrun:
+                    print(f"  Doc_prep (dryrun): thread markup {markup_path}")
+                else:
+                    try:
+                        from wit_pytools.mailtools import eml_thread_to_markdown
+                        eml_thread_to_markdown(eml_members, markup_path)
+                        message = f"Doc_prep: created thread markup {markup_path}"
+                        log_message(message, level="INFO")
+                        print(message)
+                    except Exception as e:
+                        log_message(
+                            f"Inbox: thread markup conversion failed for "
+                            f"{source.name}: {e}",
+                            level="ERROR",
+                        )
+        elif (
+            source.suffix.lower() in DOCPREP_CONVERTERS
+            and not markup_path.is_file()
+        ):
+            try:
+                handle_docprep(
+                    source, sourcedir, targetdir, '', clean, clean_nocase,
+                    config_object, filemode, replacements, dryrun, overwrite,
+                )
+            except Exception as e:
+                log_message(
+                    f"Inbox: markup conversion failed for {source.name}: {e}",
+                    level="ERROR",
+                )
     markup = markup_path if markup_path.is_file() else None
 
-    # JEV classification tags the markup before matching and moving.
-    if markup and source.suffix.lower() in DOCPREP_CONVERTERS:
-        _jev_tag_markup(source, markup, config_object, dryrun)
-
-    default_bowl = next(
-        (
-            bowl_name
-            for bowl_name, critlist in config_object.items('BOWLS_INBOX')
-            if '!DEFAULT' in critlist
-        ),
-        None,
-    )
-    bowl = bowldir_inbox(nfile, config_object, markup_path=markup)
+    if not bowl:
+        # JEV classification tags the markup before matching and moving.
+        if markup and source.suffix.lower() in DOCPREP_CONVERTERS:
+            _jev_tag_markup(source, markup, config_object, dryrun)
+        # The JEV routing answer may name the bowl directly.
+        bowl = _inbox_jev_bowl(markup, config_object)
+    if not bowl:
+        bowl = bowldir_inbox(nfile, config_object, markup_path=markup)
+    if (
+        bowl
+        and _inbox_bowl_domain(
+            bowl.lstrip('/'),
+            jev_settings(config_object).get('staging') or 'review',
+        )
+        in _inbox_negatives.get(nfile, ())
+    ):
+        # A human rejected this domain for the file: fall back to eval.
+        print(f"  Negative domain excluded: {nfile} -> {bowl.lstrip('/')}")
+        bowl = f'/{default_bowl}' if default_bowl else ''
     if not bowl or bowl.strip() == '':
         if skip_unmatched:
             print(f"  No inbox bowl match, skipping: {nfile}")
-            _inbox_record_proposal(nfile, markup)
+            _inbox_record_proposal(
+                nfile, markup,
+                routing_question=jev_settings(config_object).get(
+                    'routing_question'
+                ),
+            )
             return
         bowl = ''
     if default_bowl and bowl.lstrip('/') == default_bowl:
-        _inbox_record_proposal(nfile, markup)
+        _inbox_record_proposal(
+            nfile, markup,
+            routing_question=jev_settings(config_object).get(
+                'routing_question'
+            ),
+        )
     destdir = targetdir + bowl
     if maintain_structure:
         # Keep the source directory tree inside the bowl.
@@ -2385,6 +2693,155 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
                 sourcedir, markup.name, destdir, markup.name,
                 filemode, overwrite=overwrite, dryrun=dryrun,
             )
+
+
+def process_inbox_eval(
+        sourcedir, targetdir, clean, clean_nocase, config_object, filemode,
+        replacements, dryrun, overwrite, ftype_sort, ignore_files=''):
+    """Re-evaluate files in the inbox !DEFAULT (eval) bowl below targetdir.
+
+    Human triage places files under <eval>/<domain>; the subdir name is
+    the asserted domain. A file leaves eval only when the evaluation
+    confirms the asserted domain; unasserted files move to any resolved
+    bowl. Files under <eval>/<domain>-negative are rejected for that
+    domain: the rejection is recorded in the negative ledger and the
+    file returns to the INBOX. Unresolved files are recorded for
+    sorting proposals.
+    """
+    default_bowl = _inbox_default_bowl(config_object)
+    if not default_bowl:
+        return
+    eval_root = Path(targetdir) / default_bowl
+    if not eval_root.is_dir():
+        return
+    # Asserted/rejected dirs name a domain: the bowl component below
+    # the staging prefix (INBOX-eval/WIT covers 'WIT', 'review/WIT'
+    # and 'review/WIT/Buchhaltung' bowls).
+    staging = jev_settings(config_object).get('staging') or 'review'
+    domain_names = {}
+    for bowl, critlist in config_object.items('BOWLS_INBOX'):
+        if '!DEFAULT' not in critlist:
+            domain = _inbox_bowl_domain(bowl, staging)
+            domain_names.setdefault(domain.casefold(), domain)
+    sort_suffixes = tuple(
+        ext.strip().casefold()
+        for ext in ftype_sort.split(',') if ext.strip()
+    )
+    for source in sorted(eval_root.rglob('*')):
+        if not source.is_file():
+            continue
+        if not source.name.lower().endswith(sort_suffixes):
+            continue
+        if matchstring(source.name.casefold(), ignore_files):
+            continue
+        if _inbox_is_sidecar(source):
+            continue
+        # The path below the eval root is the asserted domain when it
+        # names a configured bowl (INBOX-eval/WIT -> WIT); a
+        # <domain>-negative directory rejects the file for that domain.
+        relative = source.relative_to(eval_root)
+        first = relative.parts[0] if len(relative.parts) > 1 else ''
+        rejected = ''
+        if first.casefold().endswith('-negative'):
+            rejected = domain_names.get(
+                first[:-len('-negative')].casefold(), ''
+            )
+        nfile = normalize_spaces(
+            cleanfilename(source.name, clean, clean_nocase, replacements)
+        )
+        cleaned_stem = Path(nfile).stem
+        if rejected:
+            _inbox_negative_add(targetdir, nfile, rejected, dryrun)
+            movefile(
+                str(source.parent), source.name, str(sourcedir), nfile,
+                filemode, overwrite=overwrite, dryrun=dryrun,
+            )
+            for sidecar in _inbox_sidecar_candidates(source, cleaned_stem):
+                if sidecar == source or not sidecar.is_file():
+                    continue
+                sidecar_name = (
+                    f"{cleaned_stem}.md"
+                    if sidecar.suffix.lower() == '.md'
+                    else f"{cleaned_stem}_pdf2md.json"
+                )
+                movefile(
+                    str(sidecar.parent), sidecar.name, str(sourcedir),
+                    sidecar_name, filemode,
+                    overwrite=overwrite, dryrun=dryrun,
+                )
+            message = (
+                f"Inbox eval: {source.name} rejected for "
+                f"{rejected}, returned to INBOX"
+            )
+            log_message(message, level="INFO")
+            print(message)
+            continue
+        asserted = domain_names.get(first.casefold(), '')
+        markup_path = source.with_suffix('.md')
+        markup = markup_path if markup_path.is_file() else None
+        # Re-classify so a ruleset updated since the last run takes effect.
+        if markup and source.suffix.lower() in DOCPREP_CONVERTERS:
+            _jev_tag_markup(
+                source, markup, config_object, dryrun, force=True
+            )
+        bowl = _inbox_jev_bowl(markup, config_object)
+        if not bowl:
+            bowl = bowldir_inbox(nfile, config_object, markup_path=markup)
+        resolved = bowl.lstrip('/')
+        if resolved == default_bowl:
+            resolved = ''
+        resolved_domain = _inbox_bowl_domain(resolved, staging)
+        # A positive assertion wins over a stored rejection.
+        if (
+            resolved
+            and not (
+                asserted
+                and resolved_domain.casefold() == asserted.casefold()
+            )
+            and resolved_domain in _inbox_negatives.get(nfile, ())
+        ):
+            resolved = ''
+        confirmed = bool(resolved) and (
+            not asserted
+            or resolved_domain.casefold() == asserted.casefold()
+        )
+        if not confirmed:
+            _inbox_record_proposal(
+                nfile, markup, proposed_bowl=asserted or None,
+                routing_question=jev_settings(config_object).get(
+                    'routing_question'
+                ),
+            )
+            continue
+        # Confirmed files move to the resolved bowl (review/<domain>);
+        # acceptance is a manual move to the approved <domain> dir.
+        if asserted:
+            _inbox_negative_remove(
+                targetdir, nfile, resolved_domain, dryrun
+            )
+        destdir = str(Path(targetdir) / resolved)
+        movefile(
+            str(source.parent), source.name, destdir, nfile, filemode,
+            overwrite=overwrite, dryrun=dryrun,
+        )
+        for sidecar in _inbox_sidecar_candidates(source, cleaned_stem):
+            if sidecar == source or not sidecar.is_file():
+                continue
+            sidecar_name = (
+                f"{cleaned_stem}.md"
+                if sidecar.suffix.lower() == '.md'
+                else f"{cleaned_stem}_pdf2md.json"
+            )
+            movefile(
+                str(sidecar.parent), sidecar.name, destdir, sidecar_name,
+                filemode, overwrite=overwrite, dryrun=dryrun,
+            )
+        message = (
+            f"Inbox eval: {source.name} -> "
+            f"{destdir.replace(str(Path(targetdir)), '')}"
+        )
+        log_message(message, level="INFO")
+        print(message)
 
 
 GEN_IMG_REFERENCE_SUFFIXES = ('.png', '.jpg', '.jpeg', '.webp')
@@ -2535,7 +2992,7 @@ def handle_pdf(file, sourcedir, targetdir, clean, clean_nocase, config_object, f
             log_message(f"Error handling PDF file {file.name}: {e}", level="ERROR")
     return
 
-def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None, skip_unmatched=True, check_content=False, ignore_append=False, email_threads=True, remove_source=frozenset(), maintain_structure=False, ignore_files=''):
+def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name=False, dir_file_count=None, dirname=None, skip_unmatched=True, check_content=False, ignore_append=False, email_threads=True, remove_source=frozenset(), maintain_structure=False, ignore_files='', match_before_markup=False):
     # First check if the file matches any of the specified file types
     file_matches_type = False
     file_ext = ''
@@ -2561,6 +3018,7 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
             remove_source=remove_source,
             maintain_structure=maintain_structure,
             ignore_files=ignore_files,
+            match_before_markup=match_before_markup,
         )
         return
 
@@ -2749,6 +3207,7 @@ def cinderellasort(
     _jev_classified = 0
     _inbox_proposals.clear()
     _inbox_eml_threads.clear()
+    _inbox_negatives.clear()
     files = ""
     time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
@@ -2766,6 +3225,7 @@ def cinderellasort(
     sourcedir = str(table["sourcedir"]).replace('\\', '/').replace('//', '/')
     targetdir = str(table["targetdir"]).replace('\\', '/').replace('//', '/')
     _validate_source_target_dirs(sourcedir, targetdir)
+    _inbox_negatives.update(_inbox_negatives_load(targetdir))
     ftype_sort = (table["ftype_sort"].casefold())
     ftype_delete = (table["ftype_delete"].casefold()) if "ftype_delete" in table else "NOTdefined"
     clean = (table["clean"]) if "clean" in table else "NOTdefined"
@@ -2800,6 +3260,12 @@ def cinderellasort(
     }
     maintain_structure = (
         settings.get('maintain_structure', 'false') or 'false'
+    ).strip().lower() == 'true'
+    match_before_markup = (
+        settings.get('match_before_markup', 'false') or 'false'
+    ).strip().lower() == 'true'
+    eval_rescan = (
+        settings.get('eval_rescan', 'false') or 'false'
     ).strip().lower() == 'true'
     check_content = settings.get('check_content', 'false').strip().lower() == 'true'
     recursive = settings.get('recursive', 'true').strip().lower() == 'true'
@@ -2897,7 +3363,11 @@ def cinderellasort(
         )
 
     # prepare for sort process
+    check_domain_structures(config_object, targetdir)
+
     prepsort(config_object, targetdir)
+    if bowllist_inbox(config_object):
+        _prepare_inbox_eval_dirs(config_object, targetdir)
 
     # Handle single file if specified, otherwise process all files in sourcedir
     if single:
@@ -2911,7 +3381,7 @@ def cinderellasort(
         if single_ignored:
             print(f"Skipping ignored file: {file_name}")
         elif file_path.is_file():
-            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, skip_unmatched=skip_unmatched, check_content=check_content, ignore_append=ignore_append, email_threads=email_threads, remove_source=remove_source, maintain_structure=maintain_structure, ignore_files=ignore_files)
+            handlefile(file_path, file_dir, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, skip_unmatched=skip_unmatched, check_content=check_content, ignore_append=ignore_append, email_threads=email_threads, remove_source=remove_source, maintain_structure=maintain_structure, ignore_files=ignore_files, match_before_markup=match_before_markup)
             _anonymize_single_file(
                 file_path,
                 file_dir,
@@ -3014,7 +3484,7 @@ def cinderellasort(
                 # Get directory name and file count for this file
                 dirname = os.path.basename(root) if use_directory_name else None
                 dir_count = dir_file_counts.get(root, 0) if use_directory_name else None
-                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname, skip_unmatched, check_content=check_content, ignore_append=ignore_append, email_threads=email_threads, remove_source=remove_source, maintain_structure=maintain_structure, ignore_files=ignore_files)
+                handlefile(file_path, root, targetdir, ftype_sort, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, jpg_quality, gps_moved_unmatched, gps_compress, use_directory_name, dir_count, dirname, skip_unmatched, check_content=check_content, ignore_append=ignore_append, email_threads=email_threads, remove_source=remove_source, maintain_structure=maintain_structure, ignore_files=ignore_files, match_before_markup=match_before_markup)
                 processed_files += 1
         log_message(f"Processed {processed_files} files in {sourcedir} and subdirectories")
         
@@ -3086,6 +3556,18 @@ def cinderellasort(
     if clear_empty_directories:
         print(f"\n## Removing empty directories:")
         rmemptydir(sourcedir, dryrun, ignore_dirs=ignore_dir_tokens)
+
+    if (
+        eval_rescan
+        and single is None
+        and bowllist_inbox(config_object)
+    ):
+        print("\n## Inbox eval rescan:")
+        process_inbox_eval(
+            sourcedir, targetdir, clean, clean_nocase, config_object,
+            filemode, replacements, dryrun, overwrite, ftype_sort,
+            ignore_files=ignore_files,
+        )
 
     _write_inbox_proposals(targetdir, dryrun)
 
