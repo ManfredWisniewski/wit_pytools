@@ -2459,9 +2459,29 @@ def _apply_structure_changes(
         for old, new in moves.items():
             src = Path(targetdir) / live_root.name / old
             dst = Path(targetdir) / live_root.name / new
-            if src.is_dir() and not dryrun:
-                dst.parent.mkdir(parents=True, exist_ok=True)
+            if not (src.is_dir() and not dryrun):
+                continue
+            try:
                 shutil.move(str(src), str(dst))
+            except shutil.Error:
+                # dst exists (mirrored earlier): merge contents instead
+                for child in sorted(src.iterdir()):
+                    target = dst / child.name
+                    if target.exists():
+                        print(
+                            '  Mirror merge: kept existing'
+                            f' {target}'
+                        )
+                        continue
+                    shutil.move(str(child), str(dst))
+                try:
+                    src.rmdir()
+                except OSError:
+                    # unresolved conflicts remain -> keep src for review
+                    print(
+                        '  Mirror merge: kept source with conflicts'
+                        f' {src}'
+                    )
     # 3. regenerate the snapshot from the live tree
     snap = Path(snapshot_dir) / f'domain-structure-{domain}.md'
     if snap.is_file():
@@ -3519,7 +3539,7 @@ def cinderellasort(
     # prepare for sort process
     if not check_domain_structures(config_object, targetdir):
         print("## Preflight failed: domain structure changed — run aborted")
-        return
+        return 1
 
     prepsort(config_object, targetdir)
     if bowllist_inbox(config_object):
