@@ -11,7 +11,7 @@ The implementation currently lives in `wit_pytools/cinderellasort.py`; this dire
 - **Source directory** (`sourcedir`): files are read from here and its subdirectories.
 - **Target directory** (`targetdir`): normally the root below which bowls are created; for Doc_prep it is the separate root for moved originals.
 - **Bowl**: a target subdirectory plus the criteria that route files into it. Bowl name = key, criteria = comma-separated values. Bowl names may contain `/` to address nested directories.
-- **Bowl type**: a configuration section that defines how criteria are evaluated (`BOWLS`, `BOWLS_EMAIL`, `BOWLS_GPS`, `BOWLS_GPS_TAGS`, `BOWLS_DOCPREP`, `BOWLS_ANONYMIZE`, `BOWLS_GEN_IMG`, `BOWLS_INBOX`).
+- **Bowl type**: a configuration section that defines how criteria are evaluated (`BOWLS`, `BOWLS_EMAIL`, `BOWLS_GPS`, `BOWLS_GPS_TAGS`, `BOWLS_DOCPREP`, `BOWLS_ANONYMIZE`, `BOWLS_GEN_IMG`, `BOWLS_INBOX`, `BOWLS_PRESORT`).
 - **Special tokens** in criteria: `!DEFAULT` marks the fallback bowl of a section; `!MALFORMED` (`BOWLS_EMAIL` only) receives files whose generated name has no valid e-mail address.
 - **File modes**: `win` moves with `os.rename`; `nc` moves through Nextcloud (`occ files:move`) and rescans directories so Nextcloud indexes the changes.
 - **Run modes**: all-files mode walks `sourcedir`; `single` mode handles one file passed by a Nextcloud Flow.
@@ -73,7 +73,7 @@ See "Inbox bowls" below.
 
 ### Common rules
 
-In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, `BOWLS_DOCPREP`, `BOWLS_ANONYMIZE`, `BOWLS_GEN_IMG`, and `BOWLS_INBOX` of the central `/etc/nctools/nctools.ini` are merged into the project configuration at runtime (`merge_common_rules`). Criteria of bowls present in both files are combined and deduplicated; the project file is never modified. `[DOCPREP]`, `[ANONYMIZE]`, and `[GEN_IMG]` are project-specific and not merged.
+In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, `BOWLS_DOCPREP`, `BOWLS_ANONYMIZE`, `BOWLS_GEN_IMG`, `BOWLS_INBOX`, and `BOWLS_PRESORT` of the central `/etc/nctools/nctools.ini` are merged into the project configuration at runtime (`merge_common_rules`). Criteria of bowls present in both files are combined and deduplicated; the project file is never modified. `[DOCPREP]`, `[ANONYMIZE]`, and `[GEN_IMG]` are project-specific and not merged.
 
 ## Processing order
 
@@ -96,15 +96,16 @@ In `nc` mode the sections `BOWLS`, `BOWLS_EMAIL`, `BOWLS_DOCPREP`, `BOWLS_ANONYM
 `handlefile` evaluates bowl types in this fixed priority and stops at the first that handles the file:
 
 1. File extension not in `ftype_sort` → skip.
-2. **Inbox**: `[BOWLS_INBOX]` configured → `handle_inbox` handles every sortable file (see "Inbox bowls" below).
-3. **Doc_prep**: extension has a registered converter and the cleaned filename matches a `[BOWLS_DOCPREP]` criterion → `handle_docprep`.
-4. **GEN_IMG**: `<slug>_prompt.txt` matching a `[BOWLS_GEN_IMG]` criterion → `handle_gen_img`.
-5. `.pdf` → `handle_pdf` (uses `[BOWLS]`, optional content check).
-6. `[BOWLS_EMAIL]` configured → `handle_emails`.
-7. `[BOWLS_GPS_TAGS]` configured and `set_tags=true` → `handle_gps_tags` (does not stop processing).
-8. `[BOWLS_GPS]` configured → `handle_gps`; files without GPS data are renamed `*_nogps`.
-9. `[BOWLS]` → `bowldir`; unmatched files are skipped (`skipunmatched`) or moved to `targetdir`.
-10. **Anonymize**: file still in `sourcedir` and the cleaned filename matches a `[BOWLS_ANONYMIZE]` criterion → marked for the post-run anonymization pass (`process_pending_anonymization`).
+2. **Presort**: `[BOWLS_PRESORT]` configured → `handle_presort` handles every sortable file (see `intent-presort.md`).
+3. **Inbox**: `[BOWLS_INBOX]` configured → `handle_inbox` handles every sortable file (see "Inbox bowls" below).
+4. **Doc_prep**: extension has a registered converter and the cleaned filename matches a `[BOWLS_DOCPREP]` criterion → `handle_docprep`.
+5. **GEN_IMG**: `<slug>_prompt.txt` matching a `[BOWLS_GEN_IMG]` criterion → `handle_gen_img`.
+6. `.pdf` → `handle_pdf` (uses `[BOWLS]`, optional content check).
+7. `[BOWLS_EMAIL]` configured → `handle_emails`.
+8. `[BOWLS_GPS_TAGS]` configured and `set_tags=true` → `handle_gps_tags` (does not stop processing).
+9. `[BOWLS_GPS]` configured → `handle_gps`; files without GPS data are renamed `*_nogps`.
+10. `[BOWLS]` → `bowldir`; unmatched files are skipped (`skipunmatched`) or moved to `targetdir`.
+11. **Anonymize**: file still in `sourcedir` and the cleaned filename matches a `[BOWLS_ANONYMIZE]` criterion → marked for the post-run anonymization pass (`process_pending_anonymization`).
 
 Decision: anonymize bowls run last. A file moved by any earlier bowl type is
 gone from `sourcedir` and is never anonymized — which bowl wins is decided
@@ -346,6 +347,10 @@ numbers belong to the content group.
 7. After the run, files that stayed unsorted or landed in the `!DEFAULT` bowl are collected into `sorting-proposals_<targetdir-name>.ini` in `targetdir`: one section per proposed bowl (the JEV `category`, else `99_Unclassified`), each file mapped to a suggested criterion (`;document_type` content crit for classified files, cleaned stem as filename crit otherwise).
 8. `[BOWLS_INBOX]` claims every sortable file — when configured it runs before all other bowl types, so it should not be combined with `[BOWLS_DOCPREP]` or `[BOWLS]` for the same files.
 
+## Presort bowls
+
+Planned INBOX → DOMAINS stage — see `intent-presort.md` in this directory.
+
 ## Functions
 
 Configuration and rules:
@@ -357,11 +362,12 @@ Configuration and rules:
 - `anonymize_settings(config_object)` — `[ANONYMIZE]` with defaults; adds `enabled` (`BOWLS_ANONYMIZE` non-empty) and `source_markers` used for orphan detection.
 - `gen_img_settings(config_object)` — `[GEN_IMG]` with defaults.
 - `jev_settings(config_object)` — `[JEV]` with defaults.
+- `presort_settings(config_object)` — `[PRESORT]` with defaults.
 - `jev_definitions(path)` — build JEV `choice` questions from a definitions INI (`[CATEGORIES]`, `[DOCUMENT_TYPES]`, `[INSTRUCTIONS]`).
 
 Bowl listing:
 
-- `bowllist`, `bowllist_email`, `bowllist_gps`, `bowllist_gps_tags`, `bowllist_docprep`, `bowllist_anonymize`, `bowllist_gen_img`, `bowllist_inbox`.
+- `bowllist`, `bowllist_email`, `bowllist_gps`, `bowllist_gps_tags`, `bowllist_docprep`, `bowllist_anonymize`, `bowllist_gen_img`, `bowllist_inbox`, `bowllist_presort`.
 
 Bowl matching (return `'/<bowl>'` or `''`):
 
@@ -373,6 +379,7 @@ Bowl matching (return `'/<bowl>'` or `''`):
 - `bowldir_anonymize(file, config_object)`
 - `bowldir_gen_img(file, config_object)`; `is_gen_img_prompt(file)` accepts only `<slug>_prompt.txt`; `gen_img_slug(file)` returns `<slug>`; `gen_img_reference(directory, slug)` resolves the slug or general reference image.
 - `bowldir_inbox(file, config_object, markup_path=None)` — like `bowldir`, but the content pass searches the `.md` markup file instead of the PDF.
+- `bowldir_presort(file, config_object, jev_result=None)` — resolve the domain bowl from the JEV domain answer (open: optional deterministic criteria like `bowldir_inbox`).
 
 Filenames:
 
@@ -383,7 +390,7 @@ Filenames:
 Preparation and handlers:
 
 - `prepsort(config_object, targetdir, prepfilter=False)` — create bowl directories; optionally write `filter-examples.txt`.
-- `handle_docprep`, `handle_inbox`, `handle_anonymization`, `handle_gen_img`, `handle_pdf`, `handle_emails`, `handle_gps`, `handle_gps_tags`, `handle_oldfiles` (unfinished).
+- `handle_docprep`, `handle_inbox`, `handle_presort`, `handle_anonymization`, `handle_gen_img`, `handle_pdf`, `handle_emails`, `handle_gps`, `handle_gps_tags`, `handle_oldfiles` (unfinished).
 - `process_pending_anonymization`, `_prepare_anonymize_directories`, `_write_anonymize_lastmap`, `ANONYMIZE_SUPPORTED_SUFFIXES`.
 - `GEN_IMG_GENERATOR` — indirection to `aitools.generate_image`, replaceable in tests.
 - `handlefile(...)` — dispatcher described above.

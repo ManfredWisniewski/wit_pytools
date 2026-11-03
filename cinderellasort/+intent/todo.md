@@ -42,6 +42,14 @@
 - JSON mapping support is a future UI-oriented option; CSV remains the current
   manually editable format.
 
+## PRESORT bowls
+
+- Implement the INBOX → DOMAINS presort stage described in
+  `intent-presort.md`: `[BOWLS_PRESORT]` + `[PRESORT]` settings, eval-dir
+  queue with human triage rescan, JEV ruleset proposals. Worklist:
+  `+team/handoff/2026-11-03-presort-inbox-flow_handoff.md`. Open points
+  are listed at the end of that intent section.
+
 ## GEN_IMG bowls
 
 - Per-prompt parameter files: allow an optional `<slug>.ini` (or similar) beside
