@@ -144,6 +144,9 @@ def parse_xls_to_csv(xls_file, csv_file):
 
     # Write the sanitized data to a CSV file
     df['Verbaut'] = "0"  # Add your new column here
+    # keep leading formula triggers inert when opened in a spreadsheet
+    df = df.applymap(lambda v: "'" + v if isinstance(v, str)
+                     and v[:1] in ("=", "+", "-", "@") else v)
     df.to_csv(csv_file, index=False)
 
 # Example usage
@@ -158,6 +161,7 @@ def parseall_xls_to_csv(sourcedir):
         parse_xls_to_csv(file_path, file_path.replace('.xls', '.csv'))
 
 # Call the function
-parseall_xls_to_csv(sourcedir)
+if __name__ == '__main__':
+    parseall_xls_to_csv(sourcedir)
 
 # parse_xls_to_csv('p:/git/wittools/parsexml/test.xls', 'p:/git/wittools/parsexml/output.csv')

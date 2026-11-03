@@ -71,10 +71,12 @@ def _print_results(results, verbose):
         log_message(line, level="INFO")
 
 
-def _ensure_media_doc(client, image_path, alt=""):
+def _ensure_media_doc(client, image_path, alt="", source_repo=None):
     """Upload image_path to media unless the hash already exists; -> doc.
 
-    Syncs the alt text on an existing doc when it differs.
+    Syncs the alt text on an existing doc when it differs. A hash-matched
+    doc whose sourceRepo does not match is treated as foreign — dedup is
+    scoped per tenant, so it is uploaded as a separate doc.
     """
     from .media import sha256_file
 
@@ -83,6 +85,9 @@ def _ensure_media_doc(client, image_path, alt=""):
     except OSError as error:
         raise PayloadConfigError(f"Cannot read media file: {error}") from error
     existing = client.find_doc("media", "sourceHash", digest)
+    if existing is not None and existing.get("sourceRepo") and (
+            existing.get("sourceRepo") != (source_repo or "")):
+        existing = None
     if existing is not None:
         alt = alt or existing.get("alt") or image_path.stem
         if (existing.get("alt") or "") != alt:

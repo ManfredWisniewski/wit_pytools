@@ -8,6 +8,13 @@ from typing import Union
 Path = Union[str, PathLike[str]]
 
 
+def _escape_formula(value: str) -> str:
+    """Prefix leading spreadsheet-formula trigger characters."""
+    if value[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + value
+    return value
+
+
 def csv_transform(
     source_file: Path,
     target_file: Path,
@@ -77,7 +84,8 @@ def csv_transform(
             for source_row in source_reader:
                 target_writer.writerow(
                     {
-                        target_column: source_row[source_column]
+                        target_column: _escape_formula(
+                            source_row[source_column])
                         for source_column, target_column in mappings
                     }
                 )

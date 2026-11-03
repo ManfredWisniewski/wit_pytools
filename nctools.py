@@ -2,6 +2,17 @@ import os
 import subprocess
 from eliot import start_action, to_file, log_message
 
+OCC = os.environ.get('WIT_NC_OCC', '/var/www/nextcloud/occ')
+
+
+def _occ(*args):
+    """Run an occ command with argv list (no shell)."""
+    return subprocess.run(
+        ['php', OCC, *args],
+        capture_output=True,
+        text=True
+    )
+
 
 def getncroot():
     config = readconfig()
@@ -25,41 +36,18 @@ def getncdir(abspath):
     ncpath = ncpath.lstrip('/')
     return os.path.dirname(ncpath)
 
-#def getncabspath(filename):
-#    ncpath = getncpath()
-#    return os.path.join(ncpath, 'data', filename)
-
-#def getncabsdir(filename):
-#    ncpath = getncpath()
-#    abspath = os.path.join(ncpath, 'data', filename)
-#    return os.path.dirname(abspath)
-
 def ncdelfile(ncfile):
     with start_action(action_type=f"occ delete file {ncfile}"):
         try:
-            #TODO variable nextcloudpath
-            subprocess.run(
-                f'php /var/www/nextcloud/occ files:delete "{ncfile}"',
-                capture_output=True,
-                shell=True,
-                text=True,
-                check=True
-            )
-        except:
+            _occ('files:delete', ncfile)
+        except subprocess.CalledProcessError:
             #ignore directory already exists error TODO: make more elegant
             True
 
 def ncmovefile(ncfile, ncdest):
     with start_action(action_type=f"ncmovefile: moving file {ncfile} to {ncdest}", level="INFO"):
-        # TODO: make Nextcloud path configurable
-        cmd = f'php /var/www/nextcloud/occ files:move "{ncfile}" "{ncdest}"'
-        log_message(f"ncmovefile: running command: {cmd}", level="DEBUG")
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            shell=True,
-            text=True
-        )
+        log_message(f"ncmovefile: moving {ncfile} -> {ncdest}", level="DEBUG")
+        result = _occ('files:move', ncfile, ncdest)
         if result.returncode != 0:
             log_message(
                 f"ncmovefile ERROR: returncode={result.returncode}, stdout={result.stdout.strip()}, stderr={result.stderr.strip()}",
@@ -73,77 +61,29 @@ def ncmovefile(ncfile, ncdest):
             )
 
 def ncscandir(targetdir):
-    scan_result = subprocess.run(
-        f'php /var/www/nextcloud/occ files:scan --path="{targetdir}" --quiet',
-        capture_output=True,
-        shell=True,
-        text=True
-    )
+    scan_result = _occ('files:scan', f'--path={targetdir}', '--quiet')
     if scan_result.returncode != 0:
         log_message(f"Warning: Folder rescan failed: {scan_result.stderr}")
 
 # Assigns a tag to a file or directory in Nextcloud with specified access level (defaults to public)
 # nextcloud tag access levels: public, restricted, invisible
 def nctagassign(target, tagname, access="public"):
-    scan_result = subprocess.run(
-        f'php /var/www/nextcloud/occ files:tag:assign --path="{target}" --tag="{tagname}" --access="{access}"',
-        capture_output=True,
-        shell=True,
-        text=True
-    )
+    scan_result = _occ(
+        'files:tag:assign',
+        f'--path={target}', f'--tag={tagname}', f'--access={access}')
     if scan_result.returncode != 0:
         log_message(f"Warning: Tag assignment failed: {scan_result.stderr}")
 
 # Removes a tag from a file or directory in Nextcloud
 def nctagremove(target, tagname):
-    scan_result = subprocess.run(
-        f'php /var/www/nextcloud/occ files:tag:remove --path="{target}" --tag="{tagname}"',
-        capture_output=True,
-        shell=True,
-        text=True
-    )
+    scan_result = _occ(
+        'files:tag:remove', f'--path={target}', f'--tag={tagname}')
     if scan_result.returncode != 0:
         log_message(f"Warning: Tag removal failed: {scan_result.stderr}")
 
 def nctagedit(target, tagname, newtagname):
-    scan_result = subprocess.run(
-        f'php /var/www/nextcloud/occ files:tag:edit --path="{target}" --tag="{tagname}" --new-tag="{newtagname}"',
-        capture_output=True,
-        shell=True,
-        text=True
-    )
+    scan_result = _occ(
+        'files:tag:edit',
+        f'--path={target}', f'--tag={tagname}', f'--new-tag={newtagname}')
     if scan_result.returncode != 0:
         log_message(f"Warning: Tag edit failed: {scan_result.stderr}")
-
-
-# def nccopyfile(subdir, file, destdir, nfile, dryrun):
-#     if dryrun:
-#         print(' - copy: ' + os.path.join(subdir, file))
-#         print('     to: ' + os.path.join(destdir, nfile))
-#     else:
-#         try:
-#             #os.rename((os.path.join(subdir, file)), (destdir + "/" + nfile))
-#             shutil.copy(os.path.join(subdir, file), os.path.join(destdir, nfile))
-#         except:
-#             #ignore directory already exists error TODO: make more elegant
-#             True
-
-# def ncmoveallfiles(sourcedir, destdir, dryrun):
-#     if os.path.isdir(sourcedir):
-#         if dryrun:
-#             files = os.listdir(sourcedir)
-#             for file in files:
-#                 print(' - move: ' + os.path.join(sourcedir, file))
-#                 print('     to: ' + os.path.join(destdir, file))
-#         else:
-#             files = os.listdir(sourcedir)
-#             for file in files:
-#                 try:
-#                     print(' - moving: ' + os.path.join(sourcedir, file))
-#                     print('       to: ' + os.path.join(destdir, file))
-#                     shutil.move(os.path.join(sourcedir, file), destdir)
-#                 except:
-#                     #ignore directory already exists error TODO: make more elegant
-#                     True
-#     else:
-#         print('Source not found - skipped: ' + sourcedir)

@@ -4,7 +4,15 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-DEFAULT_PROFILE_DIR = Path(".webtools/profile")
+# anchored to the package dir so artifacts never land in an unrelated
+# repo's cwd and stay covered by wit_pytools/.gitignore
+DEFAULT_PROFILE_DIR = Path(__file__).resolve().parents[1] / ".webtools" / "profile"
+# package-anchored dir for debug screenshots/DOM dumps; ignored by
+# wit_pytools/.gitignore regardless of the caller's cwd
+ARTIFACTS_DIR = Path(__file__).resolve().parents[1] / ".webtools"
+
+
+@contextmanager
 
 
 @contextmanager

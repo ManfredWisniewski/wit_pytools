@@ -12,8 +12,8 @@ def _load_env_files():
     try:
         from dotenv import load_dotenv
 
-        load_dotenv()
-        # .env next to the package root (wit_pytools/), used when cwd differs
+        # explicit package-root path only: implicit discovery could pick up
+        # a stray .env on the search path and select wrong credentials/host
         load_dotenv(Path(__file__).resolve().parents[1] / ".env")
     except ImportError:
         pass

@@ -19,6 +19,14 @@ import importlib.util
 
 from wit_pytools.sanitizers import sanitize_path
 
+
+def _child_env() -> Dict[str, str]:
+    """Minimal env for child processes — no secrets passed through."""
+    keys = ["PATH", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR",
+            "TMPDIR", "TMP", "TEMP", "HOME", "USERPROFILE",
+            "LANG", "LC_ALL", "LC_CTYPE", "NO_COLOR"]
+    return {k: os.environ[k] for k in keys if k in os.environ}
+
 MAX_SANITIZED_NAME_LENGTH = 120
 
 def _truncate_path_component(value: str, max_length: int = MAX_SANITIZED_NAME_LENGTH) -> str:
@@ -78,9 +86,10 @@ def run_m4b_util_command(
             "m4b-util is not installed. Install it with 'pip install m4b-util'"
         )
     
-    # Prepare environment ensuring UTF-8 friendly defaults for downstream Python tooling
+    # Minimal env: children only need PATH, temp dir and locale — not the
+    # operator's secret-bearing variables
     if env is None:
-        env_to_use: Dict[str, str] = os.environ.copy()
+        env_to_use: Dict[str, str] = _child_env()
     else:
         env_to_use = env.copy()
 
@@ -794,7 +803,7 @@ def convert_to_m4b(
     
     # Build command
     cmd = ['bind']
-    env = os.environ.copy()
+    env = _child_env()
     env["PYTHONIOENCODING"] = "utf-8"
     
     # If we have specific files, use them directly

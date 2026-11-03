@@ -240,7 +240,10 @@ def sync_media_dir(config, client, *, dry_run=False):
     for relpath, path in local.items():
         digest = sha256_file(path)
         local_hashes.setdefault(digest, relpath)
-        if client.find_doc(config.media_collection, "sourceHash", digest):
+        existing = client.find_doc(
+            config.media_collection, "sourceHash", digest)
+        if existing and (not existing.get("sourceRepo")
+                         or existing["sourceRepo"] == config.source_repo):
             results.append(FileResult(relpath, "unchanged"))
             continue
         if not dry_run:

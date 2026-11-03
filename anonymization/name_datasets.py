@@ -428,6 +428,25 @@ def load_name_catalog(
                 german=german_enabled,
             )
 
+        # upstream main moved: detection input is unpinned third-party
+        # content, so a changed commit requires explicit opt-in
+        if (
+            cache_available
+            and os.environ.get("WIT_DATASETS_ACCEPT_UPDATE") != "1"
+        ):
+            LOGGER.warning(
+                "Name datasets changed upstream (%s -> %s); keeping "
+                "cache, set WIT_DATASETS_ACCEPT_UPDATE=1 to accept",
+                cached_commit, commit,
+            )
+            return _load_cache(
+                target_dir,
+                selected,
+                exclusions=exclusions,
+                debug=debug,
+                german=german_enabled,
+            )
+
         forenames = _fetch_text("forenames")
         surnames = _fetch_text("surnames")
         german_contents = None

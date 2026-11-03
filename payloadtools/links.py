@@ -60,6 +60,9 @@ def rewrite_markers(text, link_map):
         target = (link_map or {}).get(label)
         if not target:
             return match.group(0)
+        # only web/relative targets — javascript:/data: stay unlinked
+        if not re.match(r'^(https?://|mailto:|/)', target):
+            return match.group(0)
         return f"[{label}]({target})"
 
     return MARKER_RE.sub(replace, text)

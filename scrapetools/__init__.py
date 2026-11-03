@@ -70,5 +70,8 @@ def scrape_text_list(
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerows([[value] for value in values])
+        # keep leading formula triggers inert when opened in a spreadsheet
+        writer.writerows(
+            [["'" + v if v[:1] in ("=", "+", "-", "@") else v] for v in values]
+        )
     return destination

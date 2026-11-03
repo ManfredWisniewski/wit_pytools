@@ -8,6 +8,30 @@ from pathlib import Path, PurePosixPath
 
 import yaml
 
+
+def _validated_transforms(entries):
+    """Validate .arrcontent.yml transforms: required keys, compilable,
+    and no nested-quantifier patterns (catastrophic backtracking)."""
+    out = []
+    for rule in entries:
+        pattern = rule.get("pattern")
+        replacement = rule.get("replacement")
+        if pattern is None or replacement is None:
+            raise PayloadConfigError(
+                "transforms entries require 'pattern' and 'replacement'")
+        try:
+            re.compile(pattern)
+        except re.error as error:
+            raise PayloadConfigError(
+                f"invalid transform pattern {pattern!r}: {error}")
+        # reject only the classic catastrophic shape: a group whose body
+        # contains a quantifier and which is itself quantified, e.g. (a+)+
+        if re.search(r'\([^()]*[+*][^()]*\)\s*[+*{]', pattern):
+            raise PayloadConfigError(
+                f"transform pattern may backtrack: {pattern!r}")
+        out.append({"pattern": pattern, "replacement": replacement})
+    return out
+
 CONFIG_FILENAME = ".arrcontent.yml"
 DEFAULT_STATUS_REGEX = r"_webtext(?P<sep>[-_])(?P<status>[a-z-]+)$"
 
@@ -122,7 +146,7 @@ def load_config(repo=None) -> Config:
             overrides=dict(route_raw.get("overrides") or {}),
         ),
         meta=dict(raw.get("meta") or {}),
-        transforms=list(raw.get("transforms") or []),
+        transforms=_validated_transforms(raw.get("transforms") or []),
         links=dict(raw.get("links") or {}),
         source_repo=str(raw.get("source_repo") or repo.name),
     )

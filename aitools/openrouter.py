@@ -68,6 +68,10 @@ def request(
 ) -> Dict[str, Any]:
     """Call an OpenRouter endpoint and return the parsed JSON body."""
     if endpoint.startswith(("http://", "https://")):
+        # bearer key is attached unconditionally — it may only egress to
+        # openrouter.ai over https
+        if not endpoint.startswith("https://openrouter.ai/"):
+            raise ValueError(f"refusing to send API key to {endpoint!r}")
         url = endpoint
     else:
         url = f"{BASE_URL}/{endpoint.lstrip('/')}"

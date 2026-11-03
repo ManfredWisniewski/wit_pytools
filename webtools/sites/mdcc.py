@@ -2,7 +2,7 @@
 
 import time
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from playwright.sync_api import (
     Error as PlaywrightError,
@@ -10,7 +10,7 @@ from playwright.sync_api import (
 )
 
 from ..config import load_credentials
-from ..session import DEFAULT_PROFILE_DIR, browser_session
+from ..session import ARTIFACTS_DIR, DEFAULT_PROFILE_DIR, browser_session
 
 COMMAND = "mdcc-invoices"
 DESCRIPTION = "Download the newest MDCC invoice as PDF."
@@ -54,7 +54,7 @@ def login(page, username, password, *, timeout=60):
             "#username", state="detached", timeout=timeout * 1000
         )
     except PlaywrightTimeout:
-        page.screenshot(path=".webtools/mdcc-login-fail.png")
+        page.screenshot(path=str(ARTIFACTS_DIR / "mdcc-login-fail.png"))
         raise RuntimeError(f"MDCC login failed (last URL: {page.url})")
     print("Logged in")
 
@@ -73,7 +73,12 @@ def download_invoices(page, output_dir, *, count=1):
     for link in page.query_selector_all(_INVOICE_LINK)[:count]:
         href = link.get_attribute("href")
         url = urljoin(page.url, href)
-        filename = url.rsplit("/", 1)[-1]
+        # same-origin only: the selector is a substring test, not a binding
+        if urlsplit(url).netloc != urlsplit(INVOICES_URL).netloc:
+            print(f"  skipping foreign-host link: {url}")
+            continue
+        # basename only; backslashes are separators on Windows
+        filename = url.rsplit("/", 1)[-1].replace("\\", "_")
         try:
             response = page.context.request.get(url)
         except PlaywrightError as error:
@@ -82,7 +87,10 @@ def download_invoices(page, output_dir, *, count=1):
         if response.status != 200:
             print(f"  {filename}: HTTP {response.status}")
             continue
-        target = out / f"MDCC-{filename}"
+        target = (out / f"MDCC-{filename}").resolve()
+        if not target.is_relative_to(out.resolve()):
+            print(f"  skipping unsafe filename: {filename}")
+            continue
         target.write_bytes(response.body())
         print(f"Saved {target}")
         saved.append(target)

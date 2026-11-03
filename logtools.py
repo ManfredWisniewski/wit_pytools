@@ -10,7 +10,7 @@ def check_links(urls):
         for url in urls:
             try:
                 with start_action(action_type="download", url=url):
-                    response = requests.get(url)
+                    response = requests.get(url, timeout=30)
                     response.raise_for_status()
             except Exception as e:
                 raise ValueError(str(e))
@@ -32,10 +32,11 @@ def checkargs():
     with start_action(action_type="LOG ARGUMENTS"):
         log_message(message_type="argument_logging", file=args.file, age=args.age)
 
-try:
-    checkargs()
-except ValueError:
-    print("Error.")
+if __name__ == "__main__":
+    try:
+        checkargs()
+    except ValueError:
+        print("Error.")
 
 
 def send_gotify_alert(message, title="mailsort_nightly: leftover .eml files", priority=None, url=None, token=None):
@@ -67,7 +68,8 @@ def send_gotify_alert(message, title="mailsort_nightly: leftover .eml files", pr
 
     try:
         resp = requests.post(
-            f"{gotify_url}/message?token={gotify_token}",
+            f"{gotify_url}/message",
+            headers={"X-Gotify-Key": gotify_token},
             data={
                 "title": title,
                 "message": message,

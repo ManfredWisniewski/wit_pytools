@@ -1142,12 +1142,14 @@ def anonymize_path_parts(path: Path | str, mapping_path: Path | str) -> Path:
     if not mapping_file.is_file() and not anon_file.is_file():
         return path
     mapping = mapping_path_rows(mapping_file)
-    return Path(
-        *(
-            replace_text_parts(((True, part),), mapping)
-            for part in path.parts
-        )
-    )
+    # replacements must stay single path components: separators, '..'
+    # and drive anchors are neutralized so an approved mapping cannot
+    # escape the target tree
+    def _safe_component(part):
+        fixed = replace_text_parts(((True, part),), mapping)
+        fixed = fixed.replace('\\', '_').replace('/', '_')
+        return '_' if fixed in ('', '.', '..') else fixed
+    return Path(*(_safe_component(part) for part in path.parts))
 
 
 def mapping_matches_text(

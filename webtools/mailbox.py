@@ -19,11 +19,47 @@ import time
 from datetime import date, timedelta
 from email import message_from_bytes
 from email.header import make_header, decode_header
-from urllib.request import Request, urlopen
+import ipaddress
+import socket
+from urllib.parse import urlsplit
+from urllib.request import (
+    HTTPRedirectHandler, Request, build_opener, urlopen,
+)
 
 from .config import WebtoolsConfigError, _load_env_files
 
 _URL_RE = re.compile(r"https?://[^\s<>'\"()\]]+")
+
+
+def _host_is_public(hostname):
+    """True when every resolved address is globally routable."""
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        return False
+    for info in infos:
+        addr = ipaddress.ip_address(info[4][0])
+        if not addr.is_global:
+            return False
+    return True
+
+
+class _ValidatingRedirect(HTTPRedirectHandler):
+    """Re-check the redirect target's scheme and host before following."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _check_fetch_url(newurl)
+        return super().redirect_request(
+            req, fp, code, msg, headers, newurl)
+
+
+def _check_fetch_url(url):
+    """Require https and a public host for mail-derived URLs."""
+    parts = urlsplit(url)
+    if parts.scheme != "https":
+        raise ValueError(f"refusing non-https URL: {url!r}")
+    if not parts.hostname or not _host_is_public(parts.hostname):
+        raise ValueError(f"refusing private/unresolvable host: {url!r}")
 
 
 def load_mailbox_config(tag):
@@ -139,10 +175,14 @@ def wait_for_link(
 
 
 def fetch(url):
-    """HTTP-GET a URL (e.g. a verification link); returns the status code."""
+    """HTTP-GET a URL (e.g. a verification link); returns the status code.
+
+    https only, public hosts only; redirect targets are re-validated."""
     request = Request(url, headers={"User-Agent": "webtools/1.0"})
+    opener = build_opener(_ValidatingRedirect)
     try:
-        with urlopen(request, timeout=30) as response:
+        _check_fetch_url(url)
+        with opener.open(request, timeout=30) as response:
             return response.status
     except Exception as error:  # HTTPError has .code; other errors -> 0
         return getattr(error, "code", 0)

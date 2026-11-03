@@ -11,7 +11,7 @@ from playwright.sync_api import (
 )
 
 from ..config import load_credentials_group
-from ..session import DEFAULT_PROFILE_DIR, browser_session, wait_for
+from ..session import ARTIFACTS_DIR, DEFAULT_PROFILE_DIR, browser_session, wait_for
 
 COMMAND = "amex-de-statements"
 DESCRIPTION = "Download the newest Amex DE statement (PDF and CSV)."
@@ -118,7 +118,7 @@ def login(page, username, password, *, mfa_timeout=300):
         page,
         is_logged_in,
         timeout=15,
-        screenshot_path=".webtools/debug-login.png",
+        screenshot_path=str(ARTIFACTS_DIR / "debug-login.png"),
         on_wait=lambda: dismiss_overlays(page),
     ):
         print("Existing session found, already logged in")
@@ -133,10 +133,10 @@ def login(page, username, password, *, mfa_timeout=300):
         page,
         is_logged_in,
         timeout=mfa_timeout,
-        screenshot_path=".webtools/debug-login.png",
+        screenshot_path=str(ARTIFACTS_DIR / "debug-login.png"),
         on_wait=lambda: dismiss_overlays(page),
     ):
-        page.screenshot(path="webtools-amex-login-fail.png")
+        page.screenshot(path=str(ARTIFACTS_DIR / "amex-login-fail.png"))
         raise RuntimeError(
             f"Amex login did not complete; finish verification in the "
             f"browser (last URL: {page.url})"
@@ -180,7 +180,7 @@ def _open_download_dialog(page, button):
                 "[data-test-id='axp-activity-download-content']"
             )
         except PlaywrightTimeout:
-            page.screenshot(path=".webtools/debug-click.png")
+            page.screenshot(path=str(ARTIFACTS_DIR / "debug-click.png"))
             time.sleep(2)
             continue
     return None
@@ -295,7 +295,7 @@ def download_statements(
         page,
         is_logged_in,
         timeout=60,
-        screenshot_path=".webtools/debug-statements.png",
+        screenshot_path=str(ARTIFACTS_DIR / "debug-statements.png"),
         on_wait=lambda: dismiss_overlays(page),
     ):
         raise RuntimeError("Not logged in after navigating to statements")
@@ -315,8 +315,8 @@ def download_statements(
         )
     except PlaywrightTimeout:
         pass
-    page.screenshot(path=".webtools/debug-statements.png", full_page=True)
-    Path(".webtools/debug-statements.html").write_text(
+    page.screenshot(path=str(ARTIFACTS_DIR / "debug-statements.png"), full_page=True)
+    Path(ARTIFACTS_DIR / "debug-statements.html").write_text(
         page.content(), encoding="utf-8"
     )
 
@@ -407,7 +407,7 @@ def download_statements(
                         time.sleep(10)
                 if not reopened:
                     try:
-                        page.screenshot(path=".webtools/debug-reopen.png")
+                        page.screenshot(path=str(ARTIFACTS_DIR / "debug-reopen.png"))
                         print(f"  reopen state: {page.url}")
                     except PlaywrightError:
                         pass

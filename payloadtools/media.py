@@ -55,6 +55,11 @@ def ensure_media_doc(image_path, config, client, *, dry_run=False, alt=""):
     source_path = image_path.relative_to(config.repo.resolve()).as_posix()
     digest = sha256_file(image_path)
     existing = client.find_doc(config.media_collection, "sourceHash", digest)
+    # dedup is scoped per tenant: a doc owned by another sourceRepo is
+    # uploaded as a separate doc instead of being referenced
+    if existing is not None and existing.get("sourceRepo") and (
+            existing.get("sourceRepo") != config.source_repo):
+        existing = None
     if existing is not None:
         return str(existing.get("id")), False
     if dry_run:

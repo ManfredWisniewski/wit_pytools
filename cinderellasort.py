@@ -1340,11 +1340,12 @@ class _AnonymizeRun:
         """Apply approved mappings to a relative path, cached per flush."""
         if relative_parent == Path('.'):
             return relative_parent
+        def _safe_component(part):
+            fixed = replace_text_parts(((True, part),), self.approved())
+            fixed = fixed.replace('\\', '_').replace('/', '_')
+            return '_' if fixed in ('', '.', '..') else fixed
         return Path(
-            *(
-                replace_text_parts(((True, part),), self.approved())
-                for part in relative_parent.parts
-            )
+            *(_safe_component(part) for part in relative_parent.parts)
         )
 
     def nonkeep_values(self):
@@ -2139,10 +2140,20 @@ def _inbox_negatives_load(targetdir):
     ini.read(path, encoding='utf-8')
     if ini.has_section('negatives'):
         for nfile, bowls in ini.items('negatives', raw=True):
-            negatives[nfile] = {
+            negatives[_unescape_neg_key(nfile)] = {
                 bowl.strip() for bowl in bowls.split(',') if bowl.strip()
             }
     return negatives
+
+
+def _escape_neg_key(name):
+    """Escape INI delimiters in a filename used as an option key."""
+    return name.replace('%', '%25').replace('=', '%3D').replace(':', '%3A')
+
+
+def _unescape_neg_key(name):
+    """Reverse _escape_neg_key on load."""
+    return name.replace('%3A', ':').replace('%3D', '=').replace('%25', '%')
 
 
 def _inbox_negatives_write(targetdir):
@@ -2152,7 +2163,8 @@ def _inbox_negatives_write(targetdir):
     ini.optionxform = str
     ini.add_section('negatives')
     for nfile in sorted(_inbox_negatives):
-        ini.set('negatives', nfile, ','.join(sorted(_inbox_negatives[nfile])))
+        ini.set('negatives', _escape_neg_key(nfile),
+                ','.join(sorted(_inbox_negatives[nfile])))
     with path.open('w', encoding='utf-8') as fp:
         ini.write(fp)
 
@@ -2325,16 +2337,21 @@ def _jev_tag_markup(source, markup_path, config_object, dryrun, force=False):
     for question, answer in answers.items():
         if not isinstance(answer, dict) or answer.get('type') != 'choice':
             continue
+        # key goes verbatim into frontmatter — no structure injection
+        if ' ' in question or '\n' in question or ':' in question:
+            continue
         choice = answer.get('choice')
         if not choice:
             continue
         confidence = answer.get('confidence')
+        criteria = questions.get(question, {}).get('criteria', {})
         if confidence is not None and confidence < settings['min_confidence']:
-            criteria = questions.get(question, {}).get('criteria', {})
             for fallback in ('99_Unclassified', 'Unclassified', 'other'):
                 if fallback in criteria:
                     choice = fallback
                     break
+        # frontmatter is written verbatim — no structure injection
+        choice = ' '.join(str(choice).split()).replace(':', '_')
         fields[question] = choice
         if confidence is not None:
             fields[f'{question}_confidence'] = f'{confidence:.2f}'
@@ -2430,6 +2447,16 @@ def _apply_structure_changes(
             old = old[len(root_norm):].lstrip('/')
         if new.startswith(root_norm):
             new = new[len(root_norm):].lstrip('/')
+        # moves must stay inside the mirrored domain subtree
+        if (
+            old.startswith('/') or '..' in old.split('/')
+            or re.match(r'^[A-Za-z]:', old)
+            or new.startswith('/') or '..' in new.split('/')
+            or re.match(r'^[A-Za-z]:', new)
+        ):
+            print(f'  Structure change rejected (escapes domain): '
+                  f'{old} = {new}')
+            continue
         moves[old] = new
     # 1. rewrite bowl paths in inbox-<domain>.ini
     domain_ini = Path(snapshot_dir) / f'inbox-{domain}.ini'
@@ -3330,6 +3357,25 @@ def handlefile(file, sourcedir, targetdir, ftype_sort, clean, clean_nocase, conf
             )
 
 ## MAIN cinderellasort execution ##
+_BOWL_SECTIONS = (
+    'BOWLS', 'BOWLS_EMAIL', 'BOWLS_DOCPREP', 'BOWLS_ANONYMIZE',
+    'BOWLS_GEN_IMG', 'BOWLS_INBOX', 'BOWLS_GPS',
+)
+
+
+def _validate_bowl_names(config_object):
+    """Reject bowl keys that escape targetdir ('..', absolute, drive)."""
+    for section in _BOWL_SECTIONS:
+        if not config_object.has_section(section):
+            continue
+        for bowl, _ in config_object.items(section, raw=True):
+            b = bowl.strip().replace('\\', '/')
+            if (b.startswith('/') or '..' in b.split('/')
+                    or re.match(r'^[A-Za-z]:', b)):
+                raise ValueError(
+                    f'unsafe bowl name in [{section}]: {bowl!r}')
+
+
 def _validate_source_target_dirs(sourcedir, targetdir):
     """Reject source and target directory combinations that allow reprocessing."""
     source_path = Path(sourcedir).resolve()
@@ -3394,6 +3440,7 @@ def cinderellasort(
     if common_configfile is None and configured_filemode == 'nc':
         common_configfile = '/etc/nctools/nctools.ini'
     merge_common_rules(config_object, common_configfile)
+    _validate_bowl_names(config_object)
     table = config_object["TABLE"]
     # Normalize path separators in source and target directories
     sourcedir = str(table["sourcedir"]).replace('\\', '/').replace('//', '/')
