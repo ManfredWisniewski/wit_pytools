@@ -2414,14 +2414,23 @@ def _apply_structure_changes(
     path = Path(snapshot_dir) / f'structure-changes-{domain}.ini'
     if not path.is_file():
         return False
-    changes = ConfigParser()
+    changes = ConfigParser(delimiters=('=',))
     changes.optionxform = str
     changes.read(path, encoding='utf-8')
-    moves = {
-        old.strip().replace('\\', '/'): new.strip().replace('\\', '/')
-        for old, new in changes.items('moves', raw=True)
-        if new.strip()
-    }
+    # normalize: moves may name absolute live paths (H:\...\WIT\dir)
+    # or domain-relative ones (dir) -> strip the live root prefix
+    root_norm = str(live_root).replace('\\', '/')
+    moves = {}
+    for old, new in changes.items('moves', raw=True):
+        new = new.strip().replace('\\', '/')
+        if not new:
+            continue
+        old = old.strip().replace('\\', '/')
+        if old.startswith(root_norm):
+            old = old[len(root_norm):].lstrip('/')
+        if new.startswith(root_norm):
+            new = new[len(root_norm):].lstrip('/')
+        moves[old] = new
     # 1. rewrite bowl paths in inbox-<domain>.ini
     domain_ini = Path(snapshot_dir) / f'inbox-{domain}.ini'
     if moves and domain_ini.is_file():
