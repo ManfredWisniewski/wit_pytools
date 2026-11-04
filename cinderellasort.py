@@ -1930,7 +1930,7 @@ def _find_existing_docprep_markup(targetdir, relative_path, bowl, names):
     return None
 
 
-def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite):
+def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config_object, filemode, replacements, dryrun, overwrite, mode=None):
     """Create Markdown and its sidecar next to the source document."""
     settings = docprep_settings(config_object)
     source = file if isinstance(file, Path) else Path(os.path.join(sourcedir, str(file)))
@@ -1982,6 +1982,8 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
             return False
         conversion_settings = dict(settings)
         conversion_settings['sidecar_path'] = str(sidecar_path)
+        if mode:
+            conversion_settings['mode'] = mode
         convert(source, output_path, conversion_settings)
         message = f"Doc_prep: created {output_path}"
         log_message(message, level="INFO")
@@ -2020,6 +2022,15 @@ def _inbox_sidecar_candidates(source, cleaned_stem):
             source.parent / f"{stem}_pdf2md.json",
         )
     ]
+
+
+def _inbox_sidecar_move_name(sidecar, cleaned_stem):
+    """Destination name for a moved sidecar, preserving its suffix."""
+    if sidecar.suffix.lower() == '.md':
+        return f"{cleaned_stem}.md"
+    if sidecar.name.casefold().endswith('_pdf2md.json'):
+        return f"{cleaned_stem}_pdf2md.json"
+    return f"{cleaned_stem}{sidecar.suffix.lower()}"
 
 
 def _audiveris_command(setting):
@@ -2912,8 +2923,9 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
         )
         if bowl.lstrip('/') == (default_bowl or ''):
             bowl = ''
-    if not bowl:
-        # Create the markup variant for convertible documents.
+    if not bowl or sheet_music:
+        # Create the markup variant for convertible documents; scores get
+        # one even when already routed so it can carry the JEV fields.
         if source.suffix.lower() == '.eml' and email_threads:
             eml_members = _inbox_eml_thread_file(
                 source, sourcedir, clean, clean_nocase, replacements,
@@ -2945,12 +2957,14 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
         elif (
             source.suffix.lower() in DOCPREP_CONVERTERS
             and not markup_path.is_file()
-            and not sheet_music
         ):
             try:
                 handle_docprep(
                     source, sourcedir, targetdir, '', clean, clean_nocase,
                     config_object, filemode, replacements, dryrun, overwrite,
+                    # Scores get text-layer markup only: the JEV tags and
+                    # crits need it, the notation is already in the .mxl.
+                    mode='text' if sheet_music else None,
                 )
             except Exception as e:
                 log_message(
@@ -2959,10 +2973,14 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
                 )
     markup = markup_path if markup_path.is_file() else None
 
-    if not bowl:
+    if (
+        (not bowl or sheet_music)
+        and markup
+        and source.suffix.lower() in DOCPREP_CONVERTERS
+    ):
         # JEV classification tags the markup before matching and moving.
-        if markup and source.suffix.lower() in DOCPREP_CONVERTERS:
-            _jev_tag_markup(source, markup, config_object, dryrun)
+        _jev_tag_markup(source, markup, config_object, dryrun)
+    if not bowl:
         # The JEV routing answer may name the bowl directly.
         bowl = _inbox_jev_bowl(markup, config_object)
     if not bowl:
@@ -3023,15 +3041,10 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
     for sidecar in _inbox_sidecar_candidates(source, cleaned_stem):
         if sidecar == source or not sidecar.is_file():
             continue
-        if sidecar.suffix.lower() == '.md':
-            if eml_members:
-                # Shared thread markup is copied/moved below instead.
-                continue
-            sidecar_name = f"{cleaned_stem}.md"
-        elif sidecar.name.casefold().endswith('_pdf2md.json'):
-            sidecar_name = f"{cleaned_stem}_pdf2md.json"
-        else:
-            sidecar_name = f"{cleaned_stem}{sidecar.suffix.lower()}"
+        if sidecar.suffix.lower() == '.md' and eml_members:
+            # Shared thread markup is copied/moved below instead.
+            continue
+        sidecar_name = _inbox_sidecar_move_name(sidecar, cleaned_stem)
         movefile(
             sourcedir, sidecar.name, destdir, sidecar_name, filemode,
             overwrite=overwrite, dryrun=dryrun,
@@ -3114,10 +3127,8 @@ def process_inbox_eval(
             for sidecar in _inbox_sidecar_candidates(source, cleaned_stem):
                 if sidecar == source or not sidecar.is_file():
                     continue
-                sidecar_name = (
-                    f"{cleaned_stem}.md"
-                    if sidecar.suffix.lower() == '.md'
-                    else f"{cleaned_stem}_pdf2md.json"
+                sidecar_name = _inbox_sidecar_move_name(
+                    sidecar, cleaned_stem
                 )
                 movefile(
                     str(sidecar.parent), sidecar.name, str(sourcedir),
@@ -3182,11 +3193,7 @@ def process_inbox_eval(
         for sidecar in _inbox_sidecar_candidates(source, cleaned_stem):
             if sidecar == source or not sidecar.is_file():
                 continue
-            sidecar_name = (
-                f"{cleaned_stem}.md"
-                if sidecar.suffix.lower() == '.md'
-                else f"{cleaned_stem}_pdf2md.json"
-            )
+            sidecar_name = _inbox_sidecar_move_name(sidecar, cleaned_stem)
             movefile(
                 str(sidecar.parent), sidecar.name, destdir, sidecar_name,
                 filemode, overwrite=overwrite, dryrun=dryrun,

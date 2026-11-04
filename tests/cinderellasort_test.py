@@ -2149,7 +2149,7 @@ def test_inbox_match_before_markup_default_still_converts(tmp_path, monkeypatch)
     assert (target_dir / "Rest" / "scan001.pdf").is_file()
 
 
-def test_inbox_sheet_music_pdf_is_renamed_and_not_converted(tmp_path, monkeypatch):
+def test_inbox_sheet_music_pdf_is_renamed_and_text_converted(tmp_path, monkeypatch):
     import wit_pytools.documenttools.pdf2md as pdf2md_module
 
     source_dir, target_dir, config_path = _inbox_setup(
@@ -2169,9 +2169,37 @@ def test_inbox_sheet_music_pdf_is_renamed_and_not_converted(tmp_path, monkeypatc
 
     cinderellasort(str(config_path), dryrun=False)
 
-    assert calls == [], "sheet music must not be converted"
+    assert len(calls) == 1
+    assert calls[0]["settings"]["mode"] == "text"
     assert not (source_dir / "swanlake.pdf").exists()
     assert (target_dir / "Noten" / "swanlake_sheet-music.pdf").is_file()
+    assert (target_dir / "Noten" / "swanlake_sheet-music.md").is_file()
+
+
+def test_inbox_sheet_music_markup_despite_early_match(tmp_path, monkeypatch):
+    import wit_pytools.documenttools.pdf2md as pdf2md_module
+
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Noten": "sheet-music", "Rest": "!DEFAULT"},
+        pdf_name="swanlake.pdf",
+        settings_section={"match_before_markup": "true"},
+    )
+    monkeypatch.setattr(
+        pdf2md_module, "_has_music_notation", lambda pdf: True
+    )
+    calls = []
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count, _fake_converter(calls)),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert len(calls) == 1
+    assert calls[0]["settings"]["mode"] == "text"
+    assert (target_dir / "Noten" / "swanlake_sheet-music.md").is_file()
 
 
 def test_inbox_sheet_music_audiveris_creates_mxl(tmp_path, monkeypatch):
