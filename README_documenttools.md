@@ -409,7 +409,7 @@ text = rtf_to_markdown_text("letter.rtf")
 - `output_path`: defaults to `<stem>.md` beside the RTF. Existing outputs raise `FileExistsError` unless `overwrite=True`. The source is never modified.
 - `include_images`: embedded images are dropped by default; with `True` they are inlined as base64 data URIs.
 - `timeout`: seconds for the LibreOffice call (default 120).
-- Requires `soffice` (or `libreoffice`) in `PATH`; raises `RuntimeError` otherwise.
+- `soffice`: explicit executable path; falls back to `soffice`/`libreoffice` in `PATH`, then `C:\Program Files\LibreOffice\program\soffice.exe`. Raises `RuntimeError` when none is found. In `cinderellasort` the `[DOCPREP] soffice=` key feeds this.
 
 ## Requirements
 

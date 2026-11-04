@@ -12,8 +12,19 @@ from pathlib import Path
 from typing import Optional, Union
 
 
-def _require_soffice() -> str:
+_DEFAULT_SOFFICE = Path(r"C:\Program Files\LibreOffice\program\soffice.exe")
+
+
+def _require_soffice(exe: Optional[Union[str, Path]] = None) -> str:
+    """Resolve the soffice executable: explicit path, PATH, default install."""
+    if exe:
+        path = Path(exe)
+        if path.is_file():
+            return str(path)
+        raise RuntimeError(f"soffice not found at {exe}")
     soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    if not soffice and _DEFAULT_SOFFICE.is_file():
+        soffice = str(_DEFAULT_SOFFICE)
     if not soffice:
         raise RuntimeError(
             ".rtf conversion requires LibreOffice (soffice) in PATH"
@@ -26,6 +37,7 @@ def rtf_to_markdown_text(
     *,
     include_images: bool = False,
     timeout: int = 120,
+    soffice: Optional[Union[str, Path]] = None,
 ) -> str:
     """Convert a .rtf file to Markdown and return the text without writing files."""
     import mammoth
@@ -35,11 +47,11 @@ def rtf_to_markdown_text(
         raise ValueError("Only .rtf files are supported")
     if not source.is_file():
         raise FileNotFoundError(source)
-    soffice = _require_soffice()
+    soffice_exe = _require_soffice(soffice)
     with tempfile.TemporaryDirectory() as tmpdir:
         subprocess.run(
             [
-                soffice, "--headless", "--convert-to", "docx",
+                soffice_exe, "--headless", "--convert-to", "docx",
                 "--outdir", tmpdir, str(source),
             ],
             check=True,
@@ -62,6 +74,7 @@ def rtf_to_markdown(
     overwrite: bool = False,
     include_images: bool = False,
     timeout: int = 120,
+    soffice: Optional[Union[str, Path]] = None,
 ) -> Path:
     """Convert a .rtf file to Markdown, write ``<stem>.md``, return the path."""
     source = Path(rtf_path)
@@ -71,6 +84,6 @@ def rtf_to_markdown(
     if target.exists() and not overwrite:
         raise FileExistsError(target)
     target.write_text(rtf_to_markdown_text(
-        source, include_images=include_images, timeout=timeout
+        source, include_images=include_images, timeout=timeout, soffice=soffice
     ), encoding="utf-8")
     return target

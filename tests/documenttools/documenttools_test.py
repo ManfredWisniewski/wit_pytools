@@ -443,9 +443,16 @@ rtf2md = importlib.import_module("wit_pytools.documenttools.rtf2md")
 
 TEST_RTF = Path(__file__).parent / "testdocument.rtf"
 
+def _soffice_available():
+    try:
+        rtf2md._require_soffice()
+        return True
+    except RuntimeError:
+        return False
+
+
 has_soffice = pytest.mark.skipif(
-    not (shutil.which("soffice") or shutil.which("libreoffice")),
-    reason="LibreOffice (soffice) not in PATH",
+    not _soffice_available(), reason="LibreOffice (soffice) not found",
 )
 
 
@@ -478,6 +485,18 @@ def test_rtf_to_markdown_refuses_overwrite(rtf_copy):
     with pytest.raises(FileExistsError):
         rtf_to_markdown(rtf_copy)
     rtf_to_markdown(rtf_copy, overwrite=True)
+
+
+def test_rtf_require_soffice_resolution(tmp_path, monkeypatch):
+    fake = tmp_path / "soffice.exe"
+    fake.write_text("x", encoding="utf-8")
+    assert rtf2md._require_soffice(fake) == str(fake)
+    with pytest.raises(RuntimeError, match="not found"):
+        rtf2md._require_soffice(tmp_path / "missing.exe")
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    monkeypatch.setattr(rtf2md, "_DEFAULT_SOFFICE", tmp_path / "none.exe")
+    with pytest.raises(RuntimeError, match="LibreOffice"):
+        rtf2md._require_soffice()
 
 
 def test_rtf_to_markdown_validation(tmp_path):

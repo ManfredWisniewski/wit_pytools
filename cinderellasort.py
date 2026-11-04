@@ -914,7 +914,9 @@ def _docprep_doc(source, output_path, settings):
 
 def _docprep_rtf(source, output_path, settings):
     from wit_pytools.documenttools import rtf_to_markdown
-    return rtf_to_markdown(source, output_path=output_path)
+    return rtf_to_markdown(
+        source, output_path=output_path, soffice=settings.get('soffice')
+    )
 
 
 def _anonymize_single_file(
@@ -1578,6 +1580,7 @@ def docprep_settings(config_object):
         'transcode_sheetmusic': (
             section.get('transcode_sheetmusic', 'false') or 'false'
         ).strip().lower() == 'true',
+        'soffice': (section.get('soffice', '') or '').strip() or None,
     }
 
 

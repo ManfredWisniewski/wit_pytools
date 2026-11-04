@@ -302,6 +302,7 @@ sidecar=true
 transcode_sheetmusic=false ; true: OMR detected scores via Audiveris -> .mxl/.omr
 audiveris=                 ; Audiveris install dir (preferred) or exe
 audiveris_timeout=600      ; seconds per score conversion
+soffice=                   ; path to soffice for .rtf/.doc conversion (else PATH, then default install)
 
 [JEV]                      ; optional markup classification
 definitions_file=P:\sort\jev-categories-wit.ini   ; enables JEV when set

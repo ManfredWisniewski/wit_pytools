@@ -240,7 +240,7 @@ Convert a Rich Text `.rtf` file into a single Markdown file. RTF is structured t
 ### Workflow
 
 1. Validate the input (`.rtf` only).
-2. Resolve `soffice`/`libreoffice` in `PATH`; raise `RuntimeError` when absent.
+2. Resolve `soffice`/`libreoffice`: explicit `soffice` path, then `PATH`, then the default install `C:\Program Files\LibreOffice\program\soffice.exe`; raise `RuntimeError` when absent.
 3. Convert `.rtf` → `.docx` in a temporary directory (`--headless --convert-to docx`, `timeout` seconds), then `.docx` → Markdown via `mammoth`. Images are dropped unless `include_images` is set.
 4. Write `<stem>.md` beside the source (or `output_path`).
 
