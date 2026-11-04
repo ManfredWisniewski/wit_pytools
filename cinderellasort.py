@@ -919,6 +919,16 @@ def _docprep_rtf(source, output_path, settings):
     )
 
 
+def _image_page_count(file_path):
+    # Images are single-page; max_pages must not block them.
+    return 1
+
+
+def _docprep_img(source, output_path, settings):
+    from wit_pytools.documenttools.img2md import image_to_markdown
+    return image_to_markdown(source, output_path, settings)
+
+
 def _anonymize_single_file(
     file_path,
     file_dir,
@@ -1522,6 +1532,13 @@ DOCPREP_CONVERTERS = {
     '.docx': (_word_page_count, _docprep_docx),
     '.doc': (_word_page_count, _docprep_doc),
     '.rtf': (_word_page_count, _docprep_rtf),
+    '.jpg': (_image_page_count, _docprep_img),
+    '.jpeg': (_image_page_count, _docprep_img),
+    '.png': (_image_page_count, _docprep_img),
+    '.tif': (_image_page_count, _docprep_img),
+    '.tiff': (_image_page_count, _docprep_img),
+    '.webp': (_image_page_count, _docprep_img),
+    '.bmp': (_image_page_count, _docprep_img),
 }
 
 # Text extensions anonymized via plain replacement in ANONYMIZE bowls.
@@ -1581,6 +1598,18 @@ def docprep_settings(config_object):
             section.get('transcode_sheetmusic', 'false') or 'false'
         ).strip().lower() == 'true',
         'soffice': (section.get('soffice', '') or '').strip() or None,
+        'tesseract': (
+            section.get('tesseract', '') or ''
+        ).strip() or None,
+        'image_model': (
+            section.get('image_model', '') or ''
+        ).strip() or None,
+        'classify_images': (
+            section.get('classify_images', 'false') or 'false'
+        ).strip().lower() == 'true',
+        'classify_images_vlm': (
+            section.get('classify_images_vlm', 'true') or 'true'
+        ).strip().lower() == 'true',
     }
 
 
@@ -2141,21 +2170,59 @@ def _inbox_rename_sheet_music(source, dryrun):
             level="WARNING",
         )
         return source
-    target = source.with_name(f"{source.stem}_sheet-music{source.suffix}")
+    return _inbox_rename_marker(source, 'sheet-music', dryrun)
+
+
+def _inbox_rename_marker(source, marker, dryrun):
+    """Rename ``<stem>`` to ``<stem>_<marker><suffix>``, unique, dryrun-safe."""
+    target = source.with_name(f"{source.stem}_{marker}{source.suffix}")
     counter = 1
     while target.exists():
         target = source.with_name(
-            f"{source.stem}_sheet-music-{counter}{source.suffix}"
+            f"{source.stem}_{marker}-{counter}{source.suffix}"
         )
         counter += 1
     if dryrun:
-        print(f"  Sheet music (dryrun): {source.name} -> {target.name}")
+        print(f"  Rename (dryrun): {source.name} -> {target.name}")
         return target
     source.rename(target)
     message = f"Sheet music detected: {source.name} -> {target.name}"
     log_message(message, level="INFO")
     print(message)
     return target
+
+
+def _inbox_classify_image(source, config_object, dryrun):
+    """Classify an image as document or art; rename + markup documents.
+
+    Returns ``(source, doc_image)``: document images are renamed to
+    ``<stem>_doc-image<suffix>`` and get a ``.md`` with the OCR/VLM text
+    so JEV and content crits work. Art images pass through unchanged.
+    """
+    settings = docprep_settings(config_object)
+    if not settings['classify_images']:
+        return source, False
+    if '_doc-image' in source.stem.casefold():
+        return source, source.with_suffix('.md').is_file()
+    try:
+        from wit_pytools.documenttools.img2md import classify_image
+        verdict, text = classify_image(source, settings)
+    except Exception as exc:
+        log_message(
+            f"Inbox: image classification failed for {source.name}: {exc}",
+            level="WARNING",
+        )
+        return source, False
+    if verdict != 'document':
+        return source, False
+    target = _inbox_rename_marker(source, 'doc-image', dryrun)
+    markup = target.with_suffix('.md')
+    if not dryrun and text and not markup.is_file():
+        markup.write_text(text, encoding='utf-8')
+    message = f"Document image detected: {source.name} -> {target.name}"
+    log_message(message, level="INFO")
+    print(message)
+    return target, True
 
 
 def jev_settings(config_object):
@@ -2897,10 +2964,19 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
     # Sidecars are not sorted on their own; they move with the source document.
     if not source.is_file() or _inbox_is_sidecar(source):
         return
+    from wit_pytools.documenttools.img2md import IMAGE_SUFFIXES
     # Score PDFs are renamed so filename crits can route them
     if source.suffix.lower() == '.pdf':
         source = _inbox_rename_sheet_music(source, dryrun)
     sheet_music = '_sheet-music' in source.stem.casefold()
+    # Images are classified (art vs document) so only documents get markup
+    doc_image = False
+    if source.suffix.lower() in IMAGE_SUFFIXES:
+        source, doc_image = _inbox_classify_image(
+            source, config_object, dryrun
+        )
+    special_markup = sheet_music or doc_image
+    art_image = source.suffix.lower() in IMAGE_SUFFIXES and not doc_image
     if sheet_music and docprep_settings(config_object)['transcode_sheetmusic']:
         _inbox_audiveris_score(source, config_object, dryrun)
     nfile = normalize_spaces(
@@ -2923,9 +2999,10 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
         )
         if bowl.lstrip('/') == (default_bowl or ''):
             bowl = ''
-    if not bowl or sheet_music:
-        # Create the markup variant for convertible documents; scores get
-        # one even when already routed so it can carry the JEV fields.
+    if not bowl or special_markup:
+        # Create the markup variant for convertible documents; scores and
+        # document images get one even when already routed so it can
+        # carry the JEV fields.
         if source.suffix.lower() == '.eml' and email_threads:
             eml_members = _inbox_eml_thread_file(
                 source, sourcedir, clean, clean_nocase, replacements,
@@ -2957,6 +3034,7 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
         elif (
             source.suffix.lower() in DOCPREP_CONVERTERS
             and not markup_path.is_file()
+            and not art_image
         ):
             try:
                 handle_docprep(
@@ -2974,7 +3052,7 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
     markup = markup_path if markup_path.is_file() else None
 
     if (
-        (not bowl or sheet_music)
+        (not bowl or special_markup)
         and markup
         and source.suffix.lower() in DOCPREP_CONVERTERS
     ):

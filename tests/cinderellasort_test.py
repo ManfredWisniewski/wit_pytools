@@ -2176,6 +2176,52 @@ def test_inbox_sheet_music_pdf_is_renamed_and_text_converted(tmp_path, monkeypat
     assert (target_dir / "Noten" / "swanlake_sheet-music.md").is_file()
 
 
+def test_inbox_document_image_gets_marker_and_markup(tmp_path, monkeypatch):
+    import wit_pytools.documenttools.img2md as img2md
+
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Dokumente": "doc-image", "Rest": "!DEFAULT"},
+        pdf_name="scan.jpg",
+        ftype_sort=".jpg",
+        docprep_section={"classify_images": "true"},
+    )
+    monkeypatch.setattr(
+        img2md, "classify_image",
+        lambda src, settings: ('document', 'RECHNUNG OCR-TEXT'),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not (source_dir / "scan.jpg").exists()
+    assert (target_dir / "Dokumente" / "scan_doc-image.jpg").is_file()
+    markup = target_dir / "Dokumente" / "scan_doc-image.md"
+    assert markup.is_file()
+    assert "RECHNUNG OCR-TEXT" in markup.read_text(encoding="utf-8")
+
+
+def test_inbox_art_image_not_marked(tmp_path, monkeypatch):
+    import wit_pytools.documenttools.img2md as img2md
+
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Dokumente": "doc-image", "Rest": "!DEFAULT"},
+        pdf_name="holiday.jpg",
+        ftype_sort=".jpg",
+        docprep_section={"classify_images": "true"},
+    )
+    monkeypatch.setattr(
+        img2md, "classify_image",
+        lambda src, settings: ('image', ''),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not (source_dir / "holiday.jpg").exists()
+    assert (target_dir / "Rest" / "holiday.jpg").is_file()
+    assert not list(target_dir.rglob("*.md"))
+
+
 def test_inbox_sheet_music_markup_despite_early_match(tmp_path, monkeypatch):
     import wit_pytools.documenttools.pdf2md as pdf2md_module
 

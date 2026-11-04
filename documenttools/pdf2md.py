@@ -144,6 +144,16 @@ def _has_music_notation(pdf) -> bool:
     )
 
 
+def _text_layer(page) -> str:
+    """Page text layer without music notation glyphs.
+
+    On documents without notation chars the filter is a no-op, so this can
+    replace ``page.extract_text()`` in text mode unconditionally.
+    """
+    filtered = page.filter(lambda char: not _is_music_char(char))
+    return (filtered.extract_text() or "").strip()
+
+
 def _page_range(page_count: int, start_page: int, end_page: Optional[int]) -> range:
     last = page_count if end_page is None else end_page
     if start_page < 1 or last > page_count or start_page > last:
@@ -273,7 +283,7 @@ def _convert_pages(
                 status: Dict[str, Any] = {"page": number, "status": "ok"}
                 log_message(f"Converting page {number} of {pdf_path.name} ({mode})", level="INFO")
                 if mode == "text":
-                    content = (page.extract_text() or "").strip()
+                    content = _text_layer(page)
                     if not content:
                         content = texts["no_text"].format(page=number)
                         status["status"] = "no_text"

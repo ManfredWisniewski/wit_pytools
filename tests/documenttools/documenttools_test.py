@@ -400,6 +400,27 @@ def test_pdf2md_no_music_notation_in_text_pdf(pdf_copy):
         assert pdf2md._has_music_notation(pdf) is False
 
 
+class _StubPage:
+    def __init__(self, chars):
+        self._chars = list(chars)
+
+    def filter(self, keep):
+        return _StubPage([char for char in self._chars if keep(char)])
+
+    def extract_text(self):
+        return " ".join(char["text"] for char in self._chars)
+
+
+def test_pdf2md_text_layer_drops_notation_glyphs():
+    chars = [
+        {"fontname": "ABCDEF+Opus", "text": "œ"},
+        {"fontname": "Arial", "text": "\ue123"},
+        {"fontname": "Times", "text": "Kyrie"},
+        {"fontname": "Times", "text": "eleison"},
+    ]
+    assert pdf2md._text_layer(_StubPage(chars)) == "Kyrie eleison"
+
+
 def test_pdf_to_markdown_music_notation_sidecar_flag(pdf_copy, monkeypatch, no_cost_prompt):
     monkeypatch.setattr(pdf2md, "_has_music_notation", lambda pdf: True)
     monkeypatch.setattr(pdf2md, "chat", _fake_chat(["page one", "page two"]))
@@ -975,3 +996,73 @@ def test_pdf_to_markdown_cost_confirmation_aborts(pdf_copy, monkeypatch):
 
     with pytest.raises(RuntimeError, match="Aborted"):
         pdf_to_markdown_text(pdf_copy, model="m", max_cost=1.0)
+
+
+# ---------- img2md ----------
+
+def test_looks_like_document_detects_text_page(tmp_path):
+    from PIL import Image, ImageDraw
+    from wit_pytools.documenttools.img2md import looks_like_document
+
+    img = Image.new('L', (400, 600), 255)
+    draw = ImageDraw.Draw(img)
+    for y in range(40, 560, 20):
+        draw.line([(30, y), (370, y)], fill=0, width=3)
+    path = tmp_path / "scan.png"
+    img.save(path)
+
+    assert looks_like_document(path) is True
+
+
+def test_looks_like_document_rejects_photo(tmp_path):
+    from PIL import Image, ImageDraw
+    from wit_pytools.documenttools.img2md import looks_like_document
+
+    img = Image.new('L', (400, 400))
+    draw = ImageDraw.Draw(img)
+    for x in range(400):
+        draw.line([(x, 0), (x, 400)], fill=30 + (x % 140))
+    path = tmp_path / "photo.png"
+    img.save(path)
+
+    assert looks_like_document(path) is False
+
+
+def test_classify_image_ocr_text_is_document(tmp_path, monkeypatch):
+    import wit_pytools.documenttools.img2md as img2md
+
+    monkeypatch.setattr(img2md, "looks_like_document", lambda p: True)
+    monkeypatch.setattr(
+        img2md, "ocr_image_text",
+        lambda p, s: "word " * 60,
+    )
+    vlm_calls = []
+    monkeypatch.setattr(
+        img2md, "_vlm_check",
+        lambda p, s: vlm_calls.append(1) or ('image', ''),
+    )
+    verdict, text = img2md.classify_image(tmp_path / "x.png", {})
+    assert verdict == 'document'
+    assert vlm_calls == []
+
+
+def test_classify_image_ocr_miss_falls_back_to_vlm(tmp_path, monkeypatch):
+    import wit_pytools.documenttools.img2md as img2md
+
+    monkeypatch.setattr(img2md, "looks_like_document", lambda p: True)
+    monkeypatch.setattr(img2md, "ocr_image_text", lambda p, s: "")
+    monkeypatch.setattr(
+        img2md, "_vlm_check", lambda p, s: ('document', 'vlm text')
+    )
+    verdict, text = img2md.classify_image(tmp_path / "x.png", {})
+    assert verdict == 'document'
+    assert text == 'vlm text'
+
+
+def test_classify_image_photo_is_art(tmp_path, monkeypatch):
+    import wit_pytools.documenttools.img2md as img2md
+
+    monkeypatch.setattr(img2md, "looks_like_document", lambda p: False)
+    verdict, text = img2md.classify_image(tmp_path / "x.png", {})
+    assert verdict == 'image'
+    assert text == ''

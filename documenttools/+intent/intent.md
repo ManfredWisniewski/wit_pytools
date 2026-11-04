@@ -182,7 +182,7 @@ Convert a PDF document into a single Markdown file that reflects the document's 
 3. In `vision` mode: resolve the model (`model=` → `OPENROUTER_PDF_MODEL` → `OPENROUTER_MODEL`), load the prompt, estimate the cost as pages × per-image price, and ask for confirmation above the limit or when the price is unknown (`yes` skips).
 4. For each page in the range:
    - `vision`: render at `dpi` to a temporary PNG, send prompt and image to the model, strip a surrounding Markdown fence, retry on errors or empty responses with a `2 × attempt` second pause.
-   - `text`: use the text layer via `pdfplumber`; a page without text yields a marker. A detected score logs a warning that the text layer does not represent the notation.
+   - `text`: use the text layer via `pdfplumber`; a page without text yields a marker. A detected score logs a warning that the text layer does not represent the notation; notation-font glyphs are excluded from the extracted text so only real text lands in the markup.
 5. Join pages with a Markdown horizontal rule (`---`, surrounded by blank lines, only between pages).
 5. Write `<stem>.md` and the sidecar `<stem>_pdf2md.json`; optionally keep page images and per-page Markdown in `<stem>_pages/`.
 
