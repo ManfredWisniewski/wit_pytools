@@ -518,6 +518,12 @@ def _fake_converter(calls, fail=False):
     return convert
 
 
+def test_docprep_rtf_registered():
+    page_count, convert = cs.DOCPREP_CONVERTERS[".rtf"]
+    assert page_count is cs._word_page_count
+    assert convert is cs._docprep_rtf
+
+
 def test_mirrored_target_dir_does_not_duplicate_root():
     relative_parent = Path("DOCDIR") / "files"
 
@@ -1336,6 +1342,7 @@ def _inbox_setup(
     extra_files=None,
     settings_section=None,
     jev_section=None,
+    docprep_section=None,
     ftype_sort=".pdf",
 ):
     source_dir = tmp_path / "source"
@@ -1359,6 +1366,8 @@ def _inbox_setup(
     }
     config["SETTINGS"] = {"overwrite": "false", **(settings_section or {})}
     config["BOWLS_INBOX"] = inbox_bowls or {"Rechnungen": "Rechnung"}
+    if docprep_section is not None:
+        config["DOCPREP"] = docprep_section
     if jev_section is not None:
         definitions_path = tmp_path / "jev_definitions.ini"
         definitions = ConfigParser()
@@ -2138,6 +2147,132 @@ def test_inbox_match_before_markup_default_still_converts(tmp_path, monkeypatch)
 
     assert len(calls) == 1, "unmatched file must go through conversion"
     assert (target_dir / "Rest" / "scan001.pdf").is_file()
+
+
+def test_inbox_sheet_music_pdf_is_renamed_and_not_converted(tmp_path, monkeypatch):
+    import wit_pytools.documenttools.pdf2md as pdf2md_module
+
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Noten": "sheet-music", "Rest": "!DEFAULT"},
+        pdf_name="swanlake.pdf",
+    )
+    monkeypatch.setattr(
+        pdf2md_module, "_has_music_notation", lambda pdf: True
+    )
+    calls = []
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count, _fake_converter(calls)),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert calls == [], "sheet music must not be converted"
+    assert not (source_dir / "swanlake.pdf").exists()
+    assert (target_dir / "Noten" / "swanlake_sheet-music.pdf").is_file()
+
+
+def test_inbox_sheet_music_audiveris_creates_mxl(tmp_path, monkeypatch):
+    import wit_pytools.documenttools.pdf2md as pdf2md_module
+
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Noten": "sheet-music", "Rest": "!DEFAULT"},
+        pdf_name="swanlake.pdf",
+        docprep_section={"transcode_sheetmusic": "true"},
+    )
+    monkeypatch.setattr(pdf2md_module, "_has_music_notation", lambda pdf: True)
+    monkeypatch.setattr(
+        cs, "_audiveris_command", lambda setting: ["/fake/java", "Audiveris"]
+    )
+
+    def fake_run(cmd, **kwargs):
+        outdir = Path(cmd[cmd.index("-output") + 1])
+        (outdir / "input.mxl").write_text("<mxl/>", encoding="utf-8")
+        (outdir / "input.omr").write_text("<omr/>", encoding="utf-8")
+        return cs.subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(cs.subprocess, "run", fake_run)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not (source_dir / "swanlake.pdf").exists()
+    assert (target_dir / "Noten" / "swanlake_sheet-music.pdf").is_file()
+    assert (target_dir / "Noten" / "swanlake_sheet-music.mxl").is_file()
+    assert (target_dir / "Noten" / "swanlake_sheet-music.omr").is_file()
+
+
+def test_inbox_sheet_music_without_audiveris_still_sorts(tmp_path, monkeypatch):
+    import wit_pytools.documenttools.pdf2md as pdf2md_module
+
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Noten": "sheet-music", "Rest": "!DEFAULT"},
+        pdf_name="swanlake.pdf",
+        docprep_section={"transcode_sheetmusic": "true"},
+    )
+    monkeypatch.setattr(pdf2md_module, "_has_music_notation", lambda pdf: True)
+    monkeypatch.setattr(cs, "_audiveris_command", lambda setting: None)
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "Noten" / "swanlake_sheet-music.pdf").is_file()
+    assert not list(source_dir.glob("*.mxl"))
+
+
+def test_inbox_sheet_music_transcode_disabled_by_default(tmp_path, monkeypatch):
+    import wit_pytools.documenttools.pdf2md as pdf2md_module
+
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Noten": "sheet-music", "Rest": "!DEFAULT"},
+        pdf_name="swanlake.pdf",
+    )
+    monkeypatch.setattr(pdf2md_module, "_has_music_notation", lambda pdf: True)
+    called = []
+    monkeypatch.setattr(
+        cs, "_audiveris_command", lambda setting: called.append(setting) or ["/fake/java"]
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert called == [], "OMR must be opt-in via transcode_sheetmusic"
+    assert (target_dir / "Noten" / "swanlake_sheet-music.pdf").is_file()
+
+
+def test_audiveris_command_from_install_dir(tmp_path):
+    java = tmp_path / "runtime" / "bin" / "java.exe"
+    java.parent.mkdir(parents=True)
+    java.write_text("x", encoding="utf-8")
+    (tmp_path / "app").mkdir()
+
+    command = cs._audiveris_command(str(tmp_path))
+
+    assert command == [str(java), "-cp", str(tmp_path / "app" / "*"), "Audiveris"]
+
+
+def test_inbox_non_score_pdf_is_not_renamed(tmp_path, monkeypatch):
+    import wit_pytools.documenttools.pdf2md as pdf2md_module
+
+    source_dir, target_dir, config_path = _inbox_setup(
+        tmp_path,
+        inbox_bowls={"Rechnungen": "scan001", "Rest": "!DEFAULT"},
+    )
+    monkeypatch.setattr(
+        pdf2md_module, "_has_music_notation", lambda pdf: False
+    )
+    monkeypatch.setitem(
+        cs.DOCPREP_CONVERTERS,
+        ".pdf",
+        (cs._pdf_page_count, _fake_converter([])),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not list(source_dir.glob("*_sheet-music*"))
+    assert (target_dir / "Rechnungen" / "scan001.pdf").is_file()
 
 
 def test_inbox_jev_routing_question(tmp_path, monkeypatch):

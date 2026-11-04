@@ -20,6 +20,8 @@ from wit_pytools.documenttools import (
     identify_xlsx_strings,
     pdf_to_markdown,
     pdf_to_markdown_text,
+    rtf_to_markdown,
+    rtf_to_markdown_text,
     identify_text_strings,
     anonymize_path_parts,
     anonymize_text,
@@ -384,6 +386,105 @@ def test_pdf_to_markdown_image_only_pdf(tmp_path, monkeypatch, no_cost_prompt):
 
     monkeypatch.setattr(pdf2md, "chat", _fake_chat(["transcribed scan"]))
     assert pdf_to_markdown_text(scan, model="m") == "transcribed scan"
+
+
+def test_pdf2md_music_char_detection():
+    assert pdf2md._is_music_char({"fontname": "Bravura", "text": "a"})
+    assert pdf2md._is_music_char({"fontname": "ABCDEF+Maestro", "text": "x"})
+    assert pdf2md._is_music_char({"fontname": "Helvetica", "text": "\ue050"})
+    assert not pdf2md._is_music_char({"fontname": "Helvetica", "text": "a"})
+
+
+def test_pdf2md_no_music_notation_in_text_pdf(pdf_copy):
+    with pdf2md.pdfplumber.open(str(pdf_copy)) as pdf:
+        assert pdf2md._has_music_notation(pdf) is False
+
+
+def test_pdf_to_markdown_music_notation_sidecar_flag(pdf_copy, monkeypatch, no_cost_prompt):
+    monkeypatch.setattr(pdf2md, "_has_music_notation", lambda pdf: True)
+    monkeypatch.setattr(pdf2md, "chat", _fake_chat(["page one", "page two"]))
+
+    output = pdf_to_markdown(pdf_copy, model="test/vision")
+
+    assert output.read_text(encoding="utf-8") == "page one\n\n---\n\npage two\n"
+    sidecar = json.loads(pdf_copy.with_name("testdocument_pdf2md.json").read_text(encoding="utf-8"))
+    assert sidecar["music_notation"] is True
+    assert sidecar["prompt_file"].endswith("pdf2md_prompt.txt")
+
+
+def test_pdf_to_markdown_text_mode_flags_music_notation(pdf_copy, monkeypatch):
+    monkeypatch.setattr(pdf2md, "_has_music_notation", lambda pdf: True)
+    monkeypatch.setattr(pdf2md, "chat", _fake_chat([]))
+
+    result = pdf2md._convert_pages(
+        pdf_copy,
+        mode="text",
+        model=None,
+        start_page=1,
+        end_page=1,
+        prompt_file=None,
+        dpi=150,
+        retry_times=1,
+        continue_on_error=False,
+        max_cost=None,
+        yes=False,
+        language=None,
+        api_key=None,
+        pages_dir=None,
+    )
+
+    assert result["metadata"]["music_notation"] is True
+    assert "Unternehmensanmeldung" in result["markdown"]
+
+
+# --- RTF to Markdown -------------------------------------------------------
+
+rtf2md = importlib.import_module("wit_pytools.documenttools.rtf2md")
+
+TEST_RTF = Path(__file__).parent / "testdocument.rtf"
+
+has_soffice = pytest.mark.skipif(
+    not (shutil.which("soffice") or shutil.which("libreoffice")),
+    reason="LibreOffice (soffice) not in PATH",
+)
+
+
+@pytest.fixture
+def rtf_copy(tmp_path):
+    target = tmp_path / "testdocument.rtf"
+    shutil.copy(TEST_RTF, target)
+    return target
+
+
+@has_soffice
+def test_rtf_to_markdown_writes_output(rtf_copy):
+    output = rtf_to_markdown(rtf_copy)
+
+    assert output == rtf_copy.with_suffix(".md")
+    text = output.read_text(encoding="utf-8")
+    assert "__Beispiel Titel__" in text
+    assert "*Kursiv*" in text
+    assert "Zweiter Absatz" in text
+
+
+@has_soffice
+def test_rtf_to_markdown_text_returns_string(rtf_copy):
+    assert "*Kursiv*" in rtf_to_markdown_text(rtf_copy)
+
+
+@has_soffice
+def test_rtf_to_markdown_refuses_overwrite(rtf_copy):
+    rtf_to_markdown(rtf_copy)
+    with pytest.raises(FileExistsError):
+        rtf_to_markdown(rtf_copy)
+    rtf_to_markdown(rtf_copy, overwrite=True)
+
+
+def test_rtf_to_markdown_validation(tmp_path):
+    with pytest.raises(ValueError, match="Only .rtf"):
+        rtf_to_markdown_text(tmp_path / "note.txt")
+    with pytest.raises(FileNotFoundError):
+        rtf_to_markdown_text(tmp_path / "missing.rtf")
 
 
 def test_identify_and_anonymize_markdown(tmp_path):

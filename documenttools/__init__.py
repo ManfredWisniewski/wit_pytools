@@ -52,6 +52,8 @@ _LAZY_EXPORTS = {
     "pdf_to_markdown_text": "pdf2md",
     "docx_to_markdown": "doc2md",
     "doc_to_markdown": "doc2md",
+    "rtf_to_markdown": "rtf2md",
+    "rtf_to_markdown_text": "rtf2md",
 }
 
 

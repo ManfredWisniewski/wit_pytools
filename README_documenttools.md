@@ -283,6 +283,8 @@ document.pdf
 
 Image-only PDFs (scans) work in `vision` mode. In `text` mode a page without a text layer produces a marker instead of content.
 
+Before conversion the PDF is checked for music notation (SMuFL music fonts or Unicode private use area glyphs in the text layer) and the result is recorded as the `music_notation` sidecar flag. `cinderellasort` inbox bowls use the same check to rename score PDFs to `*_sheet-music` so filename crits can route them. Scanned sheet music (score as image, no text layer) is not detected.
+
 ### Environment variables
 
 | Variable               | Required           | Purpose                                                    |
@@ -374,6 +376,8 @@ Failed pages and pages without a text layer are marked with a blockquote:
 > **Seite 3: keine Textebene** — für diese Seite den Modus vision verwenden
 ```
 
+A detected score is recorded in the sidecar as `music_notation: true`.
+
 ### CLI
 
 ```bat
@@ -390,6 +394,22 @@ Options: `--mode`, `--model`, `--start`, `--end`, `--output`, `--overwrite`, `--
 ### Not covered (yet)
 
 Direct image input (PNG/JPG), a `hybrid` mode that passes the text layer to the model as a hint, table extraction in `text` mode, and a Nextcloud Flow wrapper.
+
+## RTF to Markdown
+
+`rtf_to_markdown` converts a Rich Text `.rtf` file into one Markdown file. RTF is structured text, so no OCR or model call is needed: LibreOffice headless (`soffice`, also required for legacy `.doc`) converts the file to `.docx` and `mammoth` produces the Markdown — the same pipeline as `docx_to_markdown`.
+
+```python
+from wit_pytools.documenttools import rtf_to_markdown, rtf_to_markdown_text
+
+path = rtf_to_markdown("letter.rtf")
+text = rtf_to_markdown_text("letter.rtf")
+```
+
+- `output_path`: defaults to `<stem>.md` beside the RTF. Existing outputs raise `FileExistsError` unless `overwrite=True`. The source is never modified.
+- `include_images`: embedded images are dropped by default; with `True` they are inlined as base64 data URIs.
+- `timeout`: seconds for the LibreOffice call (default 120).
+- Requires `soffice` (or `libreoffice`) in `PATH`; raises `RuntimeError` otherwise.
 
 ## Requirements
 

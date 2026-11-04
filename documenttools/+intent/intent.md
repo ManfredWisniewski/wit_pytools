@@ -178,11 +178,12 @@ Convert a PDF document into a single Markdown file that reflects the document's 
 ### Workflow
 
 1. Validate the input (`.pdf` only), the mode, the language, and the page range.
-2. In `vision` mode: resolve the model (`model=` → `OPENROUTER_PDF_MODEL` → `OPENROUTER_MODEL`), load the prompt, estimate the cost as pages × per-image price, and ask for confirmation above the limit or when the price is unknown (`yes` skips).
-3. For each page in the range:
+2. Check the document for music notation: any glyph from a known SMuFL music font or in the Unicode private use area (U+E000–U+F8FF) marks the PDF as a score. Detection inspects the text layer only; scanned sheet music images are not detected. The result is recorded as the `music_notation` sidecar flag — the marker is also used by `cinderellasort` to rename score PDFs to `*_sheet-music` in inbox bowls.
+3. In `vision` mode: resolve the model (`model=` → `OPENROUTER_PDF_MODEL` → `OPENROUTER_MODEL`), load the prompt, estimate the cost as pages × per-image price, and ask for confirmation above the limit or when the price is unknown (`yes` skips).
+4. For each page in the range:
    - `vision`: render at `dpi` to a temporary PNG, send prompt and image to the model, strip a surrounding Markdown fence, retry on errors or empty responses with a `2 × attempt` second pause.
-   - `text`: use the text layer via `pdfplumber`; a page without text yields a marker.
-4. Join pages with a Markdown horizontal rule (`---`, surrounded by blank lines, only between pages).
+   - `text`: use the text layer via `pdfplumber`; a page without text yields a marker. A detected score logs a warning that the text layer does not represent the notation.
+5. Join pages with a Markdown horizontal rule (`---`, surrounded by blank lines, only between pages).
 5. Write `<stem>.md` and the sidecar `<stem>_pdf2md.json`; optionally keep page images and per-page Markdown in `<stem>_pages/`.
 
 ### Public functions
@@ -211,7 +212,7 @@ After the retries are exhausted, the page receives a visible blockquote marker (
 
 ### Output handling
 
-Outputs are written beside the source PDF. Existing outputs are not overwritten unless `overwrite` is set. The source PDF is never modified. The sidecar records source, mode, model, page range, dpi, language, prompt file, estimated cost, per-page status, and creation time.
+Outputs are written beside the source PDF. Existing outputs are not overwritten unless `overwrite` is set. The source PDF is never modified. The sidecar records source, mode, model, page range, dpi, language, the `music_notation` flag, prompt file, estimated cost, per-page status, and creation time.
 
 ### Entry points
 
@@ -229,6 +230,26 @@ The initial implementation does not provide:
 - OCR without a model;
 - a Nextcloud Flow wrapper (planned follow-up in `witnctools`);
 - automatic fallback from `text` to `vision`.
+
+## RTF to Markdown
+
+### Purpose
+
+Convert a Rich Text `.rtf` file into a single Markdown file. RTF is structured text, so no OCR or model call is needed. LibreOffice headless (`soffice`, already required for legacy `.doc`) converts the file to `.docx` and `mammoth` produces the Markdown — the same pipeline as `docx_to_markdown`. No additional dependencies are introduced.
+
+### Workflow
+
+1. Validate the input (`.rtf` only).
+2. Resolve `soffice`/`libreoffice` in `PATH`; raise `RuntimeError` when absent.
+3. Convert `.rtf` → `.docx` in a temporary directory (`--headless --convert-to docx`, `timeout` seconds), then `.docx` → Markdown via `mammoth`. Images are dropped unless `include_images` is set.
+4. Write `<stem>.md` beside the source (or `output_path`).
+
+### Public functions
+
+- `rtf_to_markdown_text(...) -> str`: convert and return the Markdown without touching disk.
+- `rtf_to_markdown(...) -> Path`: convert, write the output beside the source (or to `output_path`), return the output path.
+
+Parameters: `output_path`, `overwrite`, `include_images`, `timeout`. Existing outputs are not overwritten unless `overwrite` is set; the source `.rtf` is never modified. RTF has no semantic headings — structure fidelity is limited to what the `soffice` → `mammoth` pipeline preserves (paragraphs, bold, italic, lists, tables).
 
 ## Anonymization package boundary
 

@@ -2,7 +2,12 @@
 # -*- coding: utf-8 -*-
 
 import unittest
-from wit_pytools.sanitizers import convert_numerals_arabic_western, cleanfilestring, prepregex
+from wit_pytools.sanitizers import (
+    convert_numerals_arabic_western,
+    cleanfilestring,
+    prepregex,
+    transliterate_filename,
+)
 
 class TestSanitizers(unittest.TestCase):
     def test_prepregex(self):
@@ -42,7 +47,22 @@ class TestSanitizers(unittest.TestCase):
         
         # Test multiple dots in filename
         self.assertEqual(cleanfilestring("my.file.name.txt"), "my.file.name.txt")
-    
+
+    def test_transliterate_filename(self):
+        # Cyrillic is romanized
+        self.assertEqual(
+            cleanfilestring(
+                "ЧайковскийП. Танец маленьких лебедей фа диез минор партии 2024.pdf"
+            ),
+            "ChaikovskiiP. Tanets malen'kikh lebedei fa diez minor partii 2024.pdf",
+        )
+        # CJK ideographs are romanized
+        self.assertEqual(cleanfilestring("乐谱 2024.pdf"), "Le Pu 2024.pdf")
+        # Latin diacritics stay untouched
+        self.assertEqual(cleanfilestring("Müller.pdf"), "Müller.pdf")
+        # ASCII names pass through
+        self.assertEqual(transliterate_filename("score_sheet-music.pdf"), "score_sheet-music.pdf")
+
     def test_convert_numerals_arabic_western(self):
         # Test basic conversion
         self.assertEqual(convert_numerals_arabic_western("٢٠٢٥٠٥٠٥_١٠٠١٣٧"), "20250505_100137")

@@ -33,6 +33,14 @@ DEFAULT_RETRY_TIMES = 3
 DEFAULT_PROMPT_FILE = Path(__file__).with_name("pdf2md_prompt.txt")
 PAGE_SEPARATOR = "\n\n---\n\n"
 MODES = ("vision", "text")
+# SMuFL music fonts embed notation glyphs in the Unicode private use area
+SMUFL_RANGE = range(0xE000, 0xF900)
+MUSIC_FONT_TOKENS = (
+    "bravura", "emmentaler", "gonville", "leland", "petaluma", "maestro",
+    "opus", "jazz", "musejazz", "november", "leipzig", "sebastian",
+    "lilypond", "finale", "sibelius", "dorico", "capella", "engraver",
+    "ashmusic", "norfolk", "cadence",
+)
 LANGUAGES: Dict[str, Dict[str, str]] = {
     "en": {
         "illegible": "[illegible]",
@@ -112,6 +120,28 @@ def _load_prompt(prompt_file: Optional[Union[str, Path]], texts: Dict[str, str])
 def _strip_fence(text: str) -> str:
     match = _FENCE_PATTERN.match(text)
     return (match.group(1) if match else text).strip()
+
+
+def _is_music_char(char: Dict[str, Any]) -> bool:
+    """Return True if a pdfplumber char looks like music notation."""
+    font = (char.get("fontname") or "").lower()
+    if any(token in font for token in MUSIC_FONT_TOKENS):
+        return True
+    text = char.get("text") or ""
+    return any(ord(symbol) in SMUFL_RANGE for symbol in text)
+
+
+def _has_music_notation(pdf) -> bool:
+    """Return True if any page uses SMuFL music fonts or private use area glyphs.
+
+    Detects PDFs produced by notation software; scanned sheet music images
+    without a text layer cannot be detected this way.
+    """
+    return any(
+        _is_music_char(char)
+        for page in pdf.pages
+        for char in page.chars
+    )
 
 
 def _page_range(page_count: int, start_page: int, end_page: Optional[int]) -> range:
@@ -210,21 +240,31 @@ def _convert_pages(
 
     chosen_model = None
     prompt = None
+    prompt_path = None
     estimate = None
     if mode == "vision":
         chosen_model = _resolve_model(model)
-        prompt = _load_prompt(prompt_file, texts)
 
     parts: List[str] = []
     statuses: List[Dict[str, Any]] = []
     with pdfplumber.open(str(pdf_path)) as pdf:
         pages = _page_range(len(pdf.pages), start_page, end_page)
+        music = _has_music_notation(pdf)
+        if music:
+            log_message(f"{pdf_path.name} contains music notation", level="INFO")
         if mode == "vision":
+            prompt_path = Path(prompt_file) if prompt_file else DEFAULT_PROMPT_FILE
+            prompt = _load_prompt(prompt_path, texts)
             limit = max_cost if max_cost is not None else float(
                 os.environ.get("OPENROUTER_MAX_COST", DEFAULT_MAX_COST)
             )
             estimate = estimate_cost(chosen_model, len(pages), api_key=api_key)
             _confirm(estimate, limit, yes)
+        elif music:
+            log_message(
+                f"{pdf_path.name} contains music notation; the text layer does not represent the score",
+                level="WARNING",
+            )
 
         with tempfile.TemporaryDirectory(prefix="pdf2md-") as temp_dir:
             image_dir = pages_dir or Path(temp_dir)
@@ -242,7 +282,9 @@ def _convert_pages(
                     image_path = image_dir / f"page_{number:04d}.png"
                     page.to_image(resolution=dpi).save(str(image_path), format="PNG")
                     try:
-                        content = _transcribe_image(image_path, prompt, chosen_model, retry_times, api_key)
+                        content = _transcribe_image(
+                            image_path, prompt, chosen_model, retry_times, api_key
+                        )
                     except RuntimeError as exc:
                         content = texts["failed"].format(page=number, reason=exc)
                         status.update(status="failed", error=str(exc))
@@ -264,7 +306,8 @@ def _convert_pages(
             "pages": [pages.start, pages.stop - 1],
             "dpi": dpi if mode == "vision" else None,
             "language": language or os.environ.get("PDF2MD_LANGUAGE") or "en",
-            "prompt_file": str(Path(prompt_file) if prompt_file else DEFAULT_PROMPT_FILE) if mode == "vision" else None,
+            "music_notation": music,
+            "prompt_file": str(prompt_path) if mode == "vision" else None,
             "estimated_cost_usd": estimate,
             "page_status": statuses,
             "created": f"{datetime.now():%Y-%m-%d %H:%M:%S}",

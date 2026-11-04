@@ -2,6 +2,8 @@ import os
 import sys
 import re
 import shutil
+import subprocess
+import tempfile
 from datetime import datetime
 from configparser import ConfigParser
 from pathlib import Path
@@ -910,6 +912,11 @@ def _docprep_doc(source, output_path, settings):
     return doc_to_markdown(source, output_path=output_path)
 
 
+def _docprep_rtf(source, output_path, settings):
+    from wit_pytools.documenttools import rtf_to_markdown
+    return rtf_to_markdown(source, output_path=output_path)
+
+
 def _anonymize_single_file(
     file_path,
     file_dir,
@@ -1512,6 +1519,7 @@ DOCPREP_CONVERTERS = {
     '.eml': (_eml_page_count, _docprep_eml),
     '.docx': (_word_page_count, _docprep_docx),
     '.doc': (_word_page_count, _docprep_doc),
+    '.rtf': (_word_page_count, _docprep_rtf),
 }
 
 # Text extensions anonymized via plain replacement in ANONYMIZE bowls.
@@ -1566,6 +1574,9 @@ def docprep_settings(config_object):
         ).strip().lower() == 'true',
         'sync_deletes': (
             section.get('sync-deletes', 'false') or 'false'
+        ).strip().lower() == 'true',
+        'transcode_sheetmusic': (
+            section.get('transcode_sheetmusic', 'false') or 'false'
         ).strip().lower() == 'true',
     }
 
@@ -1890,7 +1901,11 @@ def _sync_docprep_deletes(
                 base = path.with_name(filename[: -len('_pdf2md.json')])
                 if not _docprep_source_has_document(base):
                     delfile(path.parent, path.name, dryrun)
-            elif name.endswith('.md') and not name.endswith('_anon.md'):
+            elif (
+                name.endswith('.md') and not name.endswith('_anon.md')
+            ) or name.endswith(('.mxl', '.omr')):
+                if not _docprep_source_has_document(path):
+                    delfile(path.parent, path.name, dryrun)
                 if not _docprep_source_has_document(path):
                     delfile(path.parent, path.name, dryrun)
 
@@ -1984,7 +1999,7 @@ def _inbox_is_sidecar(source):
     if source.name.casefold().endswith('_pdf2md.json'):
         return True
     return (
-        source.suffix.lower() == '.md'
+        source.suffix.lower() in ('.md', '.mxl', '.omr')
         and _docprep_source_has_document(source)
     )
 
@@ -1997,9 +2012,136 @@ def _inbox_sidecar_candidates(source, cleaned_stem):
         for stem in stems
         for candidate in (
             source.parent / f"{stem}.md",
+            source.parent / f"{stem}.mxl",
+            source.parent / f"{stem}.omr",
             source.parent / f"{stem}_pdf2md.json",
         )
     ]
+
+
+def _audiveris_command(setting):
+    """Build the Audiveris invocation, or ``None`` when unavailable.
+
+    ``setting`` may be an install directory (bundled java + ``app`` jars),
+    a direct executable, or empty (PATH lookup, then the default install
+    location). The bundled-java form is preferred: the exe launcher may
+    detach before OMR finishes.
+    """
+    candidates = [Path(setting)] if setting else []
+    exe = shutil.which('audiveris') or shutil.which('Audiveris')
+    if exe:
+        candidates.append(Path(exe))
+    candidates.append(Path(r'C:\Program Files\Audiveris'))
+    for candidate in candidates:
+        if candidate.is_dir():
+            java = candidate / 'runtime' / 'bin' / 'java.exe'
+            app = candidate / 'app'
+            if java.is_file() and app.is_dir():
+                return [str(java), '-cp', str(app / '*'), 'Audiveris']
+        elif candidate.is_file():
+            return [str(candidate)]
+    return None
+
+
+def _inbox_audiveris_score(source, config_object, dryrun):
+    """Run Audiveris OMR on a score PDF and write ``<stem>.mxl`` beside it.
+
+    Best effort: a missing executable or failed run only logs; the score is
+    still sorted by its ``_sheet-music`` name.
+    """
+    section = (
+        config_object['DOCPREP']
+        if config_object.has_section('DOCPREP')
+        else {}
+    )
+    command = _audiveris_command(
+        (section.get('audiveris', '') or '').strip()
+    )
+    timeout = int(section.get('audiveris_timeout', '600'))
+    target = source.with_suffix('.mxl')
+    if target.is_file():
+        return target
+    if command is None:
+        log_message(
+            f"Inbox: no Audiveris installation for score {source.name}; "
+            "set [DOCPREP] audiveris to the install directory",
+            level="WARNING",
+        )
+        return None
+    if dryrun:
+        print(f"  OMR (dryrun): {source} -> {target}")
+        return target
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Non-ASCII filenames break Audiveris argument parsing
+            input_copy = Path(tmpdir) / 'input.pdf'
+            shutil.copy2(source, input_copy)
+            subprocess.run(
+                command + ['-batch', '-export', '-output', tmpdir, str(input_copy)],
+                check=True,
+                capture_output=True,
+                timeout=timeout,
+            )
+            produced = Path(tmpdir) / 'input.mxl'
+            if not produced.is_file():
+                candidates = list(Path(tmpdir).glob('*.mxl'))
+                if not candidates:
+                    raise RuntimeError("Audiveris produced no .mxl")
+                produced = candidates[0]
+            shutil.move(str(produced), str(target))
+            # Keep the Audiveris project file for manual review/correction
+            produced_omr = Path(tmpdir) / 'input.omr'
+            if not produced_omr.is_file():
+                omr_candidates = list(Path(tmpdir).glob('*.omr'))
+                produced_omr = omr_candidates[0] if omr_candidates else None
+            if produced_omr is not None:
+                shutil.move(str(produced_omr), str(source.with_suffix('.omr')))
+    except Exception as exc:
+        log_message(
+            f"Inbox: Audiveris failed for {source.name}: {exc}", level="ERROR"
+        )
+        return None
+    message = f"OMR: created {target}"
+    log_message(message, level="INFO")
+    print(message)
+    return target
+
+
+def _inbox_rename_sheet_music(source, dryrun):
+    """Rename a detected score PDF to ``<stem>_sheet-music.pdf``.
+
+    The marker lets filename crits route the file; sheet music gets no
+    markup conversion. Returns the (possibly renamed) path.
+    """
+    if '_sheet-music' in source.stem.casefold():
+        return source
+    try:
+        import pdfplumber
+        from wit_pytools.documenttools.pdf2md import _has_music_notation
+        with pdfplumber.open(str(source)) as pdf:
+            if not _has_music_notation(pdf):
+                return source
+    except Exception as exc:
+        log_message(
+            f"Inbox: music notation check failed for {source.name}: {exc}",
+            level="WARNING",
+        )
+        return source
+    target = source.with_name(f"{source.stem}_sheet-music{source.suffix}")
+    counter = 1
+    while target.exists():
+        target = source.with_name(
+            f"{source.stem}_sheet-music-{counter}{source.suffix}"
+        )
+        counter += 1
+    if dryrun:
+        print(f"  Sheet music (dryrun): {source.name} -> {target.name}")
+        return target
+    source.rename(target)
+    message = f"Sheet music detected: {source.name} -> {target.name}"
+    log_message(message, level="INFO")
+    print(message)
+    return target
 
 
 def jev_settings(config_object):
@@ -2741,6 +2883,12 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
     # Sidecars are not sorted on their own; they move with the source document.
     if not source.is_file() or _inbox_is_sidecar(source):
         return
+    # Score PDFs are renamed so filename crits can route them
+    if source.suffix.lower() == '.pdf':
+        source = _inbox_rename_sheet_music(source, dryrun)
+    sheet_music = '_sheet-music' in source.stem.casefold()
+    if sheet_music and docprep_settings(config_object)['transcode_sheetmusic']:
+        _inbox_audiveris_score(source, config_object, dryrun)
     nfile = normalize_spaces(
         cleanfilename(source.name, clean, clean_nocase, replacements)
     )
@@ -2794,6 +2942,7 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
         elif (
             source.suffix.lower() in DOCPREP_CONVERTERS
             and not markup_path.is_file()
+            and not sheet_music
         ):
             try:
                 handle_docprep(
@@ -2876,8 +3025,10 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
                 # Shared thread markup is copied/moved below instead.
                 continue
             sidecar_name = f"{cleaned_stem}.md"
-        else:
+        elif sidecar.name.casefold().endswith('_pdf2md.json'):
             sidecar_name = f"{cleaned_stem}_pdf2md.json"
+        else:
+            sidecar_name = f"{cleaned_stem}{sidecar.suffix.lower()}"
         movefile(
             sourcedir, sidecar.name, destdir, sidecar_name, filemode,
             overwrite=overwrite, dryrun=dryrun,
@@ -3422,6 +3573,12 @@ def cinderellasort(
         dryrun=False,
         common_configfile=None):
     #TODO check configfile for valid ini file
+    # Console may use cp1252; replace unencodable chars instead of crashing on
+    # filenames with e.g. Cyrillic characters
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure:
+            reconfigure(errors="replace")
     global _gen_img_jobs_done, _jev_classified
     _gen_img_jobs_done = 0
     _jev_classified = 0

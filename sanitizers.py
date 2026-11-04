@@ -6,8 +6,43 @@ import re
 import unicodedata
 from typing import Optional
 
+try:  # Optional dependency for script transliteration
+    from unidecode import unidecode
+except ImportError:  # pragma: no cover
+    unidecode = None
+
 
 INVALID_PATH_CHARS = set('<>:"/\\|?*')
+
+# Ranges transliterated to Latin: Cyrillic, kana, CJK ideographs, hangul,
+# fullwidth forms. Latin diacritics (umlauts etc.) stay untouched.
+_TRANSLITERATE_RANGES = (
+    (0x0400, 0x052F),
+    (0x3040, 0x30FF),
+    (0x3400, 0x9FFF),
+    (0xAC00, 0xD7AF),
+    (0xFF00, 0xFFEF),
+)
+
+
+def transliterate_filename(name: str) -> str:
+    """Romanize Cyrillic and CJK characters in a filename."""
+    if unidecode is None or not name:
+        return name
+    parts = []
+    buffer = []
+    for char in name:
+        code = ord(char)
+        if any(start <= code <= end for start, end in _TRANSLITERATE_RANGES):
+            buffer.append(char)
+            continue
+        if buffer:
+            parts.append(unidecode(''.join(buffer)).strip())
+            buffer.clear()
+        parts.append(char)
+    if buffer:
+        parts.append(unidecode(''.join(buffer)).strip())
+    return ''.join(parts)
 
 
 TRANSLITERATION_MAP = {
@@ -64,6 +99,8 @@ def cleanfilestring(file):
     # Remove invalid characters from filename
     invalid_chars = r'[<>:"/\\|?*]'
     nfile = re.sub(invalid_chars, '', nfile)
+    # Romanize Cyrillic and CJK so downstream tools see ASCII-ish names
+    nfile = transliterate_filename(nfile)
     nfile = normalize_spaces(nfile.rstrip())
     # Remove last character period
     nfile = nfile.rstrip('.')
