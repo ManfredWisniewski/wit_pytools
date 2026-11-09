@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Vaultwarden 1.37.5 organization export",
+  "description": "Organization export. Personal exports use 'folders' and item.folderId instead of collections/collectionIds. item.type: 1 = login, 2 = secure note (item.secureNote), 3 = card, 4 = identity.",
+  "type": "object",
+  "properties": {
+    "encrypted": {"type": "boolean"},
+    "collections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "organizationId": {"type": "string", "format": "uuid"},
+          "name": {"type": "string"},
+          "externalId": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "organizationId": {"type": "string", "format": "uuid"},
+          "collectionIds": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+          "type": {"enum": [1, 2, 3, 4]},
+          "name": {"type": "string"},
+          "notes": {"type": ["string", "null"]},
+          "favorite": {"type": "boolean"},
+          "reprompt": {"type": "integer"},
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {"type": "string"},
+                "type": {"enum": [0, 1, 2, 3], "description": "0 text, 1 hidden, 2 boolean, 3 linked"},
+                "value": {"type": "string"}
+              }
+            }
+          },
+          "passwordHistory": {"type": "array"},
+          "creationDate": {"type": "string", "format": "date-time"},
+          "revisionDate": {"type": "string", "format": "date-time"},
+          "login": {
+            "type": "object",
+            "properties": {
+              "username": {"type": "string"},
+              "password": {"type": "string"},
+              "totp": {"type": ["string", "null"]},
+              "uris": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "uri": {"type": "string"},
+                    "match": {"type": ["integer", "null"]}
+                  }
+                }
+              },
+              "fido2Credentials": {"type": "array"}
+            }
+          },
+          "secureNote": {"type": "object", "properties": {"type": {"type": "integer"}}},
+          "card": {
+            "type": "object",
+            "properties": {
+              "brand": {"type": ["string", "null"]},
+              "cardholderName": {"type": ["string", "null"]},
+              "code": {"type": ["string", "null"]},
+              "expMonth": {"type": ["string", "null"]},
+              "expYear": {"type": ["string", "null"]},
+              "number": {"type": ["string", "null"]}
+            }
+          },
+          "identity": {
+            "type": "object",
+            "properties": {
+              "title": {"type": ["string", "null"]},
+              "firstName": {"type": ["string", "null"]},
+              "lastName": {"type": ["string", "null"]},
+              "username": {"type": ["string", "null"]},
+              "email": {"type": ["string", "null"]},
+              "phone": {"type": ["string", "null"]},
+              "address1": {"type": ["string", "null"]},
+              "city": {"type": ["string", "null"]},
+              "state": {"type": ["string", "null"]},
+              "postalCode": {"type": ["string", "null"]},
+              "country": {"type": ["string", "null"]},
+              "ssn": {"type": ["string", "null"]}
+            }
+          }
+        }
+      }
+    }
+  }
+}
