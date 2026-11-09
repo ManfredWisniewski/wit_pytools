@@ -9,6 +9,8 @@ import os
 import urllib.error
 import urllib.request
 
+from wit_pytools.jsontools import load_json
+
 ENV_FILE = ".env"
 INI_FILE = "instance/itsaplan.ini"
 TEMPLATES_DIR = "src/templates"
@@ -168,8 +170,7 @@ def load_templates(cfg, templates_dir=TEMPLATES_DIR):
         if not fname.endswith(".json"):
             continue
         path = os.path.join(templates_dir, fname)
-        with open(path, encoding="utf-8") as fh:
-            doc = json.load(fh)
+        doc = load_json(path)
         if doc.get("format") != TEMPLATE_FORMAT:
             raise ItsaplanError(f"{path}: format must be {TEMPLATE_FORMAT!r}")
         if doc.get("version") != TEMPLATE_VERSION:

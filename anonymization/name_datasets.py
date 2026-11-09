@@ -12,6 +12,8 @@ from typing import Iterable, Optional, Sequence
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+from wit_pytools.jsontools import load_json, write_json
+
 
 LOGGER = logging.getLogger(__name__)
 REPOSITORY = "sigpwned/popular-names-by-country-dataset"
@@ -233,7 +235,7 @@ def _load_cache(
     german: bool = False,
 ) -> NameCatalog:
     forenames_path, surnames_path, metadata_path = _cache_files(cache_dir)
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata = load_json(metadata_path)
     german_contents = None
     if german:
         german_contents = {
@@ -277,20 +279,17 @@ def _write_cache(
             _german_cache_files(cache_dir),
         ):
             path.write_text(german_contents[dataset], encoding="utf-8")
-    metadata_path.write_text(
-        json.dumps(
-            {
-                "repository": REPOSITORY,
-                "branch": BRANCH,
-                "commit": commit,
-                "files": DATASET_FILES,
-                "german_repository": GERMAN_REPOSITORY if german_commit else None,
-                "german_commit": german_commit,
-                "german_files": GERMAN_DATASET_FILES if german_commit else None,
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
+    write_json(
+        metadata_path,
+        {
+            "repository": REPOSITORY,
+            "branch": BRANCH,
+            "commit": commit,
+            "files": DATASET_FILES,
+            "german_repository": GERMAN_REPOSITORY if german_commit else None,
+            "german_commit": german_commit,
+            "german_files": GERMAN_DATASET_FILES if german_commit else None,
+        },
     )
 
 
@@ -410,7 +409,7 @@ def load_name_catalog(
         cached_german_commit = None
         if cache_available:
             try:
-                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                metadata = load_json(metadata_path)
                 cached_commit = metadata.get("commit")
                 cached_german_commit = metadata.get("german_commit")
             except (OSError, json.JSONDecodeError):

@@ -2,7 +2,6 @@
 
 import argparse
 import base64
-import json
 import os
 import re
 import sys
@@ -11,6 +10,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from eliot import log_message
+
+from wit_pytools.jsontools import write_json
 
 from .openrouter import IMAGE_TIMEOUT, image_part, request
 
@@ -186,7 +187,7 @@ def generate_image(
         "estimated_cost_usd": estimate,
     }
     for sidecar in sidecars:
-        sidecar.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
+        write_json(sidecar, metadata)
     cost = usage.get("cost")
     log_message(
         f"Generated {len(targets)} image(s) with {chosen_model}; cost {cost} USD",

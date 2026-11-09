@@ -7,7 +7,6 @@ through :mod:`wit_pytools.aitools`.
 """
 
 import argparse
-import json
 import os
 import re
 import sys
@@ -21,6 +20,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 from eliot import log_message
 
 from wit_pytools.aitools import chat, image_part, list_models
+from wit_pytools.jsontools import write_json
 
 try:  # Optional dependency that is only needed for PDF operations
     import pdfplumber  # type: ignore
@@ -425,7 +425,7 @@ def pdf_to_markdown(
     metadata = dict(result["metadata"], output=target.name, pages_dir=pages_dir.name if pages_dir else None)
     if write_sidecar:
         sidecar.parent.mkdir(parents=True, exist_ok=True)
-        sidecar.write_text(json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8")
+        write_json(sidecar, metadata)
     log_message(f"Wrote {target} ({metadata['mode']}, pages {metadata['pages']})", level="INFO")
     return target
 
