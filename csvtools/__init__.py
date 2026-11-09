@@ -45,22 +45,26 @@ def csv_transform(
             )
 
         mappings = [
-            (row["source_column"], row["target_column"])
+            (
+                row["source_column"],
+                row["target_column"],
+                row.get("target_default") or "",
+            )
             for row in mapping_reader
         ]
 
     if not mappings:
         raise ValueError("Mapping file does not contain any mappings")
 
-    target_columns = [target_column for _, target_column in mappings]
+    target_columns = [target_column for _, target_column, _ in mappings]
 
     with open(source_file, encoding=encoding, newline="") as source_handle:
         source_reader = csv.DictReader(source_handle, delimiter=delimiter)
         source_columns = set(source_reader.fieldnames or [])
         missing_columns = {
             source_column
-            for source_column, _ in mappings
-            if source_column not in source_columns
+            for source_column, _, _ in mappings
+            if source_column and source_column not in source_columns
         }
         if missing_columns:
             raise ValueError(
@@ -84,8 +88,12 @@ def csv_transform(
             for source_row in source_reader:
                 target_writer.writerow(
                     {
-                        target_column: _escape_formula(
-                            source_row[source_column])
-                        for source_column, target_column in mappings
+                        target_column: (
+                            _escape_formula(source_row[source_column])
+                            if source_column
+                            else target_default
+                        )
+                        for source_column, target_column, target_default
+                        in mappings
                     }
                 )

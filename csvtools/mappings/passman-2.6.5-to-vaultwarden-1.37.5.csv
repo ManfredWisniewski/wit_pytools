@@ -1,0 +1,16 @@
+Source: Passman, Version: 2.6.5
+Target: Vaultwarden, Version: 1.37.5
+
+source_column,target_column,target_default
+,collections,
+,folder,
+,type,
+label,name
+description,notes
+,fields,
+,reprompt,
+,archivedDate,
+url,login_uri
+username,login_username
+password,login_password
+,login_totp,
