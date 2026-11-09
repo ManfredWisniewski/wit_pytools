@@ -3,6 +3,7 @@
 import csv
 import json
 import re
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from os import PathLike
@@ -109,6 +110,11 @@ def _transform_parse_custom_fields(value: str) -> str:
     return json.dumps(fields)
 
 
+def _transform_new_uuid(value: Any) -> str:
+    """Generate a random UUID, ignoring the input value."""
+    return str(uuid.uuid4())
+
+
 def _transform_unix_timestamp(value: str) -> str:
     """Convert 'Wed Jul 09 2025 16:39:35 GMT+0200 (...)' to unix seconds."""
     cleaned = re.sub(r"\s*\([^)]*\)\s*$", "", value)
@@ -119,6 +125,7 @@ def _transform_unix_timestamp(value: str) -> str:
 TRANSFORMS: Dict[str, Callable[[Any], Any]] = {
     "flatten_custom_fields": _transform_flatten_custom_fields,
     "ncp_custom_fields": _transform_ncp_custom_fields,
+    "new_uuid": _transform_new_uuid,
     "parse_custom_fields": _transform_parse_custom_fields,
     "to_bool": _transform_to_bool,
     "to_int": _transform_to_int,
