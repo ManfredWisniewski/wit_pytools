@@ -1,8 +1,11 @@
 """CSV transformation tools."""
 
 import csv
+import json
+import re
+from datetime import datetime
 from os import PathLike
-from typing import Union
+from typing import Callable, Dict, Union
 
 
 Path = Union[str, PathLike[str]]
@@ -13,6 +16,55 @@ def _escape_formula(value: str) -> str:
     if value[:1] in ("=", "+", "-", "@", "\t", "\r"):
         return "'" + value
     return value
+
+
+def _transform_flatten_custom_fields(value: str) -> str:
+    """Flatten Passman custom_fields JSON into 'label: value' lines."""
+    try:
+        fields = json.loads(value)
+    except json.JSONDecodeError:
+        return value
+    if not isinstance(fields, list):
+        return value
+    return "\n".join(
+        f"{field['label']}: {field['value']}"
+        for field in fields
+        if field.get("label") and field.get("value") is not None
+    )
+
+
+def _transform_parse_custom_fields(value: str) -> str:
+    """Convert PasswordsApp 'label, type: value' lines into Passman JSON."""
+    fields = []
+    for line in value.splitlines():
+        if not line.strip():
+            continue
+        label, _, rest = line.partition(", ")
+        field_type, _, field_value = rest.partition(": ")
+        secret = field_type == "secret"
+        fields.append(
+            {
+                "label": label,
+                "value": field_value,
+                "secret": secret,
+                "field_type": "password" if secret else "text",
+            }
+        )
+    return json.dumps(fields)
+
+
+def _transform_unix_timestamp(value: str) -> str:
+    """Convert 'Wed Jul 09 2025 16:39:35 GMT+0200 (...)' to unix seconds."""
+    cleaned = re.sub(r"\s*\([^)]*\)\s*$", "", value)
+    parsed = datetime.strptime(cleaned, "%a %b %d %Y %H:%M:%S GMT%z")
+    return str(int(parsed.timestamp()))
+
+
+TRANSFORMS: Dict[str, Callable[[str], str]] = {
+    "flatten_custom_fields": _transform_flatten_custom_fields,
+    "parse_custom_fields": _transform_parse_custom_fields,
+    "unix_timestamp": _transform_unix_timestamp,
+}
 
 
 def csv_transform(
@@ -49,6 +101,7 @@ def csv_transform(
                 row["source_column"],
                 row["target_column"],
                 row.get("target_default") or "",
+                row.get("transform") or "",
             )
             for row in mapping_reader
         ]
@@ -56,14 +109,24 @@ def csv_transform(
     if not mappings:
         raise ValueError("Mapping file does not contain any mappings")
 
-    target_columns = [target_column for _, target_column, _ in mappings]
+    unknown_transforms = {
+        transform
+        for _, _, _, transform in mappings
+        if transform and transform not in TRANSFORMS
+    }
+    if unknown_transforms:
+        raise ValueError(
+            "Unknown transforms: " + ", ".join(sorted(unknown_transforms))
+        )
+
+    target_columns = [target_column for _, target_column, _, _ in mappings]
 
     with open(source_file, encoding=encoding, newline="") as source_handle:
         source_reader = csv.DictReader(source_handle, delimiter=delimiter)
         source_columns = set(source_reader.fieldnames or [])
         missing_columns = {
             source_column
-            for source_column, _, _ in mappings
+            for source_column, _, _, _ in mappings
             if source_column and source_column not in source_columns
         }
         if missing_columns:
@@ -86,14 +149,25 @@ def csv_transform(
             target_writer.writeheader()
 
             for source_row in source_reader:
-                target_writer.writerow(
-                    {
-                        target_column: (
-                            _escape_formula(source_row[source_column])
-                            if source_column
-                            else target_default
-                        )
-                        for source_column, target_column, target_default
-                        in mappings
-                    }
-                )
+                target_row = {}
+                for (
+                    source_column,
+                    target_column,
+                    target_default,
+                    transform,
+                ) in mappings:
+                    if source_column:
+                        value = source_row[source_column]
+                        if transform:
+                            value = TRANSFORMS[transform](value)
+                        value = _escape_formula(value)
+                    else:
+                        value = target_default
+                    if target_column in target_row:
+                        if target_row[target_column] and value:
+                            target_row[target_column] += "\n" + value
+                        elif value:
+                            target_row[target_column] = value
+                    else:
+                        target_row[target_column] = value
+                target_writer.writerow(target_row)

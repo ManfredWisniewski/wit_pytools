@@ -35,6 +35,8 @@ Only `login` rows use the `login_uri`/`login_username`/`login_password`/
 - Select `Bitwarden (csv)` as the file format in the Import UI.
 - Do not leave empty rows in the CSV — Vaultwarden creates an empty entry
   for each empty row.
+- Custom fields are not imported via the `fields` column — merge them into
+  `notes` instead (e.g. `flatten_custom_fields` transform).
 - On import, Vaultwarden creates collections for names it does not
   recognize — always as **new** collections, even if a collection with the
   same name already exists (matching is by UUID, not name). To import into

@@ -1,12 +1,13 @@
 Source: Passman, Version: 2.6.5
 Target: Vaultwarden, Version: 1.37.5
 
-source_column,target_column,target_default
-,collections,
-,folder,
-,type,
+source_column,target_column,target_default,transform
+,collections,,
+,folder,,
+,type,,
 label,name
 description,notes
+custom_fields,notes,,flatten_custom_fields
 ,fields,
 ,reprompt,
 ,archivedDate,
