@@ -497,6 +497,10 @@ def add_arguments(parser):
     parser.add_argument("--out", default="P:/Downloads")
     parser.add_argument("--profile", default=str(DEFAULT_PROFILE_DIR))
     parser.add_argument("--channel", default="chrome")
+    parser.add_argument(
+        "--browser", default=None,
+        help="browser executable path; overrides --channel",
+    )
     parser.add_argument("--headless", action="store_true")
     parser.add_argument(
         "--count", type=int, default=1,
@@ -525,7 +529,10 @@ def run(args):
         print(f"=== Account {tag or 'default'} ===")
         try:
             with browser_session(
-                profile, headless=args.headless, channel=args.channel
+                profile,
+                headless=args.headless,
+                channel=args.channel,
+                executable_path=args.browser,
             ) as (_context, page):
                 login(page, username, password, mfa_timeout=args.mfa_timeout)
                 saved += download_statements(

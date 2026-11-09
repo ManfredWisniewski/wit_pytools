@@ -17,6 +17,9 @@ set "SITES=amex-de-statements mdcc-invoices"
 set "OUT=P:\Downloads"
 set "COUNT=1"
 
+REM browser executable; empty uses --channel default (installed chrome)
+set "BROWSER=C:\Program Files\Chromium\Application\chrome.exe"
+
 REM ==============================================================================
 REM PROCESSING
 REM ==============================================================================
@@ -27,7 +30,11 @@ for %%S in (%SITES%) do (
     echo ----------------------------------------
     echo Running: wit_pytools.webtools %%S
     echo ----------------------------------------
-    %PYTHON_PATH% -m wit_pytools.webtools %%S --out "%OUT%" --count "%COUNT%"
+    if defined BROWSER (
+        %PYTHON_PATH% -m wit_pytools.webtools %%S --out "%OUT%" --count "%COUNT%" --browser "%BROWSER%"
+    ) else (
+        %PYTHON_PATH% -m wit_pytools.webtools %%S --out "%OUT%" --count "%COUNT%"
+    )
     if errorlevel 1 set "OVERALL_EXIT=1"
     echo.
 )

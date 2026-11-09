@@ -11,6 +11,9 @@ pip install playwright python-dotenv
 playwright install chromium
 ```
 
+Default testing browser: [Chrome for Testing (stable)](https://googlechromelabs.github.io/chrome-for-testing/#stable),
+passed to the site commands via `--browser`.
+
 ## Credentials
 
 Per-site credentials come from environment variables or a `.env` file,

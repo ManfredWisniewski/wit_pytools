@@ -28,6 +28,10 @@ def add_arguments(parser):
     parser.add_argument("--out", default="P:/Downloads")
     parser.add_argument("--profile", default=str(DEFAULT_PROFILE_DIR))
     parser.add_argument("--channel", default="chrome")
+    parser.add_argument(
+        "--browser", default=None,
+        help="browser executable path; overrides --channel",
+    )
     parser.add_argument("--headless", action="store_true")
     parser.add_argument(
         "--count", type=int, default=1,
@@ -112,7 +116,10 @@ def run(args):
     # env vars: MDCC_USERNAME / MDCC_PASSWORD
     username, password = load_credentials("mdcc")
     with browser_session(
-        args.profile, headless=args.headless, channel=args.channel
+        args.profile,
+        headless=args.headless,
+        channel=args.channel,
+        executable_path=args.browser,
     ) as (_context, page):
         try:
             login(page, username, password)

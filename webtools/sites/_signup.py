@@ -80,6 +80,10 @@ def add_common_arguments(parser):
     parser.add_argument("--profile", default=None)
     parser.add_argument("--channel", default="chrome")
     parser.add_argument(
+        "--browser", default=None,
+        help="browser executable path; overrides --channel",
+    )
+    parser.add_argument(
         "--mailbox",
         default=None,
         help="mailbox tag for CLAUDIA_IMAP_* style env vars;"
@@ -113,6 +117,7 @@ def run_signup(
             args.profile or profile_dir,
             headless=False,
             channel=args.channel,
+            executable_path=args.browser,
         ) as (_context, page):
             return assist_signup(
                 page,

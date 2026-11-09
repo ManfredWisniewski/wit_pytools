@@ -13,11 +13,12 @@ ARTIFACTS_DIR = Path(__file__).resolve().parents[1] / ".webtools"
 
 
 @contextmanager
-
-
-@contextmanager
 def browser_session(
-    profile_dir=DEFAULT_PROFILE_DIR, *, headless=False, channel=None
+    profile_dir=DEFAULT_PROFILE_DIR,
+    *,
+    headless=False,
+    channel=None,
+    executable_path=None,
 ):
     """Yield a persistent (context, page) pair; cookies survive across runs."""
     from playwright.sync_api import sync_playwright
@@ -27,9 +28,14 @@ def browser_session(
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(
             str(profile),
-            # e.g. "chrome" uses the installed browser instead of bundled chromium
-            channel=channel,
+            # channel picks a branded browser (e.g. "chrome");
+            # executable_path picks an explicit binary and wins over channel
+            channel=None if executable_path else channel,
+            executable_path=executable_path,
             headless=headless,
+            # run sandboxed like a normal user launch; default False adds
+            # --no-sandbox and chrome shows an "unsupported flag" warning
+            chromium_sandbox=True,
             viewport={"width": 1920, "height": 1080},
             accept_downloads=True,
             # reduce automation detection (banking sites check for it)
