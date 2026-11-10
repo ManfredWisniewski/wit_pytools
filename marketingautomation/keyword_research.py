@@ -19,7 +19,7 @@ import json
 import re
 import urllib.error
 import urllib.request
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from wit_pytools.sanitizers import normalize_spaces
@@ -78,7 +78,7 @@ def _seed_name(name):
     """Trim a marketing tail off the product name — ``X — long benefit claim``
     seeds Google with the whole sentence (Serper autocomplete rejects >~64
     chars); the head alone is the usable keyword seed."""
-    return re.split(r"\s+[—–|]\s+", name)[0].strip()
+    return re.split(r"\s+[—–|-]\s+", name)[0].strip()
 
 
 def _items(lines):
@@ -244,6 +244,46 @@ def harvest(seeds, client, gl, hl, num, verbose=False):
     return candidates, paa, serp, warnings
 
 
+# -- Google data enrichment ---------------------------------------------------
+
+
+def report_date_range(days=90, lag_days=3):
+    """(start, end) ISO dates for GSC/GA4 pulls.
+
+    end lags ``lag_days`` behind today — Search Console data is delayed by
+    ~2-3 days, so the freshest complete day is today - 3.
+    """
+    end = date.today() - timedelta(days=lag_days)
+    return (end - timedelta(days=days - 1)).isoformat(), end.isoformat()
+
+
+def merge_gsc_candidates(candidates, gsc_rows):
+    """Merge Search Console query rows into the candidate dict.
+
+    Matching candidates get a ``gsc`` metrics dict; GSC queries that no seed
+    produced are added with source ``search-console`` — real searches the
+    site already surfaces for (impressions > 0 by definition), which is
+    stronger evidence than autocomplete guesses.
+    """
+    for row in gsc_rows:
+        kw = normalize_spaces(" ".join(row.get("keys", [])))
+        if not kw:
+            continue
+        metrics = {"clicks": row.get("clicks", 0),
+                   "impressions": row.get("impressions", 0),
+                   "ctr": row.get("ctr", 0.0),
+                   "position": row.get("position", 0.0)}
+        c = candidates.get(kw.lower())
+        if c is None:
+            if metrics["impressions"] <= 0:
+                continue
+            c = candidates.setdefault(
+                kw.lower(), {"kw": kw, "sources": set(), "seeds": set()})
+        c["sources"].add("search-console")
+        c["gsc"] = metrics
+    return candidates
+
+
 def guess_intent(kw):
     """Coarse German intent hint — a starting point for the SEO owner, not data."""
     k = kw.lower().strip()
@@ -267,9 +307,14 @@ def render_csv(candidates, tag):
     return buf.getvalue()
 
 
-def render_report(parsed, seeds, candidates, paa, serp, meta):
-    """German research report markdown for the SEO owner."""
+def render_report(parsed, seeds, candidates, paa, serp, meta, ga_pages=None):
+    """German research report markdown for the SEO owner.
+
+    meta may carry ``gsc`` ({"site_url", "start", "end"}) when Search Console
+    data was merged, and ``ga`` ({"property"}) when GA4 pages are passed.
+    """
     product = parsed["product"] or meta["doc"]
+    has_gsc = any("gsc" in c for c in candidates.values())
     lines = [
         f"# Keyword-Recherche: {product}",
         "",
@@ -279,10 +324,23 @@ def render_report(parsed, seeds, candidates, paa, serp, meta):
         "`wit_pytools.marketingautomation.keyword_research` "
         "(bei Änderungen neu erzeugen statt händisch pflegen).",
         "",
-        "> **Kein Suchvolumen:** Serper liefert Kandidaten, keine Volumina/Difficulty. "
-        "Volumen nur über Google-Ads-Keyword-Planner (SerpBear-Ideas) oder eine Paid-API "
-        "(DataForSEO o. ä.).",
-        "",
+    ]
+    if meta.get("gsc"):
+        g = meta["gsc"]
+        lines += [
+            f"> **Search Console:** echte Suchanfragen für `{g['site_url']}` "
+            f"({g['start']} bis {g['end']}) sind als Quelle `search-console` mit "
+            "Klicks/Impressionen/Position markiert.",
+            "",
+        ]
+    else:
+        lines += [
+            "> **Kein Suchvolumen:** Serper liefert Kandidaten, keine Volumina/Difficulty. "
+            "Volumen nur über Google-Ads-Keyword-Planner (SerpBear-Ideas) oder eine Paid-API "
+            "(DataForSEO o. ä.).",
+            "",
+        ]
+    lines += [
         "## Seeds",
         "",
         "| Seed | Herkunft |",
@@ -291,17 +349,27 @@ def render_report(parsed, seeds, candidates, paa, serp, meta):
     for s in seeds:
         lines.append(f"| `{s['kw']}` | {s['kind']} |")
 
+    header = "| Keyword | Quellen | Intention¹ | aus Seed |"
+    divider = "|---|---|---|---|"
+    if has_gsc:
+        header += " Klicks | Impr. | Pos. |"
+        divider += "---|---|---|"
     lines += [
         "",
         f"## Kandidaten ({len(candidates)})",
         "",
-        "| Keyword | Quellen | Intention¹ | aus Seed |",
-        "|---|---|---|---|",
+        header,
+        divider,
     ]
     for c in sorted(candidates.values(), key=lambda c: c["kw"].lower()):
         src = ", ".join(sorted(c["sources"]))
         seedlist = ", ".join(sorted(c["seeds"]))
-        lines.append(f"| {c['kw']} | {src} | {guess_intent(c['kw'])} | {seedlist} |")
+        row = f"| {c['kw']} | {src} | {guess_intent(c['kw'])} | {seedlist} |"
+        if has_gsc:
+            g = c.get("gsc")
+            row += (f" {g['clicks']} | {g['impressions']} | {g['position']:.1f} |"
+                    if g else "  |  |  |")
+        lines.append(row)
     lines += ["", "¹ Grobe Heuristik, bitte fachlich prüfen.", ""]
 
     if paa:
@@ -319,6 +387,23 @@ def render_report(parsed, seeds, candidates, paa, serp, meta):
                 lines.append(f"{i}. [{o['title'] or o['link']}]({o['link']})")
         else:
             lines.append("- *(keine Ergebnisse)*")
+        lines.append("")
+
+    if ga_pages:
+        prop = meta.get("ga", {}).get("property", "")
+        lines += [
+            f"## GA4 — Top-Landingpages ({len(ga_pages)})",
+            "",
+            f"Property `{prop}` · Metriken: Sessions, Engaged Sessions, Engagement Rate",
+            "",
+            "| Landingpage | Sessions | Engaged | Rate |",
+            "|---|---|---|---|",
+        ]
+        for p in ga_pages:
+            rate = p.get("engagementRate", "")
+            rate = f"{float(rate) * 100:.0f}%" if rate else ""
+            lines.append(f"| {p.get('landingPage', '')} | {p.get('sessions', '')} "
+                         f"| {p.get('engagedSessions', '')} | {rate} |")
         lines.append("")
 
     if meta.get("warnings"):
@@ -349,8 +434,15 @@ def prepare(product_doc, extra=None, max_seeds=12):
 
 
 def research(product_doc, client, *, extra=None, max_seeds=12, gl="de", hl="de",
-             num=5, out_dir=None, verbose=False):
+             num=5, out_dir=None, verbose=False,
+             gsc_rows=None, ga_pages=None, gsc_meta=None, ga_meta=None,
+             extra_warnings=None):
     """Full pipeline: parse -> seeds -> harvest -> write report + SerpBear CSV.
+
+    gsc_rows: Search Console search-analytics rows — merged into candidates.
+    ga_pages: GA4 landing-page report rows — rendered as a report section.
+    gsc_meta/ga_meta: {"site_url"/"property", ...} context for the report.
+    extra_warnings: fetch warnings to list alongside harvest warnings.
 
     Returns a summary dict with parsed doc, seeds, counts, artefact paths and
     warnings.
@@ -358,6 +450,9 @@ def research(product_doc, client, *, extra=None, max_seeds=12, gl="de", hl="de",
     product_doc = Path(product_doc)
     parsed, seeds = prepare(product_doc, extra=extra, max_seeds=max_seeds)
     candidates, paa, serp, warnings = harvest(seeds, client, gl, hl, num, verbose)
+    warnings = list(extra_warnings or ()) + warnings
+    if gsc_rows:
+        merge_gsc_candidates(candidates, gsc_rows)
 
     tag = slugify(parsed["product"] or product_doc.stem)
     target_dir = Path(out_dir) if out_dir else product_doc.parent
@@ -366,14 +461,21 @@ def research(product_doc, client, *, extra=None, max_seeds=12, gl="de", hl="de",
     meta = {"date": stamp, "gl": gl, "hl": hl,
             "calls": client.calls, "doc": product_doc.name, "tag": tag,
             "csv_name": f"serpbear-keywords-{stamp}.csv.md", "warnings": warnings}
+    if gsc_meta:
+        meta["gsc"] = gsc_meta
+    if ga_meta:
+        meta["ga"] = ga_meta
 
     md_path = target_dir / f"keywords-research-{stamp}.md"
     csv_path = target_dir / meta["csv_name"]
-    md_path.write_text(render_report(parsed, seeds, candidates, paa, serp, meta),
-                       encoding="utf-8")
+    md_path.write_text(
+        render_report(parsed, seeds, candidates, paa, serp, meta,
+                      ga_pages=ga_pages),
+        encoding="utf-8")
     csv_path.write_text(render_csv(candidates, tag), encoding="utf-8")
 
     return {"parsed": parsed, "seeds": seeds, "warnings": warnings,
             "candidates": len(candidates), "paa": len(paa),
             "api_calls": client.calls, "tag": tag,
+            "gsc_rows": len(gsc_rows or ()), "ga_pages": len(ga_pages or ()),
             "report": str(md_path), "csv": str(csv_path)}

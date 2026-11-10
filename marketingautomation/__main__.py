@@ -15,7 +15,9 @@ from . import (
     meta_conversions,
 )
 from .auth import (
+    SCOPE_WEBMASTERS_READONLY,
     analytics_admin_service,
+    analytics_data_service,
     search_console_service,
     site_verification_service,
 )
@@ -24,6 +26,7 @@ from .config import (
     load_google_settings,
     load_meta_settings,
     load_serper_settings,
+    load_site_settings,
 )
 from .util import normalize_domain
 
@@ -137,6 +140,15 @@ def build_parser():
     harvest.add_argument("--hl", default="de", help="Serper interface language")
     harvest.add_argument("--num", type=int, default=5,
                          help="Organic results per seed in the SERP snapshot")
+    harvest.add_argument("--days", type=int, default=90,
+                         help="Lookback window for GSC/GA4 data (default: 90)")
+    harvest.add_argument("--gsc-site-url",
+                         help="Search Console site URL (default: GSC_SITE_URL env)")
+    harvest.add_argument("--ga4-property",
+                         help="GA4 property, id or properties/<id> "
+                              "(default: GA4_PROPERTY_ID env)")
+    harvest.add_argument("--no-google", action="store_true",
+                         help="Skip Search Console and GA4 enrichment")
     harvest.add_argument("--dry-run", action="store_true",
                          help="Parse and list seeds only, no API calls")
     harvest.add_argument("--verbose", "-v", action="store_true")
@@ -243,13 +255,58 @@ def _run_keywords(args):
                     "seeds": seeds})
             return 0
         client = keyword_research.Serper(load_serper_settings()["api_key"])
+        gsc_rows, ga_pages, gsc_meta, ga_meta, fetch_warnings = \
+            _fetch_google_data(args)
         summary = keyword_research.research(
             args.product, client, extra=args.seed, max_seeds=args.max_seeds,
             gl=args.gl, hl=args.hl, num=args.num, out_dir=args.out,
             verbose=args.verbose,
+            gsc_rows=gsc_rows, ga_pages=ga_pages,
+            gsc_meta=gsc_meta, ga_meta=ga_meta,
+            extra_warnings=fetch_warnings,
         )
         _print(summary)
     return 0
+
+
+def _fetch_google_data(args):
+    """Pull Search Console queries and GA4 landing pages when configured.
+
+    Returns (gsc_rows, ga_pages, gsc_meta, ga_meta, warnings) — a failing or
+    unconfigured source yields empty data and a warning, never aborts the run.
+    """
+    gsc_rows, ga_pages, warnings = [], [], []
+    gsc_meta = ga_meta = None
+    if args.no_google:
+        return gsc_rows, ga_pages, gsc_meta, ga_meta, warnings
+
+    site = load_site_settings()
+    start, end = keyword_research.report_date_range(args.days)
+
+    site_url = args.gsc_site_url or site["gsc_site_url"]
+    if site_url:
+        try:
+            gsc_rows = google_search_console.query_search_analytics(
+                search_console_service(scopes=(SCOPE_WEBMASTERS_READONLY,)),
+                site_url, start, end,
+            )
+            gsc_meta = {"site_url": site_url, "start": start, "end": end}
+        except Exception as error:
+            warnings.append(f"search console {site_url!r}: {error}")
+
+    prop = args.ga4_property or site["ga4_property"]
+    if prop and not prop.startswith("properties/"):
+        prop = f"properties/{prop}"
+    if prop:
+        try:
+            ga_pages = google_analytics.landing_page_report(
+                analytics_data_service(), prop, start, end
+            )
+            ga_meta = {"property": prop, "start": start, "end": end}
+        except Exception as error:
+            warnings.append(f"ga4 {prop!r}: {error}")
+
+    return gsc_rows, ga_pages, gsc_meta, ga_meta, warnings
 
 
 def _run_meta(args):

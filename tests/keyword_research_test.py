@@ -11,8 +11,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from wit_pytools.marketingautomation import (
     MarketingConfigError,
     config,
+    google_analytics,
+    google_search_console,
     keyword_research as kr,
     load_serper_settings,
+    load_site_settings,
 )
 
 
@@ -203,6 +206,9 @@ def test_seed_name_trims_marketing_tail():
     name = "Managed Backup — externe Datensicherung mit täglicher Prüfung"
     assert kr._seed_name(name) == "Managed Backup"
     assert kr._seed_name("Plain Name") == "Plain Name"
+    # spaced hyphen is a marketing separator too — "E-Mail" itself stays intact
+    assert kr._seed_name("Verwaltete E-Mail-Archivierung - jede Mail abgelegt") \
+        == "Verwaltete E-Mail-Archivierung"
 
 
 def test_load_serper_settings_missing(tmp_path, monkeypatch):
@@ -228,6 +234,168 @@ def test_load_serper_settings_repo_root_env(tmp_path, monkeypatch):
 
 def test_parse_env_file(tmp_path):
     env = tmp_path / ".env"
-    env.write_text("# comment\nA=1\nB = \"two\"\n\nC='x'\n", encoding="utf-8")
-    assert config._parse_env_file(env) == {"A": "1", "B": "two", "C": "x"}
+    env.write_text(
+        "# comment\nA=1\nB = \"two\"\n\nC='x'\nD=v1  # inline note\n"
+        "E=keep #nospace\nF=\"quoted # kept\"\n",
+        encoding="utf-8")
+    assert config._parse_env_file(env) == {
+        "A": "1", "B": "two", "C": "x",
+        "D": "v1",           # inline comment stripped
+        "E": "keep",         # dotenv semantics: unquoted value ends at " #"
+        "F": "quoted # kept",
+    }
     assert config._parse_env_file(tmp_path / "missing") == {}
+
+
+# --- Google enrichment --------------------------------------------------------
+
+class FakeGscQuery:
+    def __init__(self, pages):
+        self.pages = list(pages)
+        self.bodies = []
+
+    def query(self, siteUrl, body):
+        self.bodies.append((siteUrl, body))
+        return self
+
+    def execute(self, num_retries=0):
+        return self.pages[len(self.bodies) - 1]
+
+
+class FakeGsc:
+    def __init__(self, pages):
+        self._query = FakeGscQuery(pages)
+
+    def searchanalytics(self):
+        return self._query
+
+
+class FakeGaReport:
+    def __init__(self, response):
+        self.response = response
+        self.bodies = []
+
+    def runReport(self, property, body):
+        self.bodies.append((property, body))
+        return self
+
+    def execute(self, num_retries=0):
+        return self.response
+
+
+class FakeGa:
+    def __init__(self, response):
+        self._report = FakeGaReport(response)
+
+    def properties(self):
+        return self._report
+
+
+def test_query_search_analytics_paginates(monkeypatch):
+    monkeypatch.setattr(google_search_console, "_SEARCH_ANALYTICS_ROW_LIMIT", 2)
+    pages = [
+        {"rows": [{"keys": ["a"], "clicks": 1, "impressions": 9,
+                   "ctr": 0.1, "position": 3.0},
+                  {"keys": ["b"], "clicks": 0, "impressions": 4,
+                   "ctr": 0.0, "position": 8.0}]},
+        {"rows": [{"keys": ["c"], "clicks": 2, "impressions": 7,
+                   "ctr": 0.3, "position": 1.5}]},
+    ]
+    service = FakeGsc(pages)
+    rows = google_search_console.query_search_analytics(
+        service, "sc-domain:example.com", "2026-01-01", "2026-03-31",
+        row_limit=3)
+    assert [r["keys"] for r in rows] == [["a"], ["b"], ["c"]]
+    bodies = service._query.bodies
+    assert len(bodies) == 2  # full first page -> second request
+    assert bodies[0][1]["startRow"] == 0 and bodies[1][1]["startRow"] == 2
+    assert bodies[0][0] == "sc-domain:example.com"
+
+
+def test_landing_page_report_parses_rows():
+    response = {
+        "dimensionHeaders": [{"name": "landingPage"}],
+        "metricHeaders": [{"name": "sessions"}, {"name": "engagedSessions"},
+                          {"name": "engagementRate"}],
+        "rows": [{"dimensionValues": [{"value": "/a"}],
+                  "metricValues": [{"value": "10"}, {"value": "8"},
+                                   {"value": "0.8"}]}],
+    }
+    rows = google_analytics.landing_page_report(
+        FakeGa(response), "properties/1", "2026-01-01", "2026-03-31")
+    assert rows == [{"landingPage": "/a", "sessions": "10",
+                     "engagedSessions": "8", "engagementRate": "0.8"}]
+
+
+def test_report_date_range():
+    start, end = kr.report_date_range(90)
+    assert start < end  # ISO dates compare lexically
+    from datetime import date, timedelta
+    assert end == (date.today() - timedelta(days=3)).isoformat()
+
+
+def test_merge_gsc_candidates():
+    c = {"alpha": {"kw": "Alpha", "sources": {"seed"}, "seeds": {"a"}}}
+    rows = [
+        {"keys": ["alpha"], "clicks": 3, "impressions": 40,
+         "ctr": 0.075, "position": 4.2},
+        {"keys": ["neue anfrage"], "clicks": 1, "impressions": 5,
+         "ctr": 0.2, "position": 2.0},
+        {"keys": ["nur impressions"], "clicks": 0, "impressions": 9,
+         "ctr": 0.0, "position": 40.0},
+        {"keys": ["no data"], "clicks": 0, "impressions": 0,
+         "ctr": 0.0, "position": 0.0},
+    ]
+    kr.merge_gsc_candidates(c, rows)
+    assert c["alpha"]["gsc"]["clicks"] == 3
+    assert "search-console" in c["alpha"]["sources"]
+    # clicked real query becomes a candidate
+    assert c["neue anfrage"]["gsc"]["position"] == 2.0
+    assert "search-console" in c["neue anfrage"]["sources"]
+    # impression-only real queries are merged too — the site already ranks
+    assert "nur impressions" in c
+    # rows without any data stay out
+    assert "no data" not in c
+
+
+def test_render_report_with_google_sections():
+    parsed = {"product": "Prod", "topic": "T", "pillar": "Alpha",
+              "secondary": [], "longtail": []}
+    seeds = [{"kw": "Alpha", "kind": "pillar"}]
+    c = {"alpha": {"kw": "Alpha", "sources": {"seed", "search-console"},
+                   "seeds": {"Alpha"},
+                   "gsc": {"clicks": 3, "impressions": 40, "ctr": 0.075,
+                           "position": 4.2}}}
+    meta = {"date": "2026-11-10", "gl": "de", "hl": "de", "calls": 2,
+            "doc": "doc.md", "tag": "prod", "csv_name": "x.csv.md",
+            "gsc": {"site_url": "sc-domain:example.com",
+                    "start": "2026-08-01", "end": "2026-11-01"},
+            "ga": {"property": "properties/1"}}
+    ga_pages = [{"landingPage": "/a", "sessions": "10",
+                 "engagedSessions": "8", "engagementRate": "0.8"}]
+    rep = kr.render_report(parsed, seeds, c, [], {"Alpha": []}, meta,
+                           ga_pages=ga_pages)
+    assert "| Klicks | Impr. | Pos. |" in rep
+    assert "| Alpha | search-console, seed |" in rep
+    assert "sc-domain:example.com" in rep
+    assert "## GA4 — Top-Landingpages (1)" in rep
+    assert "| /a | 10 | 8 | 80% |" in rep
+
+
+def test_load_site_settings(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "_repo_root", lambda: tmp_path)  # no .env there
+    monkeypatch.setenv("GSC_SITE_URL", "example.com")
+    monkeypatch.setenv("GA4_PROPERTY_ID", "12345")
+    assert load_site_settings() == {
+        "gsc_site_url": "sc-domain:example.com",
+        "ga4_property": "properties/12345",
+    }
+    monkeypatch.setenv("GSC_SITE_URL", "https://x.example.com/")
+    monkeypatch.setenv("GA4_PROPERTY_ID", "properties/9")
+    assert load_site_settings() == {
+        "gsc_site_url": "https://x.example.com/",
+        "ga4_property": "properties/9",
+    }
+    monkeypatch.delenv("GSC_SITE_URL")
+    monkeypatch.delenv("GA4_PROPERTY_ID")
+    assert load_site_settings() == {"gsc_site_url": "", "ga4_property": ""}

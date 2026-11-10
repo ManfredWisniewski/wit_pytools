@@ -7,6 +7,8 @@ auth.site_verification_service() to build real ones.
 
 from .util import normalize_domain, site_url_for_domain
 
+_SEARCH_ANALYTICS_ROW_LIMIT = 25000  # API maximum per request
+
 
 def list_properties(service):
     """Return the list of Search Console site entries."""
@@ -51,6 +53,38 @@ def get_verification_token(verification_service, domain):
         "site_url": site_url_for_domain(domain),
         "token": response.get("token", ""),
     }
+
+
+def query_search_analytics(service, site_url, start_date, end_date,
+                           dimensions=("query",), row_limit=1000,
+                           search_type="web"):
+    """Query the Search Analytics API; returns rows as plain dicts.
+
+    Each row: {"keys": [...], "clicks", "impressions", "ctr", "position"}.
+    Paginates with startRow until row_limit rows are collected or the API
+    returns a short page.
+    """
+    rows = []
+    start_row = 0
+    while len(rows) < row_limit:
+        request_limit = min(_SEARCH_ANALYTICS_ROW_LIMIT, row_limit - len(rows))
+        response = service.searchanalytics().query(
+            siteUrl=site_url,
+            body={
+                "startDate": start_date,
+                "endDate": end_date,
+                "searchType": search_type,
+                "dimensions": list(dimensions),
+                "rowLimit": request_limit,
+                "startRow": start_row,
+            },
+        ).execute(num_retries=8)
+        page = response.get("rows", [])
+        rows.extend(page)
+        if len(page) < request_limit:
+            break
+        start_row += len(page)
+    return rows
 
 
 def verify_domain(verification_service, domain):

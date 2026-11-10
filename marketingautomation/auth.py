@@ -6,10 +6,19 @@ usable without the google-api-python-client dependency installed.
 
 from .config import MarketingConfigError, load_google_settings
 
+SCOPE_WEBMASTERS = "https://www.googleapis.com/auth/webmasters"
+SCOPE_WEBMASTERS_READONLY = "https://www.googleapis.com/auth/webmasters.readonly"
+SCOPE_SITEVERIFICATION = "https://www.googleapis.com/auth/siteverification"
+SCOPE_ANALYTICS_EDIT = "https://www.googleapis.com/auth/analytics.edit"
+SCOPE_ANALYTICS_READONLY = "https://www.googleapis.com/auth/analytics.readonly"
+
+# union of everything this package may request — a refresh token only covers
+# the scopes it was minted with, so each service asks for its own minimum
 GOOGLE_SCOPES = (
-    "https://www.googleapis.com/auth/webmasters",
-    "https://www.googleapis.com/auth/siteverification",
-    "https://www.googleapis.com/auth/analytics.edit",
+    SCOPE_WEBMASTERS,
+    SCOPE_SITEVERIFICATION,
+    SCOPE_ANALYTICS_EDIT,
+    SCOPE_ANALYTICS_READONLY,
 )
 
 _TOKEN_URI = "https://oauth2.googleapis.com/token"
@@ -59,13 +68,23 @@ def build_service(api, version, settings=None, scopes=GOOGLE_SCOPES):
     return build(api, version, credentials=creds, cache_discovery=False)
 
 
-def search_console_service(settings=None):
-    return build_service("searchconsole", "v1", settings=settings)
+def search_console_service(settings=None, scopes=None):
+    # full webmasters scope: the same service also adds/deletes properties;
+    # read-only callers pass scopes=(SCOPE_WEBMASTERS_READONLY,)
+    return build_service("searchconsole", "v1", settings=settings,
+                         scopes=scopes or (SCOPE_WEBMASTERS,))
 
 
-def site_verification_service(settings=None):
-    return build_service("siteVerification", "v1", settings=settings)
+def site_verification_service(settings=None, scopes=None):
+    return build_service("siteVerification", "v1", settings=settings,
+                         scopes=scopes or (SCOPE_SITEVERIFICATION,))
 
 
-def analytics_admin_service(settings=None):
-    return build_service("analyticsadmin", "v1beta", settings=settings)
+def analytics_admin_service(settings=None, scopes=None):
+    return build_service("analyticsadmin", "v1beta", settings=settings,
+                         scopes=scopes or (SCOPE_ANALYTICS_EDIT,))
+
+
+def analytics_data_service(settings=None, scopes=None):
+    return build_service("analyticsdata", "v1beta", settings=settings,
+                         scopes=scopes or (SCOPE_ANALYTICS_READONLY,))

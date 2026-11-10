@@ -48,7 +48,11 @@ def _repo_root():
 
 
 def _parse_env_file(path):
-    """Minimal KEY=VALUE reader — stdlib fallback when python-dotenv is absent."""
+    """Minimal KEY=VALUE reader — stdlib fallback when python-dotenv is absent.
+
+    Mirrors dotenv basics: ``#`` comments, surrounding whitespace and quotes;
+    an unquoted value ends at the first `` #`` (inline comment).
+    """
     values = {}
     try:
         with open(path, encoding="utf-8") as fh:
@@ -57,7 +61,12 @@ def _parse_env_file(path):
                 if not line or line.startswith("#") or "=" not in line:
                     continue
                 key, _, val = line.partition("=")
-                values[key.strip()] = val.strip().strip('"').strip("'")
+                val = val.strip()
+                if val[:1] in ('"', "'"):
+                    val = val[1:].split(val[0], 1)[0]
+                else:
+                    val = val.split(" #", 1)[0].strip()
+                values[key.strip()] = val
     except OSError:
         pass
     return values
@@ -90,6 +99,7 @@ def load_google_settings():
     JSON file (used instead of the OAuth refresh token when set).
     """
     _load_env_files()
+    _load_repo_root_env()
     service_account = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
     if not service_account:
         _require(os.environ, GOOGLE_ENV_VARS, "Google OAuth")
@@ -108,6 +118,7 @@ def load_meta_settings():
     needed for ad-account scoped calls.
     """
     _load_env_files()
+    _load_repo_root_env()
     _require(os.environ, ("META_ACCESS_TOKEN",), "Meta")
     return {
         "access_token": os.environ["META_ACCESS_TOKEN"],
@@ -126,3 +137,30 @@ def load_serper_settings():
     _load_repo_root_env()
     _require(os.environ, SERPER_ENV_VARS, "Serper")
     return {"api_key": os.environ["SERPER_API_KEY"]}
+
+
+def load_site_settings():
+    """Return the Google site/property wiring for data pulls.
+
+    GSC_SITE_URL: Search Console site URL — accepts a bare domain
+    (normalized to ``sc-domain:<domain>``) or a verbatim value such as
+    ``sc-domain:example.com`` / ``https://example.com/``.
+    GA4_PROPERTY_ID: GA4 property — accepts the bare numeric id or the
+    resource name ``properties/<id>``.
+
+    Both are optional; an empty value means that source is skipped.
+    """
+    from .util import normalize_domain, site_url_for_domain
+
+    _load_env_files()
+    _load_repo_root_env()
+
+    site_url = os.environ.get("GSC_SITE_URL", "").strip()
+    if site_url and not site_url.startswith(("sc-", "http")):
+        site_url = site_url_for_domain(normalize_domain(site_url))
+
+    prop = os.environ.get("GA4_PROPERTY_ID", "").strip()
+    if prop and not prop.startswith("properties/"):
+        prop = f"properties/{prop}"
+
+    return {"gsc_site_url": site_url, "ga4_property": prop}

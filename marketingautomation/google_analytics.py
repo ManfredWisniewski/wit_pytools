@@ -133,3 +133,55 @@ def ensure_web_data_stream(service, property_name, display_name, uri):
     return create_web_data_stream(
         service, property_name, display_name, uri
     )
+
+
+# -- GA4 Data API (analyticsdata v1beta) --------------------------------------
+
+
+def run_report(service, property_name, dimensions, metrics,
+               start_date, end_date, limit=10000, order_by=None):
+    """Run a GA4 Data API report; returns rows as plain dicts.
+
+    dimensions/metrics: name lists, e.g. ["landingPage"], ["sessions"].
+    order_by: name of a metric to sort by (descending).
+    Each row maps dimension/metric names to string values.
+    """
+    body = {
+        "dateRanges": [{"startDate": start_date, "endDate": end_date}],
+        "dimensions": [{"name": d} for d in dimensions],
+        "metrics": [{"name": m} for m in metrics],
+        "limit": limit,
+    }
+    if order_by:
+        body["orderBys"] = [{"metric": {"metricName": order_by}, "desc": True}]
+
+    response = service.properties().runReport(
+        property=property_name, body=body
+    ).execute(num_retries=8)
+
+    dim_names = [h["name"] for h in response.get("dimensionHeaders", [])]
+    met_names = [h["name"] for h in response.get("metricHeaders", [])]
+    rows = []
+    for row in response.get("rows", []):
+        entry = {
+            name: row["dimensionValues"][i].get("value", "")
+            for i, name in enumerate(dim_names)
+        }
+        entry.update({
+            name: row["metricValues"][i].get("value", "")
+            for i, name in enumerate(met_names)
+        })
+        rows.append(entry)
+    return rows
+
+
+def landing_page_report(service, property_name, start_date, end_date,
+                        limit=50):
+    """Top landing pages by sessions — GA4 Data API convenience wrapper."""
+    return run_report(
+        service, property_name,
+        dimensions=["landingPage"],
+        metrics=["sessions", "engagedSessions", "engagementRate"],
+        start_date=start_date, end_date=end_date,
+        limit=limit, order_by="sessions",
+    )
