@@ -31,6 +31,49 @@ GOOGLE_ENV_VARS = (
 
 META_ENV_VARS = ("META_ACCESS_TOKEN", "META_AD_ACCOUNT_ID")
 
+SERPER_ENV_VARS = ("SERPER_API_KEY",)
+
+
+def _repo_root():
+    """Outermost git worktree root containing this file.
+
+    wit_pytools is often checked out as a submodule — climbing past its .git
+    boundary reaches the superproject root where the shared .env lives.
+    """
+    root = Path(__file__).resolve().parents[1]
+    for parent in root.parents:
+        if (parent / ".git").exists():
+            root = parent
+    return root
+
+
+def _parse_env_file(path):
+    """Minimal KEY=VALUE reader — stdlib fallback when python-dotenv is absent."""
+    values = {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                values[key.strip()] = val.strip().strip('"').strip("'")
+    except OSError:
+        pass
+    return values
+
+
+def _load_repo_root_env():
+    """Load .env at the repository root; never overrides existing env vars."""
+    env_path = _repo_root() / ".env"
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(env_path)
+    except ImportError:
+        for key, val in _parse_env_file(env_path).items():
+            os.environ.setdefault(key, val)
+
 
 def _require(env, names, hint):
     missing = [name for name in names if not env.get(name)]
@@ -70,3 +113,16 @@ def load_meta_settings():
         "access_token": os.environ["META_ACCESS_TOKEN"],
         "ad_account_id": os.environ.get("META_AD_ACCOUNT_ID", ""),
     }
+
+
+def load_serper_settings():
+    """Return Serper.dev settings from the environment.
+
+    SERPER_API_KEY is required (same account SerpBear uses). The .env is
+    read at the repository root — the superproject root when wit_pytools
+    is a submodule.
+    """
+    _load_env_files()
+    _load_repo_root_env()
+    _require(os.environ, SERPER_ENV_VARS, "Serper")
+    return {"api_key": os.environ["SERPER_API_KEY"]}

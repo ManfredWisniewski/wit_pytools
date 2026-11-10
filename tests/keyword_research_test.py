@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+from wit_pytools.marketingautomation import (
+    MarketingConfigError,
+    config,
+    keyword_research as kr,
+    load_serper_settings,
+)
+
+
+DOC = """# SEO Produkt: Datenaufbereitung für KI
+
+**Produkt / Leistung:** Datenaufbereitung für KI (intern: Verldbridge)
+**Übergeordnetes Thema:** Business Intelligence
+
+## Keywords
+
+### Primäres Keyword (Pillar)
+
+`Business Intelligence`
+
+### Sekundäre Keywords
+
+```text
+Firmendaten für KI aufbereiten
+Unternehmendaten KI
+```
+
+### Long-Tail Keywords
+
+```text
+eigene Dokumente mit KI durchsuchen lassen
+Kundendaten anonymisieren für KI
+```
+
+## Conversion
+
+| Feld | Inhalt |
+|---|---|
+| CTA | "Anfragen" |
+"""
+
+
+class FakeSerper:
+    def __init__(self):
+        self.calls = 0
+
+    def autocomplete(self, q, gl, hl):
+        self.calls += 1
+        return {f"{q}-ac" for q in [q]} | {"shared idea"}
+
+    def search(self, q, gl, hl, num):
+        self.calls += 1
+        return {"related": [q + " verwandt"], "paa": ["Wie geht das?"],
+                "organic": [{"title": "T", "link": "https://x.de"}]}
+
+
+# --- product doc parsing ----------------------------------------------------
+
+def test_parse_product_doc_fields():
+    p = kr.parse_product_doc(DOC)
+    assert p["product"] == "Datenaufbereitung für KI"  # intern name stripped
+    assert p["topic"] == "Business Intelligence"
+    assert p["pillar"] == "Business Intelligence"
+    assert p["secondary"] == ["Firmendaten für KI aufbereiten",
+                              "Unternehmendaten KI"]
+    assert p["longtail"] == ["eigene Dokumente mit KI durchsuchen lassen",
+                             "Kundendaten anonymisieren für KI"]
+
+
+def test_parse_product_doc_backtick_and_bullet_fallback():
+    doc = ("### Primäres Keyword (Pillar)\n\n- `Alpha`\n\n"
+           "### Sekundäre Keywords\n\n- Beta\n- `Gamma`\n")
+    p = kr.parse_product_doc(doc)
+    assert p["pillar"] == "Alpha"
+    assert p["secondary"] == ["Beta", "Gamma"]
+
+
+def test_parse_product_doc_missing_fields_are_empty():
+    p = kr.parse_product_doc("# nothing here\n")
+    assert p["pillar"] == ""
+    assert p["secondary"] == []
+
+
+# --- seeds ------------------------------------------------------------------
+
+def test_build_seeds_order_and_dedupe():
+    parsed = {"product": "Prod", "topic": "Alpha", "pillar": "alpha",
+              "secondary": ["Beta", " beta "], "longtail": ["Gamma"]}
+    seeds = kr.build_seeds(parsed)
+    kws = [s["kw"] for s in seeds]
+    assert kws == ["alpha", "Beta", "Gamma", "Prod"]
+    assert seeds[0]["kind"] == "pillar"
+    # "Alpha" topic deduped against pillar
+    assert seeds[-1]["kind"] == "produkt"
+
+
+def test_build_seeds_extra_and_cap():
+    parsed = {"product": "", "topic": "", "pillar": "a",
+              "secondary": [], "longtail": []}
+    seeds = kr.build_seeds(parsed, extra=["b", "c"], max_seeds=2)
+    assert [s["kw"] for s in seeds] == ["a", "b"]
+
+
+# --- harvest ----------------------------------------------------------------
+
+def test_harvest_merge_sources_and_dedupe():
+    seeds = [{"kw": "a", "kind": "pillar"}, {"kw": "b", "kind": "extra"}]
+    c, paa, serp, warnings = kr.harvest(seeds, FakeSerper(), "de", "de", 5)
+    shared = c["shared idea"]
+    assert shared["sources"] == {"autocomplete"}
+    assert shared["seeds"] == {"a", "b"}
+    assert c["a verwandt"]["sources"] == {"related"}
+    assert c["a"]["sources"] == {"seed"}
+    assert len(paa) == 1  # deduped across seeds
+    assert serp["a"] == [{"title": "T", "link": "https://x.de"}]
+    assert warnings == []
+
+
+def test_harvest_failing_call_warns_and_continues():
+    class Flaky(FakeSerper):
+        def autocomplete(self, q, gl, hl):
+            self.calls += 1
+            if q == "a":
+                raise RuntimeError("Serper /autocomplete HTTP 400: Query too long.")
+            return super().autocomplete(q, gl, hl)
+
+    seeds = [{"kw": "a", "kind": "pillar"}, {"kw": "b", "kind": "extra"}]
+    c, _paa, serp, warnings = kr.harvest(seeds, Flaky(), "de", "de", 5)
+    assert len(warnings) == 1
+    assert "a" in warnings[0]
+    assert c["a verwandt"]["sources"] == {"related"}  # search still ran
+    assert c["shared idea"]["seeds"] == {"b"}
+
+
+# --- intent -----------------------------------------------------------------
+
+@pytest.mark.parametrize("kw,expected", [
+    ("Wie bereite ich Daten auf?", "Frage?"),
+    ("KI Agentur Kosten", "kommerziell?"),
+    ("Datenaufbereitung", "informational?"),
+])
+def test_guess_intent(kw, expected):
+    assert kr.guess_intent(kw) == expected
+
+
+# --- artefacts ----------------------------------------------------------------
+
+def test_render_csv():
+    c = {"b": {"kw": "B, mit Komma", "sources": {"seed"}, "seeds": {"s"}},
+         "a": {"kw": "Alpha", "sources": {"seed"}, "seeds": {"s"}}}
+    out = kr.render_csv(c, "prod-tag")
+    lines = out.splitlines()
+    assert lines[0] == "keyword,tags"
+    assert lines[1] == "Alpha,prod-tag"
+    assert '"B, mit Komma"' in lines[2]
+
+
+def test_render_report_sections():
+    parsed = {"product": "Prod", "topic": "T", "pillar": "Alpha",
+              "secondary": [], "longtail": []}
+    seeds = [{"kw": "Alpha", "kind": "pillar"}]
+    c = {"alpha": {"kw": "Alpha", "sources": {"seed"}, "seeds": {"Alpha"}}}
+    rep = kr.render_report(
+        parsed, seeds, c, [{"question": "Q?", "seed": "Alpha"}],
+        {"Alpha": [{"title": "T", "link": "https://x.de"}]},
+        {"date": "2026-10-25", "gl": "de", "hl": "de", "calls": 2,
+         "doc": "doc.md", "tag": "prod",
+         "csv_name": "serpbear-keywords-2026-10-25.csv.md"})
+    for marker in ("# Keyword-Recherche: Prod", "## Seeds", "## Kandidaten (1)",
+                   "People Also Ask", "## SERP-Snapshot",
+                   "serpbear-keywords-2026-10-25.csv.md"):
+        assert marker in rep
+
+
+def test_research_writes_artefacts(tmp_path):
+    doc = tmp_path / "SEO_Produkt_x.md"
+    doc.write_text(DOC, encoding="utf-8")
+    summary = kr.research(doc, FakeSerper(), gl="de", hl="de", num=5)
+    assert summary["candidates"] > 0
+    for artefact in (summary["report"], summary["csv"]):
+        assert os.path.isfile(artefact)
+    csv_text = open(summary["csv"], encoding="utf-8").read()
+    assert csv_text.startswith("keyword,tags")
+    assert "datenaufbereitung-fuer-ki" in csv_text  # product slug as tag
+
+
+# --- misc -------------------------------------------------------------------
+
+def test_slugify_umlauts():
+    assert kr.slugify("Datenaufbereitung für KI") == "datenaufbereitung-fuer-ki"
+
+
+def test_seed_name_trims_marketing_tail():
+    name = "Managed Backup — externe Datensicherung mit täglicher Prüfung"
+    assert kr._seed_name(name) == "Managed Backup"
+    assert kr._seed_name("Plain Name") == "Plain Name"
+
+
+def test_load_serper_settings_missing(tmp_path, monkeypatch):
+    monkeypatch.delenv("SERPER_API_KEY", raising=False)
+    monkeypatch.setattr(config, "_repo_root", lambda: tmp_path)  # no .env there
+    with pytest.raises(MarketingConfigError):
+        load_serper_settings()
+
+
+def test_load_serper_settings_ok(monkeypatch):
+    monkeypatch.setenv("SERPER_API_KEY", "k")
+    assert load_serper_settings() == {"api_key": "k"}
+
+
+def test_load_serper_settings_repo_root_env(tmp_path, monkeypatch):
+    """SERPER_API_KEY is read from .env at the (superproject) repo root."""
+    monkeypatch.delenv("SERPER_API_KEY", raising=False)
+    (tmp_path / ".env").write_text("SERPER_API_KEY=from-root\n",
+                                   encoding="utf-8")
+    monkeypatch.setattr(config, "_repo_root", lambda: tmp_path)
+    assert load_serper_settings() == {"api_key": "from-root"}
+
+
+def test_parse_env_file(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("# comment\nA=1\nB = \"two\"\n\nC='x'\n", encoding="utf-8")
+    assert config._parse_env_file(env) == {"A": "1", "B": "two", "C": "x"}
+    assert config._parse_env_file(tmp_path / "missing") == {}

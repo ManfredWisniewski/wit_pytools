@@ -5,15 +5,26 @@ All commands print JSON to stdout so Ansible can register the output.
 
 import argparse
 import json
+import os
 import sys
 
-from . import google_analytics, google_search_console, meta_conversions
+from . import (
+    google_analytics,
+    google_search_console,
+    keyword_research,
+    meta_conversions,
+)
 from .auth import (
     analytics_admin_service,
     search_console_service,
     site_verification_service,
 )
-from .config import MarketingConfigError, load_google_settings, load_meta_settings
+from .config import (
+    MarketingConfigError,
+    load_google_settings,
+    load_meta_settings,
+    load_serper_settings,
+)
 from .util import normalize_domain
 
 
@@ -111,6 +122,25 @@ def build_parser():
     test.add_argument("--event-source-url", default="")
     test.add_argument("--test-event-code", default="")
 
+    kw = sub.add_parser("keywords", help="Keyword research via Serper.dev")
+    kw_sub = kw.add_subparsers(dest="command", required=True)
+
+    harvest = kw_sub.add_parser(
+        "harvest", help="Expand a SEO_Produkt doc into keyword candidates"
+    )
+    harvest.add_argument("product", help="Path to the SEO_Produkt_*.md file")
+    harvest.add_argument("--out", help="Output directory (default: doc directory)")
+    harvest.add_argument("--seed", action="append", default=[],
+                         help="Extra seed keyword (repeatable)")
+    harvest.add_argument("--max-seeds", type=int, default=12)
+    harvest.add_argument("--gl", default="de", help="Serper geo location")
+    harvest.add_argument("--hl", default="de", help="Serper interface language")
+    harvest.add_argument("--num", type=int, default=5,
+                         help="Organic results per seed in the SERP snapshot")
+    harvest.add_argument("--dry-run", action="store_true",
+                         help="Parse and list seeds only, no API calls")
+    harvest.add_argument("--verbose", "-v", action="store_true")
+
     return parser
 
 
@@ -121,6 +151,8 @@ def main(argv=None):
             return _run_search_console(args)
         if args.group == "analytics":
             return _run_analytics(args)
+        if args.group == "keywords":
+            return _run_keywords(args)
         return _run_meta(args)
     except MarketingConfigError as error:
         print(error, file=sys.stderr)
@@ -192,6 +224,32 @@ def _list_account_properties(service, account):
         if account in (info.get("name"), info.get("displayName")):
             return summary.get("propertySummaries", [])
     return []
+
+
+def _run_keywords(args):
+    if args.command == "harvest":
+        if not os.path.isfile(args.product):
+            raise LookupError(f"{args.product} not found")
+        parsed, seeds = keyword_research.prepare(
+            args.product, extra=args.seed, max_seeds=args.max_seeds
+        )
+        if not seeds:
+            raise LookupError(
+                f"no keywords found in {args.product} — "
+                "expected the ØK-SEO product template"
+            )
+        if args.dry_run:
+            _print({"product": parsed["product"], "topic": parsed["topic"],
+                    "seeds": seeds})
+            return 0
+        client = keyword_research.Serper(load_serper_settings()["api_key"])
+        summary = keyword_research.research(
+            args.product, client, extra=args.seed, max_seeds=args.max_seeds,
+            gl=args.gl, hl=args.hl, num=args.num, out_dir=args.out,
+            verbose=args.verbose,
+        )
+        _print(summary)
+    return 0
 
 
 def _run_meta(args):
