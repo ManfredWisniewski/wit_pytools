@@ -158,13 +158,18 @@ logo: path/to/logo.svg       # uploaded to media, -> theme.logo
 logo_alt: WIT Consult        # -> alt on the logo media doc (defaults to stem)
 favicon: path/to/favicon.svg # uploaded to media, -> theme.favicon
 favicon_alt: Icon            # -> alt on the favicon media doc
+tracking:
+  google: G-XXXXXXXXXX       # -> theme.tracking.google (merged)
 ```
 
 Paths resolve relative to `site.yml`. Files go through the same
 sha256-dedup as page images — a repeated `site` push reuses the existing
 media doc and only patches `alt` when it differs. Unknown keys are ignored.
 The frontend renders `logo` in the header (falling back to `siteName` text)
-and `favicon` as `<link rel="icon">`.
+and `favicon` as `<link rel="icon">`. `tracking.google` accepts a
+gtag.js id (`G-…`, `GT-…`, `AW-…`, `DC-…`) — the frontend loads
+`gtag.js` with a `gtag('config', <id>)` bootstrap when a valid id is
+set, and renders nothing otherwise.
 
 ## Errors and safety
 

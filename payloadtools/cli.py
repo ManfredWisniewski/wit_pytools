@@ -303,6 +303,16 @@ def _run_site(args, client=None):
                 _site_asset(data["favicon"], "favicon"),
                 alt=str(data.get("favicon_alt") or ""),
             )
+        tracking = data.get("tracking")
+        if isinstance(tracking, dict) and tracking:
+            # merge into the theme.tracking group — keep ids that are
+            # absent from site.yml (e.g. set manually in /admin)
+            existing = client.get("globals/theme") or {}
+            merged = dict(existing.get("tracking") or {})
+            merged.update(
+                {k: str(v) for k, v in tracking.items() if v is not None}
+            )
+            payload["tracking"] = merged
         if data.get("site_name"):
             existing = client.get("globals/theme") or {}
             meta = dict(existing.get("meta") or {})
