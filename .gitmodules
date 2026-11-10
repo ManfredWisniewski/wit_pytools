@@ -1,3 +1,3 @@
 [submodule "+wit"]
 	path = +wit
-	url = https://github.com/ManfredWisniewski/wit-common.git
+	url = ssh://git@git.w1t.org:2222/wit/wit-common.git
