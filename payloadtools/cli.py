@@ -313,6 +313,15 @@ def _run_site(args, client=None):
                 {k: str(v) for k, v in tracking.items() if v is not None}
             )
             payload["tracking"] = merged
+        consent = data.get("consent")
+        if isinstance(consent, dict) and consent:
+            # merge into the theme.consent group; site.yml uses
+            # snake_case keys (privacy_path -> privacyPath)
+            existing = client.get("globals/theme") or {}
+            merged = dict(existing.get("consent") or {})
+            if consent.get("privacy_path") is not None:
+                merged["privacyPath"] = str(consent["privacy_path"])
+            payload["consent"] = merged
         if data.get("site_name"):
             existing = client.get("globals/theme") or {}
             meta = dict(existing.get("meta") or {})
