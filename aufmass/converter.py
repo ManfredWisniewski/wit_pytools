@@ -42,6 +42,14 @@ SHEET_CATEGORY = {
 }
 TABLE_TYPES = ("Bauelemente", "Kanal", "Rohr")
 SUM_COLUMNS = ["Raum", "Liste", "Summenart", "Bezug", "Wert", "Einheit"]
+# columns typed `number` in the NC Tables scheme — the `-` placeholder is
+# invalid there, export empty cells instead (FR-012)
+NUMBER_COLUMNS = {
+    "Anz", "Verbaut", "Wert",
+    "a", "b", "O-Iso", "WD", "Leitbleche",
+    "d1", "l1",
+    "Vol(m³/h)", "dP(Pa)",
+}
 # columns where the replacement table is applied to any substring
 REPLACE_ANYWHERE = ("Kbez", "Beschreibung")
 # columns where only a leading abbreviation token is replaced
@@ -160,7 +168,9 @@ def _parse_sum_line(text, isolierung):
         return ("Längensumme", f"{m.group(1)} d={m.group(2)}mm", m.group(3), "mm"), isolierung
     m = _SUM_PATTERNS[1][1].match(text)
     if m:
-        return ("Material", m.group(1).strip(), "-", "-"), isolierung
+        # Wert stays empty: Material rows carry no number and the NC
+        # column is typed `number`.
+        return ("Material", m.group(1).strip(), "", "-"), isolierung
     m = _SUM_PATTERNS[2][1].match(text)
     if m:
         return ("Oberflächensumme", m.group(1), m.group(2), "m²"), isolierung
@@ -212,7 +222,10 @@ def extract_sums(xls_file, sheet_name, header_row, raum, liste):
         if result:
             rows.append([raum, liste, *result])
     rows += _extract_gesamtsummen(xls_file, raum, liste)
-    return pd.DataFrame(rows, columns=SUM_COLUMNS)
+    df = pd.DataFrame(rows, columns=SUM_COLUMNS)
+    # Kanal/Rohr are consumed by amount: Wert - Verbaut (FR-008)
+    df["Verbaut"] = "0"
+    return df
 
 
 def parse_xls(xls_file, ini_path=DEFAULT_INI, replacements=None):
@@ -241,6 +254,8 @@ def parse_xls(xls_file, ini_path=DEFAULT_INI, replacements=None):
             df[column] = REPLACESTR
     df["Raum"] = raum
     df["Verbaut"] = "0"
+    for column in NUMBER_COLUMNS & set(df.columns):
+        df.loc[df[column] == REPLACESTR, column] = ""
     df = df.map(formula_guard)
 
     sums = extract_sums(xls_file, sheet, header_row, raum, xls_file.stem)
