@@ -4,7 +4,7 @@
 
 `aufmass` converts KLIMAX-XLS exports (Wuttke Klimatechnik, digitales
 Aufmaß) into the CSV target format and imports them into Nextcloud
-Tables. Spec: `client-wuttkeklimatechnik:+wit/specs/wuttkeklimatechnik/aufmass/001-mvp/`.
+Tables. Spec: `+wit/specs/wuttkeklimatechnik/aufmass/001-mvp/`.
 
 - `converter.py` — NC-independent XLS→CSV core (layouts Rund / Eckig /
   Bauelemente incl. `Bauteile` filename variant; `Pos.Nr.`+`LV-Nummer`
