@@ -1,12 +1,13 @@
 """KLIMAX-XLS -> CSV converter for the digital Aufmass (NC-independent).
 
-Reads the three KLIMAX export layouts (Rund / Eckig / Bauelemente[, Bauteile]),
-normalises them into the CSV target format and extracts the list sums
-(Laengensummen, Oberflaechen-/Isolierungssummen, Gesamtsummen) into a
-companion ``<name>.summen.csv``.
+Reads the KLIMAX export layouts and merges all source lists into one CSV
+table per type: ``bauelemente.csv`` (Bauelemente/Bauteile), ``kanal.csv``
+(Eckig/Formteile) and ``rohr.csv`` (Rund/Runde). List sums (Laengensummen,
+Oberflaechen-/Isolierungssummen, Gesamtsummen) go into a companion
+``<type>.summen.csv``.
 
 Target format = export columns (``PosNr`` normalised to ``Pos.Nr.``,
-``LV-Nummer`` ensured) + ``Raum`` + ``Kategorie`` + ``Verbaut``.
+``LV-Nummer`` ensured) + ``Raum`` + ``Verbaut``.
 """
 
 import re
@@ -29,16 +30,17 @@ REPLACESTR = "-"
 DEFAULT_INI = Path(__file__).with_name("aufmass.ini")
 AUX_SHEETS = {"legende", "gesamtsummen"}
 CATEGORY_ALIASES = {
-    "rund": "Rund",
-    "eckig": "Eckig",
+    "rund": "Rohr",
+    "eckig": "Kanal",
     "bauelemente": "Bauelemente",
     "bauteile": "Bauelemente",
 }
 SHEET_CATEGORY = {
-    "runde": "Rund",
-    "formteile": "Eckig",
+    "runde": "Rohr",
+    "formteile": "Kanal",
     "bauelemente": "Bauelemente",
 }
+TABLE_TYPES = ("Bauelemente", "Kanal", "Rohr")
 SUM_COLUMNS = ["Raum", "Liste", "Summenart", "Bezug", "Wert", "Einheit"]
 # columns where the replacement table is applied to any substring
 REPLACE_ANYWHERE = ("Kbez", "Beschreibung")
@@ -62,7 +64,10 @@ def _room_from_raw(raw):
             if text == "Projekt":
                 found_label = True
             elif found_label and text:
-                return text
+                # accept only '<Ebene>.…' — skips table titles in empty rows
+                if re.match(r"^[A-Za-zÄÖÜäöü]+\.", text):
+                    # normalise 'UG. 69 …' -> 'UG.69 …'
+                    return re.sub(r"^([A-Za-zÄÖÜäöü]+\.)\s+", r"\1", text)
         if found_label:
             break
     return None
@@ -210,11 +215,9 @@ def extract_sums(xls_file, sheet_name, header_row, raum, liste):
     return pd.DataFrame(rows, columns=SUM_COLUMNS)
 
 
-def parse_xls_to_csv(xls_file, csv_file=None, ini_path=DEFAULT_INI,
-                     replacements=None, write_sums=True):
-    """Convert one KLIMAX XLS to the CSV target format (+ .summen.csv)."""
+def parse_xls(xls_file, ini_path=DEFAULT_INI, replacements=None):
+    """Parse one KLIMAX XLS into positions df, sums df and table type."""
     xls_file = Path(xls_file)
-    csv_file = Path(csv_file) if csv_file else xls_file.with_suffix(".csv")
     replacements = replacements if replacements is not None \
         else load_replacements(ini_path)
 
@@ -237,14 +240,24 @@ def parse_xls_to_csv(xls_file, csv_file=None, ini_path=DEFAULT_INI,
         if column not in df.columns:
             df[column] = REPLACESTR
     df["Raum"] = raum
-    df["Kategorie"] = kategorie
     df["Verbaut"] = "0"
     df = df.map(formula_guard)
+
+    sums = extract_sums(xls_file, sheet, header_row, raum, xls_file.stem)
+    return {"df": df, "sums": sums, "kategorie": kategorie, "raum": raum}
+
+
+def parse_xls_to_csv(xls_file, csv_file=None, ini_path=DEFAULT_INI,
+                     replacements=None, write_sums=True):
+    """Convert one KLIMAX XLS to the CSV target format (+ .summen.csv)."""
+    xls_file = Path(xls_file)
+    csv_file = Path(csv_file) if csv_file else xls_file.with_suffix(".csv")
+    parsed = parse_xls(xls_file, ini_path, replacements)
+    df, sums = parsed["df"], parsed["sums"]
 
     csv_file.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(csv_file, index=False)
 
-    sums = extract_sums(xls_file, sheet, header_row, raum, kategorie)
     sums_file = None
     if write_sums and not sums.empty:
         sums_file = csv_file.with_suffix(".summen.csv")
@@ -257,20 +270,41 @@ def parse_xls_to_csv(xls_file, csv_file=None, ini_path=DEFAULT_INI,
 
 
 def convert_all(src_dir, out_dir=None, ini_path=DEFAULT_INI):
-    """Convert every *.xls under src_dir (recursive, room folders)."""
+    """Merge every *.xls under src_dir into one table per type.
+
+    Writes ``bauelemente.csv``, ``kanal.csv`` and ``rohr.csv`` (plus
+    ``<type>.summen.csv`` where sums exist) to out_dir (default: src_dir).
+    """
     src_dir = Path(src_dir)
-    out_dir = Path(out_dir) if out_dir else None
+    out_dir = Path(out_dir) if out_dir else src_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
     replacements = load_replacements(ini_path)
+
+    groups = {table_type: [] for table_type in TABLE_TYPES}
     results = []
     xls_files = sorted(
         f for f in src_dir.rglob("*.xls*") if not f.name.startswith("~$")
     )
     for xls_file in xls_files:
-        csv_file = xls_file.with_suffix(".csv") if out_dir is None \
-            else out_dir / xls_file.relative_to(src_dir).with_suffix(".csv")
         try:
-            results.append(parse_xls_to_csv(
-                xls_file, csv_file, replacements=replacements))
+            parsed = parse_xls(xls_file, replacements=replacements)
+            groups.setdefault(parsed["kategorie"], []).append(parsed)
         except Exception as error:
-            results.append({"csv": csv_file, "error": str(error)})
+            results.append({"csv": xls_file, "error": str(error)})
+
+    for kategorie, parsed_list in groups.items():
+        if not parsed_list:
+            continue
+        df = pd.concat([p["df"] for p in parsed_list], ignore_index=True)
+        sums = pd.concat([p["sums"] for p in parsed_list], ignore_index=True)
+        csv_file = out_dir / f"{kategorie.lower()}.csv"
+        df.to_csv(csv_file, index=False)
+        sums_file = None
+        if not sums.empty:
+            sums_file = csv_file.with_suffix(".summen.csv")
+            sums.to_csv(sums_file, index=False)
+        results.append({
+            "csv": csv_file, "rows": len(df),
+            "sums_csv": sums_file, "sums": len(sums),
+        })
     return results

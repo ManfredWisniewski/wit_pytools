@@ -60,7 +60,8 @@ def test_load_replacements():
 def test_category_from_filename():
     assert category_from_filename("UG.00A Flur - Bauteile.xls") == "Bauelemente"
     assert category_from_filename("UG.66 X _ Bauelemente.xls") == "Bauelemente"
-    assert category_from_filename("a - Rund.xls") == "Rund"
+    assert category_from_filename("a - Rund.xls") == "Rohr"
+    assert category_from_filename("a - Eckig.xls") == "Kanal"
     assert category_from_filename("x.xls") is None
 
 
@@ -72,10 +73,10 @@ def test_rund_conversion(tmp_path):
     assert result["sums"] == 2
 
     df = pd.read_csv(result["csv"], dtype=str)
-    assert set(["Pos.Nr.", "LV-Nummer", "Raum", "Kategorie", "Verbaut"]
+    assert set(["Pos.Nr.", "LV-Nummer", "Raum", "Verbaut"]
                ) <= set(df.columns)
+    assert "Kategorie" not in df.columns
     assert df["Raum"].iloc[0] == "UG.99 Testraum"
-    assert df["Kategorie"].iloc[0] == "Rund"
     assert (df["Verbaut"] == "0").all()
     # WFR duplicate (Kbez+d1) aggregated: l1 = 100+300, Anz = 1
     wfr = df[df["Kbez"] == "Wickelfalzrohr"]
@@ -115,27 +116,37 @@ def test_bauelemente_layout(tmp_path):
     df = pd.read_csv(result["csv"], dtype=str)
     assert result["rows"] == 1
     assert df["Bezeichnung"].iloc[0].startswith("Brandschutzklappe")
-    assert df["Kategorie"].iloc[0] == "Bauelemente"
+    assert "Kategorie" not in df.columns
 
 
 @needs_data
 def test_all_ug_files_convert(tmp_path):
-    """SC-007: all 27 room lists convert without errors."""
+    """SC-007: all source lists merge into one table per type."""
     results = convert_all(AUFMASS_DATA, tmp_path)
     errors = [r for r in results if "error" in r]
     assert not errors, errors
-    assert len(results) >= 69
+    names = {r["csv"].name for r in results if "csv" in r}
+    assert names == {"bauelemente.csv", "kanal.csv", "rohr.csv"}
     assert sum(r["rows"] for r in results) > 0
 
 
 @needs_data
 def test_optional_categories_and_bauteile(tmp_path):
-    """Missing categories and the 'Bauteile' naming variant are tolerated."""
+    """Missing types and the 'Bauteile' naming variant are tolerated."""
     results = convert_all(AUFMASS_DATA, tmp_path)
-    csvs = {r["csv"].name for r in results if "csv" in r}
-    assert any("Bauteile" in n for n in csvs)
-    raeume = {r["csv"].parent.name for r in results if "csv" in r}
+    raeume = set()
+    for r in results:
+        if "csv" not in r:
+            continue
+        df = pd.read_csv(r["csv"], dtype=str)
+        assert "Kategorie" not in df.columns
+        raeume |= set(df["Raum"])
     assert len(raeume) == 27
+    # Bauteile rooms (e.g. UG.00A Flur) are merged into bauelemente.csv
+    df = pd.read_csv(tmp_path / "bauelemente.csv", dtype=str)
+    assert "UG.00A Flur" in set(df["Raum"])
+    assert (tmp_path / "kanal.csv").is_file()
+    assert len(df) > 0
 
 
 @needs_data
