@@ -13,6 +13,10 @@ Tables. Spec: `+wit/specs/wuttkeklimatechnik/aufmass/001-mvp/`.
   for list sums. Generic XLS helpers live in `wit_pytools.xlstools`.
 - `tablesimport.py` — WebDAV upload + Tables `POST /api/1/import/…`
   with `ImportState` verification (the only NC-dependent part).
+- `tablesprovision.py` — project/floor provisioning: context → scheme →
+  CSV import → group views (`-gf/-plan/-monteur/-abrechnung`) with
+  readonly mapping + hidden `original` column → view shares (T006,
+  T024–T027). Schemes versioned under `aufmass/schemes/`.
 - `aufmass.ini` — Kbez→Beschreibung replacement table (~55 mappings).
 
 ## Scope (from witnctools `+intent/aufmass`)

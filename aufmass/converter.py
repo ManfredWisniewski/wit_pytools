@@ -225,6 +225,7 @@ def extract_sums(xls_file, sheet_name, header_row, raum, liste):
     df = pd.DataFrame(rows, columns=SUM_COLUMNS)
     # Kanal/Rohr are consumed by amount: Wert - Verbaut (FR-008)
     df["Verbaut"] = "0"
+    df["original"] = "true"
     return df
 
 
@@ -254,6 +255,8 @@ def parse_xls(xls_file, ini_path=DEFAULT_INI, replacements=None):
             df[column] = REPLACESTR
     df["Raum"] = raum
     df["Verbaut"] = "0"
+    # delete-guard marker: imported rows are 'original' (T027)
+    df["original"] = "true"
     for column in NUMBER_COLUMNS & set(df.columns):
         df.loc[df[column] == REPLACESTR, column] = ""
     df = df.map(formula_guard)
