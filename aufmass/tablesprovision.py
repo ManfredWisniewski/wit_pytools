@@ -48,7 +48,9 @@ def load_credentials():
     try:
         from dotenv import load_dotenv
 
+        # cwd first (wins), then the package-level .env as fallback
         load_dotenv(Path.cwd() / ".env")
+        load_dotenv(Path(__file__).resolve().parents[1] / ".env")
     except ImportError:
         pass
     base_url = (os.environ.get("NCAUF_URL")
@@ -125,6 +127,21 @@ class TablesProvisioner:
         response = self._request(
             "POST", f"{self.api1}/tables/{table_id}/columns", json=coldef)
         return response.json()["id"]
+
+    def update_column(self, column_id, fields):
+        """Partially update a column (e.g. mandatory, customSettings)."""
+        self._request("PUT", f"{self.api1}/columns/{column_id}", json=fields)
+
+    def sync_mandatory(self, table_id, column_defs):
+        """Apply `mandatory` from scheme column defs to existing columns."""
+        by_title = {c["title"]: c for c in self.list_columns(table_id)}
+        for coldef in column_defs:
+            col = by_title.get(coldef["title"])
+            if col is None or "mandatory" not in coldef:
+                continue
+            if bool(col.get("mandatory")) != bool(coldef["mandatory"]):
+                self.update_column(
+                    col["id"], {"mandatory": bool(coldef["mandatory"])})
 
     def _row_count(self, table_id, page=200):
         count, offset = 0, 0
@@ -238,14 +255,13 @@ class TablesProvisioner:
                 merged = dict(column.get("customSettings") or {})
                 if merged.get("width") != spec["width"]:
                     merged["width"] = spec["width"]
-                    self._request(
-                        "PUT", f"{self.api1}/columns/{column['id']}",
-                        json={"customSettings": merged})
+                    self.update_column(
+                        column["id"], {"customSettings": merged})
             if spec.get("visible", True):
                 visible.append(column["id"])
                 settings.append({"columnId": column["id"], "order": order,
                                  "readonly": spec.get("readonly", True),
-                                 "mandatory": False})
+                                 "mandatory": spec.get("mandatory", False)})
         for order, meta_id in enumerate(
                 view_config.get("metaColumns", []), start=len(visible)):
             visible.append(meta_id)
@@ -270,13 +286,17 @@ class TablesProvisioner:
 
 
 def provision(projekt_id, slug, etage, src_dir, prov, context_name=None,
-              groups=None, remote_dir=DEFAULT_REMOTE_DIR, scheme_dir=None):
+              context_id=None, groups=None, remote_dir=DEFAULT_REMOTE_DIR,
+              scheme_dir=None):
     """Provision all types of one project/floor; returns a result map."""
     groups = groups or {}
     scheme_dir = Path(scheme_dir) if scheme_dir else SCHEME_DIR
     src_dir = Path(src_dir)
-    context = prov.ensure_context(
-        context_name or context_name_default(projekt_id, slug, etage))
+    if context_id is not None:
+        context = int(context_id)
+    else:
+        context = prov.ensure_context(
+            context_name or context_name_default(projekt_id, slug, etage))
     result = {"context_id": context, "tables": {}}
     known_tables = prov.list_tables()
 
@@ -288,6 +308,10 @@ def provision(projekt_id, slug, etage, src_dir, prov, context_name=None,
             table_id = prov.create_table_from_scheme(
                 scheme_dir / scheme_file, title)
             entry["created"] = True
+        else:
+            scheme = json.loads(
+                (scheme_dir / scheme_file).read_text(encoding="utf-8"))
+            prov.sync_mandatory(table_id, scheme.get("columns", []))
         entry["table_id"] = table_id
 
         csv_file = src_dir / csv_name
@@ -319,13 +343,16 @@ def provision(projekt_id, slug, etage, src_dir, prov, context_name=None,
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Provision an Aufmass project/floor into Nextcloud Tables")
-    parser.add_argument("--projekt", required=True, help="Wuttke Projekt-ID")
+    parser.add_argument("--projekt", default=None,
+                        help="Wuttke Projekt-ID (default: PROJEKT_ID/PROJEKT-ID env)")
     parser.add_argument("--slug", required=True, help="project slug, e.g. Stadthalle")
     parser.add_argument("--etage", required=True, help="floor slug, e.g. UG")
     parser.add_argument("--src", required=True,
                         help="directory holding the converter CSVs")
     parser.add_argument("--context-name", default=None,
                         help="existing context name (default 'AUF <id> <slug> <etage>')")
+    parser.add_argument("--context-id", type=int, default=None,
+                        help="existing context id; skips context lookup/creation")
     parser.add_argument("--group", action="append", default=[],
                         metavar="NAME=UID",
                         help="NC group uid per view group, e.g. gf=<uid>; "
@@ -336,9 +363,15 @@ def main(argv=None):
 
     groups = dict(g.split("=", 1) for g in args.group)
     base_url, user, password = load_credentials()
+    projekt = (args.projekt or os.environ.get("PROJEKT_ID")
+               or os.environ.get("PROJEKT-ID"))
+    if not projekt:
+        raise ProvisionError(
+            "Projekt-ID missing: pass --projekt or set PROJEKT_ID/PROJEKT-ID")
     prov = TablesProvisioner(base_url, user, password)
-    result = provision(args.projekt, args.slug, args.etage, args.src, prov,
-                       context_name=args.context_name, groups=groups,
+    result = provision(projekt, args.slug, args.etage, args.src, prov,
+                       context_name=args.context_name,
+                       context_id=args.context_id, groups=groups,
                        remote_dir=args.remote_dir)
     print(json.dumps(result, indent=1, ensure_ascii=False))
     return 0

@@ -7,7 +7,7 @@
   {
    "technicalName": "anz",
    "subtype": "",
-   "mandatory": false,
+   "mandatory": true,
    "description": "",
    "textDefault": "",
    "textAllowedPattern": "",
@@ -39,7 +39,7 @@
   {
    "technicalName": "bezeichnung",
    "subtype": "line",
-   "mandatory": false,
+   "mandatory": true,
    "description": "",
    "textDefault": "",
    "textAllowedPattern": "",

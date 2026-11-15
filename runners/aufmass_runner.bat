@@ -18,6 +18,15 @@ if not defined PYTHON_PATH set "PYTHON_PATH=python"
 REM Log file (overwritten each run) uses runner script name by default.
 if not defined LOG_FILE set "LOG_FILE=%~dpn0.log"
 
+REM Provisioning target (Nextcloud Tables). PROJEKT_ID overrides the .env
+REM PROJEKT-ID value; leave empty to use .env.
+if not defined PROJEKT_ID set "PROJEKT_ID="
+if not defined SLUG set "SLUG=Stadthalle"
+if not defined ETAGE set "ETAGE=UG"
+
+REM Existing Tables context (App) id the views are attached to.
+if not defined CONTEXT_ID set "CONTEXT_ID=7"
+
 call :MAIN > "%LOG_FILE%" 2>&1
 exit /b %ERRORLEVEL%
 
@@ -60,4 +69,26 @@ if errorlevel 1 (
 
 echo.
 echo All conversions completed successfully.
+
+REM ==============================================================================
+REM PROVISIONING (push tables + views to Nextcloud Tables context)
+REM ==============================================================================
+
+set "PROJ_ARG="
+if defined PROJEKT_ID set "PROJ_ARG=--projekt %PROJEKT_ID%"
+
+echo.
+echo Provisioning to context id: %CONTEXT_ID%
+
+call "%PYTHON_PATH%" -m wit_pytools.aufmass.tablesprovision %PROJ_ARG% ^
+    --slug "%SLUG%" --etage "%ETAGE%" ^
+    --src "%OUT_DIR%" --context-id "%CONTEXT_ID%"
+if errorlevel 1 (
+    echo.
+    echo Provisioning failed.
+    exit /b 1
+)
+
+echo.
+echo Provisioning completed successfully.
 exit /b 0
