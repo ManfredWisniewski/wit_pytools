@@ -1,0 +1,37 @@
+{
+ "gf": {
+  "receiver": "7449d0b4210b296c471471855b263c517dbd2e3d297e73d7893a932ce6e4ebfa",
+  "receiverType": "group",
+  "allViews": true,
+  "table": {"read": true, "create": true, "update": true, "delete": true,
+            "manage": false}
+ },
+ "plan": {
+  "receiver": "154f32b50a791a9870996aa546146aa83a3073a44180a97e469a119c84635f7d",
+  "receiverType": "user",
+  "allViews": false,
+  "table": {"read": true, "create": true, "update": false, "delete": true,
+            "manage": false}
+ },
+ "monteur": {
+  "receiver": "8a6706f20e58559367cd87123841a3e9f9de2114c450d953c5521ac97f516e07",
+  "receiverType": "user",
+  "allViews": false,
+  "table": {"read": true, "create": true, "update": true, "delete": true,
+            "manage": false}
+ },
+ "abrechnung": {
+  "receiver": "a9d0d6870395f626460ba443be3141d88a27c006fdd08942b9b057c9dfad037c",
+  "receiverType": "user",
+  "allViews": false,
+  "table": {"read": true, "create": false, "update": false, "delete": false,
+            "manage": false}
+ },
+ "admin": {
+  "receiver": "admin",
+  "receiverType": "group",
+  "allViews": true,
+  "table": {"read": true, "create": true, "update": true, "delete": true,
+            "manage": true}
+ }
+}

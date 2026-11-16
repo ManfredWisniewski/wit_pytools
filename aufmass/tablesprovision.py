@@ -34,6 +34,7 @@ TYPES = {
 }
 VIEW_GROUPS = ("gf", "plan", "monteur", "abrechnung")
 ADMIN_GROUP = "admin"
+SHARES_CONFIG = "shares.json"  # receiver + table permissions per group
 ORIGINAL_COLUMN = {"title": "original", "type": "selection",
                    "subtype": "check", "mandatory": False}
 DEFAULT_REMOTE_DIR = "AUF"
@@ -284,6 +285,25 @@ class TablesProvisioner:
                             "receiverType": receiver_type,
                             "permissionRead": True})
 
+    def share_table(self, table_id, receiver, receiver_type="group",
+                    permissions=None):
+        """Share a table (row access) to a receiver; skips existing shares.
+
+        ``permissions`` maps read/create/update/delete/manage to bool —
+        read defaults to true, the rest to false.
+        """
+        shares = self._request(
+            "GET", f"{self.api1}/tables/{table_id}/shares").json()
+        if any(s["receiver"] == receiver for s in shares):
+            return
+        permissions = permissions or {}
+        payload = {"nodeType": "table", "nodeId": table_id,
+                   "receiver": receiver, "receiverType": receiver_type}
+        for key in ("read", "create", "update", "delete", "manage"):
+            payload[f"permission{key.capitalize()}"] = bool(
+                permissions.get(key, key == "read"))
+        self._request("POST", f"{self.api1}/shares", json=payload)
+
 
 def provision(projekt_id, slug, etage, src_dir, prov, context_name=None,
               context_id=None, groups=None, remote_dir=DEFAULT_REMOTE_DIR,
@@ -292,6 +312,13 @@ def provision(projekt_id, slug, etage, src_dir, prov, context_name=None,
     groups = groups or {}
     scheme_dir = Path(scheme_dir) if scheme_dir else SCHEME_DIR
     src_dir = Path(src_dir)
+    # receivers + permissions from shares.json; --group overrides receiver
+    shares_cfg = json.loads(
+        (scheme_dir / SHARES_CONFIG).read_text(encoding="utf-8"))
+    for grp, uid in groups.items():
+        spec = dict(shares_cfg.get(grp, {}))
+        spec["receiver"], spec["receiverType"] = uid, "group"
+        shares_cfg[grp] = spec
     if context_id is not None:
         context = int(context_id)
     else:
@@ -323,6 +350,12 @@ def provision(projekt_id, slug, etage, src_dir, prov, context_name=None,
         col_id = prov.ensure_column(table_id, ORIGINAL_COLUMN)
         entry["original_marked"] = prov.mark_rows_original(table_id, col_id)
 
+        # base table row access: views carry no row permissions
+        for spec in shares_cfg.values():
+            prov.share_table(table_id, spec["receiver"],
+                             receiver_type=spec.get("receiverType", "group"),
+                             permissions=spec.get("table"))
+
         views = {}
         for group in VIEW_GROUPS:
             config_path = scheme_dir / "views" / f"{typ}_{group}.json"
@@ -330,9 +363,14 @@ def provision(projekt_id, slug, etage, src_dir, prov, context_name=None,
                 config_path.read_text(encoding="utf-8"))
             view_id = prov.ensure_view(table_id, view_config["title"])
             prov.configure_view(table_id, view_id, view_config)
-            prov.share_view(view_id, ADMIN_GROUP)
-            if group in groups:
-                prov.share_view(view_id, groups[group])
+            prov.share_view(view_id, shares_cfg[ADMIN_GROUP]["receiver"])
+            rspec = shares_cfg[group]
+            prov.share_view(view_id, rspec["receiver"],
+                            rspec.get("receiverType", "group"))
+            for g, s in shares_cfg.items():
+                if g != group and s.get("allViews"):
+                    prov.share_view(view_id, s["receiver"],
+                                    s.get("receiverType", "group"))
             prov.add_context_node(context, view_id)
             views[group] = view_id
         entry["views"] = views
