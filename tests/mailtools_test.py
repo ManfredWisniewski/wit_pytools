@@ -123,3 +123,166 @@ def test_eml_thread_to_markdown_combines_and_strips(tmp_path):
     assert "Zahlung veranlasst" in text
     assert "Ursprüngliche Nachricht" not in text
     assert text.count("Sehr geehrte Kunden") == 1
+
+
+# --- package refactor coverage (spec: +wit/specs/wit_pytools/mailtools) ---
+
+import base64
+import csv
+from pathlib import Path
+
+from mailtools import (
+    account_slug,
+    compile_sieve,
+    folder_relpath,
+    init_dirs,
+    mail_to_markdown,
+    parse_accounts,
+    parse_list_names,
+    rule_folders,
+    sent_folder,
+    staging_folder,
+    utf7_decode,
+)
+from mailtools.archive import archive_account, delete_sent, purge_staging
+from mailtools import archive as _archive
+import mailtools
+
+
+def test_parse_accounts_and_slug(tmp_path):
+    csv_path = tmp_path / "accounts.csv"
+    csv_path.write_text(
+        "# comment\n"
+        "account,host,port,script,rules,prefix\n"
+        "ec@witconsult.de,mail.witconsult.de,4190,mail-sort,rules.csv,INBOX.\n"
+        "u@stalwart.de,stalwart.de,,,rules.csv,-\n",
+        encoding="utf-8",
+    )
+    accounts = parse_accounts(csv_path)
+    assert [a["slug"] for a in accounts] == ["ec-witconsult-de", "u-stalwart-de"]
+    assert accounts[0]["prefix"] == "INBOX."
+    assert accounts[1]["prefix"] == ""      # '-' -> no namespace prefix
+    assert accounts[1]["port"] == 4190      # defaults
+    assert account_slug("EC@WitConsult.de") == "ec-witconsult-de"
+
+
+def test_compile_sieve_stages_and_stops():
+    script = compile_sieve([("*@hetzner.com", "Archiv.Rechnungen", "")],
+                           "mail-sort.csv", "INBOX.")
+    assert 'fileinto :copy :create "INBOX.Incoming";' in script
+    assert 'address :matches "From" "*@hetzner.com"' in script
+    assert 'fileinto :create "INBOX.Archiv.Rechnungen"; stop;' in script
+    # no-prefix account (Stalwart): top-level folders, no INBOX. prefix
+    flat = compile_sieve([("*", "INBOX", "")], "r.csv", "")
+    assert 'fileinto :copy :create "Incoming";' in flat
+
+
+def test_utf7_and_list_names():
+    assert utf7_decode("Gel&APY-schte Elemente") == "Gelöschte Elemente"
+    names = parse_list_names([
+        b'(\HasNoChildren) "." INBOX',
+        b'(\HasChildren) "." "INBOX.FAW.Shopping"',
+    ])
+    assert names == ["INBOX", "INBOX.FAW.Shopping"]
+    assert staging_folder("INBOX.") == "INBOX.Incoming"
+    assert sent_folder("") == "Sent"
+
+
+_MAIL = (
+    b"From: Alice <alice@example.com>\r\n"
+    b"To: ec@example.de\r\n"
+    b"Subject: Test mail\r\n"
+    b"Date: Sat, 11 Oct 2026 10:00:00 +0200\r\n"
+    b"Message-ID: <m1@x>\r\n"
+    b"\r\nHello body\r\n"
+)
+
+
+def test_mail_to_markdown_frontmatter_and_simple(tmp_path):
+    doc = tmp_path / "arch" / "doc.md"
+    out, _ = mail_to_markdown(
+        _MAIL, doc, frontmatter={"subject": "Test mail", "folder": "INBOX.Sent"})
+    text = out.read_text(encoding="utf-8")
+    assert text.startswith('---\nsubject: "Test mail"')
+    assert 'folder: "INBOX.Sent"' in text
+    assert "Hello body" in text
+
+    simple = tmp_path / "simple.md"
+    mail_to_markdown(_MAIL, simple)
+    text = simple.read_text(encoding="utf-8")
+    assert text.startswith("# Test mail")
+    assert "- From: Alice <alice@example.com>" in text
+
+
+def test_folder_relpath():
+    assert folder_relpath("INBOX.FAW.Shopping", "INBOX.") == "FAW/Shopping"
+    assert folder_relpath("INBOX", "INBOX.") == "INBOX"
+    assert folder_relpath("A.B", "") == "A/B"
+
+
+class _FakeImap:
+    def __init__(self, messages=None):
+        self._messages = messages or {}
+        self._selected = None
+        self.untagged_responses = {"UIDVALIDITY": [b"1"]}
+        self.stored = []
+        self.expunged = False
+
+    def select(self, box, readonly=False):
+        self._selected = box.strip('"')
+        return ("OK", [b"1"])
+
+    def uid(self, cmd, *args):
+        if cmd == "search" and args[1] == "UID":
+            uids = [str(u) for (b, u) in sorted(self._messages) if b == self._selected]
+            return ("OK", [" ".join(uids).encode()])
+        if cmd == "search":
+            return ("OK", [b"1 2"])
+        if cmd == "fetch":
+            raw = self._messages.get((self._selected, int(args[0])))
+            return ("OK", [(b"h", raw)] if raw else [b""])
+        if cmd == "store":
+            self.stored.append(args)
+            return ("OK", [])
+        return ("NO", [])
+
+    def expunge(self):
+        self.expunged = True
+        return ("OK", [])
+
+
+def test_archive_account_drains_sent(tmp_path):
+    acct = {"account": "e@x.de", "host": "h", "slug": "e-x-de", "prefix": "INBOX."}
+    fake = _FakeImap({("INBOX.Sent", 5): _MAIL, ("INBOX.A", 9): _MAIL})
+    captured = archive_account(acct, tmp_path, "pw", imap_client=fake)
+    assert captured == [5]
+    docs = list((tmp_path / "+INBOX" / "emails" / "e-x-de" / "Sent").glob("*.md"))
+    assert len(docs) == 1 and "Hello body" in docs[0].read_text(encoding="utf-8")
+
+
+def test_delete_and_purge(tmp_path):
+    acct = {"account": "e@x.de", "host": "h", "slug": "e-x-de", "prefix": "INBOX."}
+    fake = _FakeImap()
+    assert delete_sent(acct, [5, 6], "pw", imap_client=fake) == 2
+    assert b"5,6" == fake.stored[0][0] and fake.expunged
+
+    fake2 = _FakeImap()
+    assert purge_staging(acct, 30, "pw", imap_client=fake2) == 2
+    assert fake2.expunged
+
+
+def test_init_dirs_and_rule_folders(tmp_path):
+    rules = tmp_path / "rules.csv"
+    rules.write_text("Archiv.Rechnungen,,*@x.de\n", encoding="utf-8")
+    assert rule_folders(rules) == ["Archiv.Rechnungen"]
+    acct = {"account": "e@x.de", "slug": "e-x-de", "prefix": "INBOX."}
+    init_dirs([acct], tmp_path, rules)
+    base = tmp_path / "+INBOX" / "emails" / "e-x-de"
+    for rel in ("Archiv/Rechnungen", "INBOX", "Sent", "attachments", "proposals"):
+        assert (base / rel).is_dir(), rel
+
+
+def test_legacy_names_resolve_lazily():
+    # import itself must not require the optional deps path eagerly
+    assert callable(mailtools.eml_thread_members)
+    assert callable(mailtools.parse_msg)

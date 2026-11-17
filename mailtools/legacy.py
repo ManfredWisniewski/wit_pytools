@@ -1,12 +1,32 @@
-import os, re, sys, shutil
+"""Legacy .eml/.msg helpers — the third-party dependencies live here.
+
+Imported lazily via ``mailtools.__init__`` (module ``__getattr__``) so that
+``import mailtools`` and the stdlib helpers keep working on hosts without
+``eml_parser``/``extract-msg``. Only touching these names pulls the deps:
+
+- ``parse_eml``, ``eml_headers``, ``eml_thread_members``,
+  ``eml_thread_to_markdown``, ``parse_msg``
+
+Code moved verbatim from the former flat ``mailtools.py`` (D-refactor):
+``eml_to_markdown`` is NOT here — it was merged into the stdlib renderer
+in ``mailtools.render``.
+"""
+
+from __future__ import annotations
+
+import os
+import re
 from pathlib import Path
+
 import extract_msg
 import eml_parser
-from wit_pytools.validators import valid_email_address
+
+from .render import strip_quoted_text
 
 date_format = "%Y-%m-%d"
 email_pattern = r'<(.*?)>'  # Matches anything inside < >
 forward_subject_prefix = re.compile(r'^\s*(fwd|fw|wg)\s*:', re.IGNORECASE)  # Common forward prefixes (EN/DE)
+
 
 # Email EML
 # https://pypi.org/project/eml-parser/
@@ -24,32 +44,6 @@ def parse_eml(file, dryrun=False):
     return mailinfo
 
 
-def eml_to_markdown(source, output_path, settings=None):
-    """Convert an .eml email into a Markdown file with header fields and body."""
-    source = Path(source)
-    output_path = Path(output_path)
-    parsed = eml_parser.EmlParser(include_raw_body=True).decode_email_bytes(
-        source.read_bytes()
-    )
-    header = parsed.get('header', {})
-
-    def field(name):
-        value = header.get(name, '')
-        return ', '.join(value) if isinstance(value, list) else str(value)
-
-    lines = [
-        f"# {field('subject') or source.stem}",
-        '',
-        f"- From: {field('from')}",
-        f"- To: {field('to')}",
-        f"- Date: {field('date')}",
-        '',
-        strip_quoted_text(_eml_body(parsed)),
-    ]
-    output_path.write_text('\n'.join(lines).strip() + '\n', encoding='utf-8')
-    return output_path
-
-
 def _eml_body(parsed):
     """Extract the text body of a parsed mail (plain preferred, html stripped)."""
     plain, html = [], []
@@ -65,28 +59,6 @@ def _eml_body(parsed):
         return '\n\n'.join(plain)
     # strip tags so html-only mails stay searchable
     return re.sub(r'[ \t]+', ' ', re.sub(r'<[^>]+>', ' ', '\n\n'.join(html)))
-
-
-# Lines where the quoted history of a reply/forward begins.
-_QUOTE_CUT = re.compile(
-    r'^\s*(-+\s*(urspr.ngliche\s+nachricht|original\s+message'
-    r'|weitergeleitete\s+nachricht|forwarded\s+message)\s*-+'
-    r'|(_{2,})\s*$'
-    r'|(on|am)\s+.+\s(wrote|schrieb)\s+.+:\s*$)',
-    re.IGNORECASE,
-)
-
-
-def strip_quoted_text(text):
-    """Remove quoted reply/forward history and '>' quote lines."""
-    out = []
-    for line in text.splitlines():
-        if _QUOTE_CUT.match(line):
-            break
-        if line.lstrip().startswith('>'):
-            continue
-        out.append(line)
-    return '\n'.join(out).strip()
 
 
 def _eml_id_list(values):
@@ -227,7 +199,7 @@ def parse_msg(file, dryrun=False):
             # Prefer original sender if this is a forwarded mail
             formatted_sender = msg_sender
             print(f"DEBUG: raw msg_sender = '{msg_sender}'")
-            
+
             # Try to extract email from msg.sender_email property (SMTP address)
             try:
                 if hasattr(msg, 'sender_email') and msg.sender_email:
@@ -235,7 +207,7 @@ def parse_msg(file, dryrun=False):
                     print(f"DEBUG: using sender_email = '{formatted_sender}'")
             except Exception:
                 pass
-            
+
             # If still no email (just display name), search for email pattern in the sender string
             if '@' not in formatted_sender:
                 try:
@@ -246,7 +218,7 @@ def parse_msg(file, dryrun=False):
                         print(f"DEBUG: extracted from angle brackets = '{formatted_sender}'")
                 except Exception:
                     pass
-            
+
             # If still no email, try to get from message headers
             if '@' not in formatted_sender:
                 try:
@@ -282,14 +254,14 @@ def parse_msg(file, dryrun=False):
                             m_bare = re.search(r'[\w\.-]+@[\w\.-]+', from_line)
                             if m_bare:
                                 extracted_sender = m_bare.group(0)
-                        
+
                         # Only use extracted sender if it looks like a valid forward
                         # (contains @ and doesn't match the actual sender domain)
                         if extracted_sender and '@' in extracted_sender:
                             # Check if extracted sender domain differs from actual sender domain
                             actual_domain = formatted_sender.split('@')[-1] if '@' in formatted_sender else ''
                             extracted_domain = extracted_sender.split('@')[-1] if '@' in extracted_sender else ''
-                            
+
                             # Only use extracted sender if domains are different
                             # This prevents misidentification of replies (AW) as forwards
                             if actual_domain and extracted_domain and actual_domain != extracted_domain:
@@ -304,12 +276,12 @@ def parse_msg(file, dryrun=False):
                 mailinfo.append(format(msg_date.strftime(date_format)))
             else:
                 mailinfo.append("")
-            
+
             mailinfo.append(format(formatted_sender))
             mailinfo.append(format(msg_subj))
-            
+
             msg.close()
-            
+
             return mailinfo
         except Exception as e:
             print(f"Error parsing MSG file: {e}")
@@ -318,74 +290,3 @@ def parse_msg(file, dryrun=False):
 
 #structure mailinfo:
 # date, sender, subject
-
-#sortdir = 'P:\git\mail-sort\test_files'
-#msgfile = 'testfile.msg'
-#print(parse_msg(sortdir, msgfile, True))
-
-#emlfile = 'test.eml'
-#print(parse_eml(sortdir, emlfile, True))
-
-
-# create_msg.py
-# Requires: Windows + Outlook installed
-# Run: python create_msg.py
-
-# import win32com.client as win32
-# from datetime import datetime
-
-# def create_msg(
-#     path,
-#     subject="Test Subject",
-#     sender_name="Alice Sender",
-#     sender_email="alice@example.com",
-#     to="bob@example.com",
-#     cc="",
-#     bcc="",
-#     body_html="<p>Hello, this is a test.</p>",
-#     sent_dt=datetime(2025, 9, 1, 10, 30),
-#     importance=2,  # 0 Low, 1 Normal, 2 High
-#     attachments=None
-# ):
-#     outlook = win32.Dispatch("Outlook.Application")
-#     mail = outlook.CreateItem(0)  # olMailItem
-
-#     mail.Subject = subject
-#     mail.HTMLBody = body_html
-#     mail.To = to
-#     mail.CC = cc
-#     mail.BCC = bcc
-#     mail.Importance = importance
-
-#     # Set sender (only works for accounts you can send-as; otherwise it will save with default)
-#     # For testing metadata, adding "From" as a header-like line in body is often sufficient if send-as isn't available.
-
-#     if attachments:
-#         for fp in attachments:
-#             mail.Attachments.Add(fp)
-
-#     # Set SentOn for saved draft-style item (Outlook may override on send; for saved .msg it’s kept)
-#     mail.SentOn = sent_dt
-
-#     mail.SaveAs(path, 3)  # 3 = olMSG
-#     print(f"Saved: {path}")
-
-# if __name__ == "__main__":
-#     create_msg(
-#         path="test_mail.msg",
-#         subject="Project Update – Sprint 15",
-#         sender_name="Alice Sender",
-#         sender_email="alice@example.com",
-#         to="Bob Receiver <bob@example.com>",
-#         cc="Team Lead <lead@example.com>",
-#         bcc="",
-#         body_html="""
-#         <html><body>
-#         <p>Hi Bob,</p>
-#         <p>Here’s the update for Sprint 15.</p>
-#         <ul><li>Task A done</li><li>Task B in progress</li></ul>
-#         <p>Regards,<br>Alice</p>
-#         </body></html>
-#         """,
-#         attachments=[],
-#     )
