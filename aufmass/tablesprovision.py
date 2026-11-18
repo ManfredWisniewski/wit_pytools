@@ -220,6 +220,30 @@ class TablesProvisioner:
         self._request("PUT", f"{self.api2}/contexts/{context_id}",
                       json={"nodes": nodes})
 
+    def context_shares(self, context_id):
+        """Receiver ids of existing context shares."""
+        response = self._request(
+            "GET", f"{self.api2}/contexts/{context_id}/share")
+        return re.findall(
+            r"<receiver_?[iI]d>([^<]+)</receiver_?[iI]d>", response.text)
+
+    def share_context(self, context_id, receiver, receiver_type="group",
+                      display_mode=1):
+        """Share the context (Anwendung) to a receiver; skips existing.
+
+        ``display_mode`` 1 = the app shows in the recipients' navigation.
+        api2 uses numeric receiver types: 0 user, 1 group.
+        """
+        if receiver in self.context_shares(context_id):
+            return
+        rtype = {"user": 0, "group": 1}.get(receiver_type)
+        if rtype is None:
+            raise ProvisionError(
+                f"unknown context receiverType '{receiver_type}'")
+        self._request("POST", f"{self.api2}/contexts/{context_id}/share",
+                      json={"receiverId": receiver, "receiverType": rtype,
+                            "displayMode": display_mode})
+
     # -- views / shares ------------------------------------------------------
 
     def list_views(self, table_id):
@@ -324,6 +348,10 @@ def provision(projekt_id, slug, etage, src_dir, prov, context_name=None,
     else:
         context = prov.ensure_context(
             context_name or context_name_default(projekt_id, slug, etage))
+    # the app itself must be shared — new and existing contexts alike
+    for spec in shares_cfg.values():
+        prov.share_context(context, spec["receiver"],
+                           receiver_type=spec.get("receiverType", "group"))
     result = {"context_id": context, "tables": {}}
     known_tables = prov.list_tables()
 
