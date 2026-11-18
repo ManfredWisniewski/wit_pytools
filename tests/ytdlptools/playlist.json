@@ -1,28 +1,28 @@
 {
-    "_type": "playlist",
-    "id": "PLexample",
-    "title": "Example Playlist",
-    "entries": [
-        {
-            "_type": "url",
-            "id": "v1",
-            "title": "Song One",
-            "url": "https://www.youtube.com/watch?v=v1",
-            "ie_key": "Youtube"
-        },
-        {
-            "_type": "url",
-            "id": "v2",
-            "title": "Song Two",
-            "url": "https://www.youtube.com/watch?v=v2",
-            "ie_key": "Youtube"
-        },
-        {
-            "_type": "url",
-            "id": "v3",
-            "title": "Song Three",
-            "url": "https://www.youtube.com/watch?v=v3",
-            "ie_key": "Youtube"
-        }
-    ]
+  "_type": "playlist",
+  "id": "PLexample",
+  "title": "Example Playlist",
+  "entries": [
+    {
+      "_type": "url",
+      "id": "v1",
+      "title": "Song One",
+      "url": "https://www.youtube.com/watch?v=v1",
+      "ie_key": "Youtube"
+    },
+    {
+      "_type": "url",
+      "id": "v2",
+      "title": "Song Two",
+      "url": "https://www.youtube.com/watch?v=v2",
+      "ie_key": "Youtube"
+    },
+    {
+      "_type": "url",
+      "id": "v3",
+      "title": "Song Three",
+      "url": "https://www.youtube.com/watch?v=v3",
+      "ie_key": "Youtube"
+    }
+  ]
 }
