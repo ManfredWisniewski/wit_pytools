@@ -94,15 +94,17 @@ def archive_account(acct: dict, repo: Path, password: str, imap_client=None,
             log.warning("%s: cannot examine %s", slug, box)
             return captured
         for uid in _imap.search_uids(m):
+            if dry_run:
+                captured.append(uid)
+                continue
             raw = _imap.fetch_raw(m, uid)
             if raw is None:
                 continue
-            if not dry_run:
-                try:
-                    archive_message(repo, slug, box, acct["prefix"], uid, raw, mail_subdir)
-                except Exception as error:
-                    log.warning("%s: skipping message uid %s in %s: %s", slug, uid, box, error)
-                    continue
+            try:
+                archive_message(repo, slug, box, acct["prefix"], uid, raw, mail_subdir)
+            except Exception as error:
+                log.warning("%s: skipping message uid %s in %s: %s", slug, uid, box, error)
+                continue
             captured.append(uid)
     finally:
         if owned:
