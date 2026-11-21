@@ -1,13 +1,30 @@
-## Overview
+# `<project>`
 
+`<one or two sentences: what this project is and who uses it>`
 
-### audiotools.py
-#### Requirements
-m4b-util: https://github.com/Tsubashi/m4b-util
+## AI folders
 
-### ytdlptools.py
-#### Requirements
-yt-dlp: https://github.com/yt-dlp/yt-dlp (+ ffmpeg for mp3 transcode and thumbnail embedding)
+Before making changes, read the shared WIT development guidance in `+wit/development/` in this repository. Start with `+wit/development/README.md` and `+wit/development/AGENTS.md`, then read the relevant convention or best-practice files. These shared definitions apply independently of which skill or AI agent is performing the work.
 
-Downloads audio from YouTube links — one file per video, one per video of a playlist.
-See [README_ytdlptools.md](README_ytdlptools.md).
+- `/+intent` — purpose, decisions and acceptance criteria of this repository
+- `/+wit` — submodule, definitions required by all project types
+- `/+wit` — submodule, shared knowledge: research, plans, templates and domain standards (`development/` for this project)
+- `+wit/agents/` — rules all AI agents follow + shared agent skills (part of `+wit`)
+
+## Getting started
+
+```bash
+<install command>
+<run command>
+```
+
+## Contents
+
+| Path | Purpose |
+|------|---------|
+| `TASKS.md` | open tasks |
+| `<path>` | `<purpose>` |
+
+## Repository setup
+
+Branches (`main`, `work`, `wip`, one per persona) and submodules follow `+wit/common/conventions/repo-setup.md`.
