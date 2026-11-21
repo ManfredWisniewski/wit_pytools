@@ -123,6 +123,96 @@ def test_eml_thread_to_markdown_combines_and_strips(tmp_path):
     assert "Zahlung veranlasst" in text
     assert "Ursprüngliche Nachricht" not in text
     assert text.count("Sehr geehrte Kunden") == 1
+    assert "- To: b@y.de" in text
+    assert "- To: a@x.de" in text
+
+
+_FOOTER = "Manfred Wisniewski\nTel.: 0391 63675985\nE-Mail: manfred@wisniewski.org"
+
+_MAIL_FA = (
+    "From: a@x.de\n"
+    "To: b@y.de\n"
+    "Subject: Termin\n"
+    "Date: Mon, 20 Oct 2025 10:00:00 +0200\n"
+    "Message-ID: <fa@x.de>\n"
+    "Content-Type: text/plain; charset=utf-8\n"
+    "\n"
+    "Erster Text.\n\n" + _FOOTER + "\n"
+)
+
+_MAIL_FB = (
+    "From: b@y.de\n"
+    "To: a@x.de\n"
+    "Subject: AW: Termin\n"
+    "Date: Tue, 21 Oct 2025 09:00:00 +0200\n"
+    "Message-ID: <fb@y.de>\n"
+    "In-Reply-To: <fa@x.de>\n"
+    "Content-Type: text/plain; charset=utf-8\n"
+    "\n"
+    "Zweiter Text.\n\n" + _FOOTER + "\n"
+)
+
+
+def test_eml_thread_to_markdown_dedupes_shared_footer(tmp_path):
+    a = tmp_path / "mail_fa.eml"
+    b = tmp_path / "mail_fb.eml"
+    a.write_text(_MAIL_FA, encoding="utf-8")
+    b.write_text(_MAIL_FB, encoding="utf-8")
+    members = eml_thread_members(tmp_path, b)
+    out = eml_thread_to_markdown(members, tmp_path / "thread.md")
+    text = out.read_text(encoding="utf-8")
+    assert text.count("Tel.: 0391 63675985") == 1
+    # the kept footer belongs to the last mail in the thread
+    assert text.index("Zweiter Text.") < text.index("Tel.: 0391 63675985")
+
+
+def test_eml_thread_members_drops_message_id_duplicates(tmp_path):
+    (tmp_path / "mail_a.eml").write_text(_MAIL_A, encoding="utf-8")
+    (tmp_path / "mail_a_dup.eml").write_text(_MAIL_A, encoding="utf-8")
+    (tmp_path / "mail_b.eml").write_text(_MAIL_B, encoding="utf-8")
+    dropped = []
+    members = eml_thread_members(tmp_path, tmp_path / "mail_b.eml", dropped=dropped)
+    assert [p.name for p, _ in members] == ["mail_a.eml", "mail_b.eml"]
+    assert [p.name for p in dropped] == ["mail_a_dup.eml"]
+
+
+_MAIL_ATT = (
+    "From: a@x.de\n"
+    "To: b@y.de\n"
+    "Cc: c@cc.de\n"
+    "Delivered-To: b@y.de\n"
+    "Subject: Mit Anhang\n"
+    "Date: Mon, 20 Oct 2025 10:00:00 +0200\n"
+    "Message-ID: <att@x.de>\n"
+    "MIME-Version: 1.0\n"
+    "Content-Type: multipart/mixed; boundary=XYZ\n"
+    "\n"
+    "--XYZ\n"
+    "Content-Type: text/plain; charset=utf-8\n"
+    "\n"
+    "Text mit Anhang.\n"
+    "--XYZ\n"
+    "Content-Type: application/pdf; name=beleg.pdf\n"
+    "Content-Disposition: attachment; filename=beleg.pdf\n"
+    "Content-Transfer-Encoding: base64\n"
+    "\n"
+    "SGVsbG8=\n"
+    "--XYZ--\n"
+)
+
+
+def test_eml_thread_to_markdown_headers_and_attachments(tmp_path):
+    a = tmp_path / "mail_att.eml"
+    a.write_text(_MAIL_ATT, encoding="utf-8")
+    members = eml_thread_members(tmp_path, a)
+    out = eml_thread_to_markdown(
+        members, tmp_path / "att.md", attachments_dir=tmp_path / "attachments"
+    )
+    text = out.read_text(encoding="utf-8")
+    assert "- Cc: c@cc.de" in text
+    assert "- Delivered-To: b@y.de" in text
+    assert "- Attachments: att-x-de-beleg.pdf" in text
+    assert (tmp_path / "attachments" / "att-x-de-beleg.pdf").is_file()
 
 
 # --- package refactor coverage (spec: +wit/specs/wit_pytools/mailtools) ---

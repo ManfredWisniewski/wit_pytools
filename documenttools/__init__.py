@@ -1,12 +1,17 @@
 """Document-specific search, anonymization adapters, and PDF helpers."""
 
 import csv
+import logging
 import os
 import re
 import tempfile
 import unicodedata
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
+
+# pdfminer floods logs with per-font warnings (FontBBox etc.)
+logging.getLogger('pdfminer').setLevel(logging.ERROR)
+logging.getLogger('pdfplumber').setLevel(logging.ERROR)
 
 from eliot import log_message
 

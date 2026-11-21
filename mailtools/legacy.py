@@ -14,6 +14,8 @@ in ``mailtools.render``.
 
 from __future__ import annotations
 
+import email
+import email.policy
 import os
 import re
 from pathlib import Path
@@ -21,7 +23,12 @@ from pathlib import Path
 import extract_msg
 import eml_parser
 
-from .render import strip_quoted_text
+from .render import (
+    links_to_markdown,
+    message_doc_id,
+    strip_quoted_text,
+    write_attachments,
+)
 
 date_format = "%Y-%m-%d"
 email_pattern = r'<(.*?)>'  # Matches anything inside < >
@@ -57,8 +64,11 @@ def _eml_body(parsed):
             html.append(content)
     if plain:
         return '\n\n'.join(plain)
-    # strip tags so html-only mails stay searchable
-    return re.sub(r'[ \t]+', ' ', re.sub(r'<[^>]+>', ' ', '\n\n'.join(html)))
+    # strip tags so html-only mails stay searchable, keep link targets
+    return re.sub(
+        r'[ \t]+', ' ',
+        re.sub(r'<[^>]+>', ' ', links_to_markdown('\n\n'.join(html))),
+    )
 
 
 def _eml_id_list(values):
@@ -92,6 +102,13 @@ def eml_headers(source):
             first(raw.get('thread-topic'), subject)
         ),
         'from': first(raw.get('from'), str(header.get('from') or '')),
+        'to': first(raw.get('to'), str(header.get('to') or '')),
+        'cc': first(raw.get('cc'), str(header.get('cc') or '')),
+        'delivered_to': first(
+            raw.get('delivered-to') or raw.get('x-original-to'), ''
+        ),
+        'list_id': first(raw.get('list-id'), ''),
+        'list_unsubscribe': first(raw.get('list-unsubscribe'), ''),
         'date': header.get('date'),
     }
 
@@ -108,20 +125,30 @@ def _eml_base_subject(subject):
         subject = stripped
 
 
-def eml_thread_members(directory, source):
+def eml_thread_members(directory, source, dropped=None):
     """Return [(path, headers)] of the thread of source in directory, by date.
 
     Mails are linked transitively by any shared message id (Message-ID,
     In-Reply-To, References) or by the same normalized subject, so partial
-    header exports still group.
+    header exports still group. Files duplicating an earlier file's
+    Message-ID are skipped and appended to ``dropped`` when a list is given.
     """
     directory, source = Path(directory), Path(source)
     infos = {}
+    seen_ids = set()
     for path in sorted(directory.glob('*.eml')):
         try:
-            infos[path] = eml_headers(path)
+            headers = eml_headers(path)
         except Exception:
             continue
+        mid = headers['message_id']
+        if mid and mid in seen_ids:
+            if dropped is not None:
+                dropped.append(path)
+            continue
+        if mid:
+            seen_ids.add(mid)
+        infos[path] = headers
     if source not in infos:
         try:
             infos[source] = eml_headers(source)
@@ -129,7 +156,8 @@ def eml_thread_members(directory, source):
             infos[source] = {
                 'message_id': '', 'in_reply_to': '', 'references': [],
                 'subject': source.stem, 'thread_subject': source.stem,
-                'from': '', 'date': '',
+                'from': '', 'to': '', 'cc': '', 'delivered_to': '',
+                'list_id': '', 'list_unsubscribe': '', 'date': '',
             }
 
     # Union-find over shared ids and the normalized subject.
@@ -162,21 +190,87 @@ def eml_thread_members(directory, source):
     return members
 
 
-def eml_thread_to_markdown(members, output_path):
-    """Write one Markdown file for a mail thread, quote-stripped, by date."""
+def _trimmed_lines(text):
+    """Body lines without trailing blanks."""
+    lines = text.splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return lines
+
+
+def _shared_footer_length(lines, other):
+    """Longest identical non-blank trailing line run of two bodies."""
+    k = 0
+    while (k < len(lines) and k < len(other)
+           and lines[-1 - k].strip() == other[-1 - k].strip()
+           and lines[-1 - k].strip()):
+        k += 1
+    return k
+
+
+def _dedupe_shared_footers(bodies):
+    """Footers shared by several thread mails: keep only the last instance."""
+    line_lists = [_trimmed_lines(body) for body in bodies]
+    footers = []
+    for i, lines in enumerate(line_lists):
+        best = max(
+            (_shared_footer_length(lines, other)
+             for j, other in enumerate(line_lists) if j != i),
+            default=0,
+        )
+        footers.append(tuple(l.strip() for l in lines[len(lines) - best:]))
+    last_of = {}
+    for i, footer in enumerate(footers):
+        if len(footer) >= 2:
+            last_of[footer] = i  # later index wins
+    out = []
+    for i, (lines, footer) in enumerate(zip(line_lists, footers)):
+        if len(footer) >= 2 and last_of.get(footer) != i:
+            lines = _trimmed_lines('\n'.join(lines[:len(lines) - len(footer)]))
+        out.append('\n'.join(lines))
+    return out
+
+
+def eml_thread_to_markdown(members, output_path, attachments_dir=None):
+    """Write one Markdown file for a mail thread, quote-stripped, by date.
+
+    ``attachments_dir`` enables attachment extraction — files are prefixed
+    with the mail's message-doc id and listed under ``- Attachments:``.
+    """
     output_path = Path(output_path)
     subject = members[0][1].get('subject') or members[0][0].stem
+    first_base = members[0][1].get('thread_subject')
+    bodies, attachments = [], []
+    for i, (path, _headers) in enumerate(members):
+        raw = path.read_bytes()
+        parsed = eml_parser.EmlParser(include_raw_body=True).decode_email_bytes(raw)
+        bodies.append(strip_quoted_text(_eml_body(parsed)))
+        names = []
+        if attachments_dir is not None:
+            msg = email.message_from_bytes(raw, policy=email.policy.default)
+            names = write_attachments(
+                msg, attachments_dir, prefix=f"{message_doc_id(msg, i)}-"
+            )
+        attachments.append(names)
+    bodies = _dedupe_shared_footers(bodies)
     lines = [f"# {subject}", '']
-    for path, headers in members:
-        parsed = eml_parser.EmlParser(include_raw_body=True).decode_email_bytes(
-            path.read_bytes()
-        )
+    for (path, headers), body, names in zip(members, bodies, attachments):
         lines += [
             f"## {headers.get('date') or ''} - {headers.get('from') or ''}",
-            '',
-            strip_quoted_text(_eml_body(parsed)),
-            '',
+            f"- To: {headers.get('to') or ''}",
         ]
+        optional = (
+            ('Cc', headers.get('cc')),
+            ('Subject', headers.get('subject')
+             if headers.get('thread_subject') != first_base else ''),
+            ('Delivered-To', headers.get('delivered_to')),
+            ('List-Id', headers.get('list_id')),
+            ('List-Unsubscribe', headers.get('list_unsubscribe')),
+        )
+        lines += [f"- {label}: {value}" for label, value in optional if value]
+        if names:
+            lines.append(f"- Attachments: {', '.join(names)}")
+        lines += ['', body, '']
     output_path.write_text('\n'.join(lines).strip() + '\n', encoding='utf-8')
     return output_path
 

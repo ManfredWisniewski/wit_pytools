@@ -4,6 +4,11 @@ import re
 import shutil
 import subprocess
 import tempfile
+import logging
+
+# pdfminer floods logs with per-font warnings (FontBBox etc.)
+logging.getLogger('pdfminer').setLevel(logging.ERROR)
+logging.getLogger('pdfplumber').setLevel(logging.ERROR)
 from datetime import datetime
 from configparser import ConfigParser
 from pathlib import Path
@@ -2011,6 +2016,10 @@ def handle_docprep(file, sourcedir, targetdir, bowl, clean, clean_nocase, config
             return False
         conversion_settings = dict(settings)
         conversion_settings['sidecar_path'] = str(sidecar_path)
+        if source.suffix.lower() == '.eml':
+            conversion_settings['attachments_dir'] = str(
+                source.parent / 'attachments'
+            )
         if mode:
             conversion_settings['mode'] = mode
         convert(source, output_path, conversion_settings)
@@ -2415,19 +2424,38 @@ def _inbox_negative_remove(targetdir, nfile, bowl, dryrun):
 _inbox_eml_threads = {}
 
 
-def _inbox_eml_thread_file(source, sourcedir, clean, clean_nocase, replacements, ignore_files=''):
-    """Return the thread members of an .eml source, or None if it is alone."""
+def _inbox_eml_threads_build(sourcedir, clean, clean_nocase, replacements, ignore_files):
+    """Thread groups + message-id duplicates per directory, once per run."""
     from wit_pytools.mailtools import eml_thread_members
     key = str(Path(sourcedir).resolve())
     if key not in _inbox_eml_threads:
-        groups = {}
+        groups, dropped = {}, []
         for path in Path(sourcedir).glob('*.eml'):
             if matchstring(path.name.casefold(), ignore_files):
                 continue
-            groups[path.name] = eml_thread_members(sourcedir, path)
-        _inbox_eml_threads[key] = groups
-    members = _inbox_eml_threads[key].get(source.name) or []
+            groups[path.name] = eml_thread_members(sourcedir, path, dropped=dropped)
+        _inbox_eml_threads[key] = {
+            'groups': groups,
+            'dropped': frozenset(p.name for p in dropped),
+        }
+    return _inbox_eml_threads[key]
+
+
+def _inbox_eml_thread_file(source, sourcedir, clean, clean_nocase, replacements, ignore_files=''):
+    """Return the thread members of an .eml source, or None if it is alone."""
+    entry = _inbox_eml_threads_build(
+        sourcedir, clean, clean_nocase, replacements, ignore_files
+    )
+    members = entry['groups'].get(source.name) or []
     return members if len(members) > 1 else None
+
+
+def _inbox_eml_is_duplicate(source, sourcedir, clean, clean_nocase, replacements, ignore_files=''):
+    """True when the .eml duplicates another file's Message-ID."""
+    entry = _inbox_eml_threads_build(
+        sourcedir, clean, clean_nocase, replacements, ignore_files
+    )
+    return source.name in entry['dropped']
 
 
 def _inbox_eml_thread_path(sourcedir, members, clean, clean_nocase, replacements):
@@ -2989,6 +3017,14 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
     eml_members = None
     default_bowl = _inbox_default_bowl(config_object)
 
+    if source.suffix.lower() == '.eml' and email_threads and _inbox_eml_is_duplicate(
+            source, sourcedir, clean, clean_nocase, replacements, ignore_files):
+        message = f"Inbox: duplicate mail discarded: {source.name}"
+        log_message(message, level="INFO")
+        print(message)
+        delfile(sourcedir, source.name, dryrun=dryrun)
+        return
+
     # Deterministic match first: a cleaned-name or existing-markup match
     # decides the bowl without conversion or JEV cost.
     bowl = ''
@@ -3021,7 +3057,10 @@ def handle_inbox(file, sourcedir, targetdir, clean, clean_nocase, config_object,
                 else:
                     try:
                         from wit_pytools.mailtools import eml_thread_to_markdown
-                        eml_thread_to_markdown(eml_members, markup_path)
+                        eml_thread_to_markdown(
+                            eml_members, markup_path,
+                            attachments_dir=markup_path.parent / 'attachments',
+                        )
                         message = f"Doc_prep: created thread markup {markup_path}"
                         log_message(message, level="INFO")
                         print(message)

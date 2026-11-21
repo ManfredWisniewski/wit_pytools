@@ -58,7 +58,7 @@ def message_text(msg) -> str:
     if body is None:
         body = msg.get_body(preferencelist=("html",))
         if body is not None:
-            html = body.get_content()
+            html = links_to_markdown(body.get_content())
             return re.sub(r"<[^>]+>", "", html).strip()
     if body is None:
         try:
@@ -76,6 +76,35 @@ def safe_filename(name: str) -> str:
     name = decode_header_value(name) or "attachment.bin"
     name = name.replace("\\", "/").split("/")[-1]
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name)[:120] or "attachment.bin"
+
+
+def write_attachments(msg, att_dir, prefix: str = "") -> list[str]:
+    """Decode msg attachments into att_dir as <prefix><safe name>."""
+    att_dir = Path(att_dir)
+    att_dir.mkdir(parents=True, exist_ok=True)
+    written = []
+    for part in msg.iter_attachments():
+        data = part.get_payload(decode=True)
+        if data is None:
+            continue
+        att_path = att_dir / f"{prefix}{safe_filename(part.get_filename())}"
+        att_path.write_bytes(data)
+        written.append(att_path.name)
+    return written
+
+
+_LINK_RE = re.compile(
+    r'<a\b[^>]*?href\s*=\s*["\']([^"\']+)["\'][^>]*>(.*?)</a\s*>',
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def links_to_markdown(html: str) -> str:
+    """Keep link targets: <a href="u">t</a> -> [t](u) before tag stripping."""
+    def repl(match):
+        text = re.sub(r'<[^>]+>', '', match.group(2)).strip()
+        return f"[{text or match.group(1)}]({match.group(1)})"
+    return _LINK_RE.sub(repl, html)
 
 
 def message_date_str(msg) -> str:
@@ -127,15 +156,10 @@ def mail_to_markdown(raw: bytes, output_path, *, frontmatter: dict | None = None
 
     written = []
     if attachments_dir is not None:
-        att_dir = Path(attachments_dir)
-        att_dir.mkdir(parents=True, exist_ok=True)
-        for part in msg.iter_attachments():
-            data = part.get_payload(decode=True)
-            if data is None:
-                continue
-            att_path = att_dir / f"{attachments_prefix}{safe_filename(part.get_filename())}"
-            att_path.write_bytes(data)
-            written.append(str(att_path))
+        written = [
+            str(Path(attachments_dir) / name)
+            for name in write_attachments(msg, attachments_dir, attachments_prefix)
+        ]
 
     if frontmatter is None:
         lines = [
@@ -143,10 +167,24 @@ def mail_to_markdown(raw: bytes, output_path, *, frontmatter: dict | None = None
             "",
             f"- From: {decode_header_value(msg.get('From'))}",
             f"- To: {decode_header_value(msg.get('To'))}",
-            f"- Date: {msg.get('Date', '')}",
-            "",
-            body,
         ]
+        optional = (
+            ("Cc", msg.get("Cc")),
+            ("Delivered-To", msg.get("Delivered-To") or msg.get("X-Original-To")),
+            ("List-Id", msg.get("List-Id")),
+            ("List-Unsubscribe", msg.get("List-Unsubscribe")),
+        )
+        lines += [
+            f"- {label}: {decode_header_value(value)}"
+            for label, value in optional
+            if value
+        ]
+        lines.append(f"- Date: {msg.get('Date', '')}")
+        if written:
+            lines.append(
+                f"- Attachments: {', '.join(Path(p).name for p in written)}"
+            )
+        lines += ["", body]
     else:
         lines = ["---"]
         items = list(frontmatter.items())
@@ -170,8 +208,16 @@ def eml_to_markdown(source, output_path, settings=None):
     """Convert an .eml file into a simple Markdown file (legacy signature).
 
     Thin wrapper over :func:`mail_to_markdown` — kept for backwards
-    compatibility (NFR-004).
+    compatibility (NFR-004). ``settings['attachments_dir']`` enables
+    attachment extraction next to the markup.
     """
     source = Path(source)
-    out, _written = mail_to_markdown(source.read_bytes(), output_path, settings=settings)
+    settings = settings or {}
+    out, _written = mail_to_markdown(
+        source.read_bytes(),
+        output_path,
+        attachments_dir=settings.get('attachments_dir'),
+        attachments_prefix=settings.get('attachments_prefix', ''),
+        settings=settings,
+    )
     return out
