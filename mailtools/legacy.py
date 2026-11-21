@@ -256,7 +256,8 @@ def eml_thread_to_markdown(members, output_path, attachments_dir=None):
     lines = [f"# {subject}", '']
     for (path, headers), body, names in zip(members, bodies, attachments):
         lines += [
-            f"## {headers.get('date') or ''} - {headers.get('from') or ''}",
+            f"## {headers.get('date') or ''}",
+            f"- From: {headers.get('from') or ''}",
             f"- To: {headers.get('to') or ''}",
         ]
         optional = (

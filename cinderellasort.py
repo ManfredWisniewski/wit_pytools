@@ -3268,7 +3268,10 @@ def process_inbox_eval(
                 source, markup, config_object, dryrun, force=True
             )
         bowl = _inbox_jev_bowl(markup, config_object)
-        if not bowl:
+        if not bowl and not jev_settings(config_object).get(
+                'routing_question'):
+            # Eval resolves domains via the JEV answer; deterministic
+            # crits stay the fallback only without a routing question.
             bowl = bowldir_inbox(nfile, config_object, markup_path=markup)
         resolved = bowl.lstrip('/')
         if resolved == default_bowl:
