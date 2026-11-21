@@ -2477,6 +2477,125 @@ def test_inbox_eval_rescan_jev_reclassifies(tmp_path, monkeypatch):
     assert (target_dir / "WIT" / "doc.md").is_file()
 
 
+def test_inbox_eval_rescan_convertible_ignores_crits(tmp_path, monkeypatch):
+    # with routing_question, eval resolves only via JEV — a matching
+    # filename crit must not pull a convertible file out of eval
+    source_dir, target_dir, config_path = _eval_setup(
+        tmp_path,
+        inbox_bowls={"FAW": "doc", "INBOX-eval": "!DEFAULT"},
+        eval_files={
+            "doc.pdf": "fake",
+            "doc.md": "---\ncategory: 99_Unclassified\n---\n\nbody",
+        },
+        settings_section={"eval_rescan": "true"},
+        jev_section={"routing_question": "domain"},
+    )
+    answers = {
+        **JEV_ANSWERS,
+        "domain": {
+            "type": "choice",
+            "choice": "99_Unclassified",
+            "confidence": 0.9,
+        },
+    }
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide", _fake_decide(answers)
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert (target_dir / "INBOX-eval" / "doc.pdf").is_file()
+    assert not (target_dir / "FAW" / "doc.pdf").exists()
+
+
+def test_inbox_eval_rescan_nonconvertible_uses_crits(tmp_path, monkeypatch):
+    # files that can never produce markup (no JEV input) still resolve
+    # via filename crits — their name is the only routing signal
+    source_dir, target_dir, config_path = _eval_setup(
+        tmp_path,
+        inbox_bowls={"FAW": "FAW-amex", "INBOX-eval": "!DEFAULT"},
+        eval_files={"FAW-amex-statement.csv": "a,b\n1,2\n"},
+        settings_section={"eval_rescan": "true"},
+        jev_section={"routing_question": "domain"},
+        ftype_sort=".csv",
+    )
+    calls = []
+    monkeypatch.setattr(
+        "wit_pytools.aitools.openrouter.decide",
+        _fake_decide(JEV_ANSWERS, calls),
+    )
+
+    cinderellasort(str(config_path), dryrun=False)
+
+    assert not calls, "non-convertible files need no JEV call"
+    assert (target_dir / "FAW" / "FAW-amex-statement.csv").is_file()
+
+
+def _detail_ini(tmp_path, table_overrides, bowls=None):
+    """Write a detail-sort ini (named inbox-<x>.ini) in tmp_path."""
+    source_dir = tmp_path / "staging" / "FAW"
+    source_dir.mkdir(parents=True, exist_ok=True)
+    target_dir = tmp_path / "FAW"
+    target_dir.mkdir(exist_ok=True)
+    detail = ConfigParser()
+    detail.optionxform = str
+    detail["TABLE"] = {
+        "sourcedir": str(source_dir),
+        "targetdir": str(target_dir),
+        "filemode": "win",
+        **table_overrides,
+    }
+    if bowls:
+        detail["BOWLS_INBOX"] = bowls
+    detail_path = tmp_path / "inbox-faw.ini"
+    with detail_path.open("w", encoding="utf-8") as fp:
+        detail.write(fp)
+    return source_dir, target_dir, detail_path
+
+
+def test_inbox_detail_ini_inherits_from_inbox_ini(tmp_path):
+    # 'inherit' values resolve from a sibling inbox.ini (same dir)
+    source_dir, target_dir, detail_path = _detail_ini(
+        tmp_path, {"ftype_sort": "inherit"}, {"Belege": "Rechnung"}
+    )
+    shutil.copy(TEST_PDF, source_dir / "Rechnung.pdf")
+    base = ConfigParser()
+    base.optionxform = str
+    base["TABLE"] = {
+        "sourcedir": str(tmp_path / "in"),
+        "targetdir": str(tmp_path / "out"),
+        "ftype_sort": ".pdf",
+        "filemode": "win",
+    }
+    with (tmp_path / "inbox.ini").open("w", encoding="utf-8") as fp:
+        base.write(fp)
+
+    cinderellasort(str(detail_path), dryrun=False)
+
+    assert (target_dir / "Belege" / "Rechnung.pdf").is_file()
+
+
+def test_inbox_detail_ini_inherit_without_inbox_ini_fails(tmp_path):
+    # 'inherit' without a sibling inbox.ini must abort
+    _, _, detail_path = _detail_ini(tmp_path, {"ftype_sort": "inherit"})
+
+    with pytest.raises(ValueError, match="inbox.ini"):
+        cinderellasort(str(detail_path), dryrun=False)
+
+
+def test_inbox_detail_ini_inherit_missing_key_fails(tmp_path):
+    # 'inherit' fails when the key is not defined in the sibling inbox.ini
+    _, _, detail_path = _detail_ini(tmp_path, {"ftype_sort": "inherit"})
+    base = ConfigParser()
+    base.optionxform = str
+    base["TABLE"] = {"sourcedir": "in", "targetdir": "out"}
+    with (tmp_path / "inbox.ini").open("w", encoding="utf-8") as fp:
+        base.write(fp)
+
+    with pytest.raises(ValueError, match="cannot inherit"):
+        cinderellasort(str(detail_path), dryrun=False)
+
+
 def test_inbox_eval_rescan_disabled_by_default(tmp_path, monkeypatch):
     source_dir, target_dir, config_path = _eval_setup(
         tmp_path,

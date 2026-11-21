@@ -168,6 +168,35 @@ def merge_common_rules(config_object, common_configfile):
         )
 
 
+def _resolve_inherit(config_object, configfile):
+    """Replace 'inherit' values with the same key from a sibling inbox.ini."""
+    pending = [
+        (section, key)
+        for section in config_object.sections()
+        for key, value in config_object.items(section, raw=True)
+        if value.strip().casefold() == 'inherit'
+    ]
+    if not pending:
+        return
+    base_path = Path(configfile).resolve().parent / 'inbox.ini'
+    if not base_path.is_file():
+        raise ValueError(
+            f"'inherit' values in {configfile} require an inbox.ini "
+            f"in the same directory"
+        )
+    base = ConfigParser()
+    base.optionxform = str
+    base.read(base_path, encoding='utf-8')
+    for section, key in pending:
+        value = base.get(section, key, fallback='inherit').strip()
+        if value.casefold() == 'inherit':
+            raise ValueError(
+                f"'{key}' in [{section}] of {configfile} cannot inherit: "
+                f"'{key}' is not defined in {base_path}"
+            )
+        config_object.set(section, key, value)
+
+
 def parse_bowl_tags(tags_str):
     """Parse a string containing tags with access levels in format 'tag1[level1] tag2[level2]'
     Returns a dictionary mapping tag names to their access levels.
@@ -3268,10 +3297,13 @@ def process_inbox_eval(
                 source, markup, config_object, dryrun, force=True
             )
         bowl = _inbox_jev_bowl(markup, config_object)
-        if not bowl and not jev_settings(config_object).get(
-                'routing_question'):
+        if not bowl and (
+            not jev_settings(config_object).get('routing_question')
+            or source.suffix.lower() not in DOCPREP_CONVERTERS
+        ):
             # Eval resolves domains via the JEV answer; deterministic
-            # crits stay the fallback only without a routing question.
+            # crits apply only without a routing question or for files
+            # that can never produce markup (no JEV input possible).
             bowl = bowldir_inbox(nfile, config_object, markup_path=markup)
         resolved = bowl.lstrip('/')
         if resolved == default_bowl:
@@ -3722,6 +3754,7 @@ def cinderellasort(
     config_object = ConfigParser()
     config_object.optionxform = str  # preserves case for keys and values
     config_object.read(configfile, encoding='utf-8')
+    _resolve_inherit(config_object, configfile)
     table = config_object["TABLE"]
     configured_filemode = table.get('filemode', filemode).casefold()
     if common_configfile is None and configured_filemode == 'nc':
