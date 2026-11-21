@@ -256,7 +256,7 @@ def bowldir_docprep(file, config_object=''):
     for (bowl, critlist) in config_object.items("BOWLS_DOCPREP", raw=True):
         for crit in critlist.split(','):
             crit = crit.strip()
-            if crit and crit in file:
+            if crit and _crit_match(crit, file):
                 return '/' + bowl
     return ''
 
@@ -275,7 +275,7 @@ def bowldir_anonymize(file, config_object=''):
     for (bowl, critlist) in config_object.items("BOWLS_ANONYMIZE", raw=True):
         for crit in critlist.split(','):
             crit = crit.strip()
-            if crit and crit in file:
+            if crit and _crit_match(crit, file):
                 return '/' + bowl
     return ''
 
@@ -294,7 +294,7 @@ def bowldir_gen_img(file, config_object=''):
     for (bowl, critlist) in config_object.items("BOWLS_GEN_IMG", raw=True):
         for crit in critlist.split(','):
             crit = crit.strip()
-            if crit and crit in file:
+            if crit and _crit_match(crit, file):
                 return '/' + bowl
     return ''
 
@@ -311,13 +311,45 @@ def _split_inbox_crits(critlist):
     """Split an inbox critlist into filename and content criteria.
 
     Format: 'name_crits;content_crits' - left of ';' matches the cleaned
-    filename only, right of ';' matches the markup content only.
+    filename only, right of ';' matches the markup content only. Crit
+    logic ('++' AND, '--' NOT) is in _crit_terms/_crit_match.
     """
     name_part, _, content_part = critlist.partition(';')
     parse = lambda part: [
         crit.strip() for crit in part.split(',') if crit.strip()
     ]
     return parse(name_part), parse(content_part)
+
+
+def _crit_terms(crit):
+    """Split a crit into required substrings and forbidden groups.
+
+    '++' joins AND parts (all must occur); '--' starts a NOT part that may
+    itself be '++'-joined (the combination must not occur). 'a++b--c++d'
+    means: a AND b AND NOT (c AND d).
+    """
+    chunks = crit.split('--')
+
+    def _parts(chunk):
+        return [part.strip() for part in chunk.split('++') if part.strip()]
+
+    return _parts(chunks[0]), [
+        group for group in (_parts(chunk) for chunk in chunks[1:]) if group
+    ]
+
+
+def _crit_match(crit, text, *, fold=False):
+    """True when all '++' parts occur in text and no '--' group fully does."""
+    required, forbidden = _crit_terms(crit)
+    if fold:
+        text = text.casefold()
+        required = [part.casefold() for part in required]
+        forbidden = [
+            [part.casefold() for part in group] for group in forbidden
+        ]
+    return all(part in text for part in required) and not any(
+        all(part in text for part in group) for group in forbidden
+    )
 
 
 # check if file matches a criteria for an inbox bowl and return the corresponding bowl
@@ -340,7 +372,7 @@ def bowldir_inbox(file, config_object='', markup_path=None):
                     default_bowl = bowl
                     continue
                 for crit in _split_inbox_crits(critlist)[1]:
-                    if crit.casefold() in content:
+                    if _crit_match(crit, content, fold=True):
                         return '/' + bowl
 
     # Second pass: filename-based matching (generic terms as fallback)
@@ -349,7 +381,7 @@ def bowldir_inbox(file, config_object='', markup_path=None):
             default_bowl = bowl
             continue
         for crit in _split_inbox_crits(critlist)[0]:
-            if crit in file:
+            if _crit_match(crit, file):
                 return '/' + bowl
 
     if default_bowl:
@@ -372,7 +404,7 @@ def bowldir(file, config_object='', file_path=None, check_content=False):
 
         for crit in critlist.split(','):
             crit = crit.strip()
-            if crit and crit in file:
+            if crit and _crit_match(crit, file):
                 return '/' + bowl
 
     # Second pass: optional content search when filename did not match
@@ -386,11 +418,20 @@ def bowldir(file, config_object='', file_path=None, check_content=False):
                     crit = crit.strip()
                     if not crit:
                         continue
-                    try:
-                        content_matches = document_find_regex(file_path_obj, crit)
-                    except RuntimeError:
-                        content_matches = []
-                    if content_matches:
+                    required, forbidden = _crit_terms(crit)
+
+                    def _found(part):
+                        try:
+                            return bool(
+                                document_find_regex(file_path_obj, part)
+                            )
+                        except RuntimeError:
+                            return False
+
+                    if all(_found(part) for part in required) and not any(
+                        all(_found(part) for part in group)
+                        for group in forbidden
+                    ):
                         return '/' + bowl
 
     if default_bowl:
@@ -429,7 +470,7 @@ def bowldir_email(file, config_object=''):
                     
                 for crit in critlist.split(','):
                     crit = crit.strip()
-                    if crit and crit in file and not found:
+                    if crit and _crit_match(crit, file) and not found:
                         return '/' + bowl
             
             # Check if file has a valid email address

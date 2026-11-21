@@ -1589,6 +1589,56 @@ def test_bowldir_inbox_mixed_crits(tmp_path):
     assert cs.bowldir_inbox("scan.pdf", config) == ""
 
 
+def test_bowldir_inbox_content_crit_and(tmp_path):
+    config = ConfigParser()
+    config.optionxform = str
+    config["BOWLS_INBOX"] = {
+        "Kontoauszug": ";Kontoauszug++5445047949",
+        "Rest": "!DEFAULT",
+    }
+    markup = tmp_path / "doc.md"
+    markup.write_text(
+        "Kontoauszug fuer Konto 5445047949", encoding="utf-8"
+    )
+    assert (
+        cs.bowldir_inbox("doc.pdf", config, markup_path=markup)
+        == "/Kontoauszug"
+    )
+    markup.write_text(
+        "Rechnung, bitte auf Konto 5445047949", encoding="utf-8"
+    )
+    assert cs.bowldir_inbox("doc.pdf", config, markup_path=markup) == "/Rest"
+
+
+def test_bowldir_inbox_content_crit_not(tmp_path):
+    config = ConfigParser()
+    config.optionxform = str
+    config["BOWLS_INBOX"] = {
+        "Kontoauszug": ";Kontoauszug--Rechnung",
+        "Rest": "!DEFAULT",
+    }
+    markup = tmp_path / "doc.md"
+    markup.write_text("Kontoauszug Januar", encoding="utf-8")
+    assert (
+        cs.bowldir_inbox("doc.pdf", config, markup_path=markup)
+        == "/Kontoauszug"
+    )
+    markup.write_text("Kontoauszug und Rechnung", encoding="utf-8")
+    assert cs.bowldir_inbox("doc.pdf", config, markup_path=markup) == "/Rest"
+
+
+def test_bowldir_filename_crit_and_not():
+    config = ConfigParser()
+    config.optionxform = str
+    config["BOWLS"] = {
+        "Konto": "konto++auszug--rechnung",
+        "Rest": "!DEFAULT",
+    }
+    assert cs.bowldir("konto auszug.pdf", config) == "/Konto"
+    assert cs.bowldir("konto.pdf", config) == "/Rest"
+    assert cs.bowldir("konto auszug rechnung.pdf", config) == "/Rest"
+
+
 def test_inbox_jev_tags_markup_before_move(tmp_path, monkeypatch):
     source_dir, target_dir, config_path = _inbox_setup(
         tmp_path, pdf_name="Rechnung 2026.pdf", jev_section={}

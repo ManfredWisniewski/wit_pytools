@@ -48,7 +48,7 @@ One INI file per project. Keys and bowl names are case-preserving.
 
 ### `[BOWLS]`
 
-Filename criteria; optionally content criteria for PDFs. Supports `!DEFAULT`.
+Filename criteria; optionally content criteria for PDFs. Supports `!DEFAULT`. Within a criterion, `++` joins AND parts (all must occur) and `--` starts a NOT part that may itself be `++`-joined — `a++b--c` means a AND b AND NOT c.
 
 ### `[BOWLS_EMAIL]`
 
@@ -342,14 +342,18 @@ intern=...
 
 Criteria are split at the first `;`: left of `;` are filename criteria, right
 of `;` are content criteria matched against the `.md` markup. No `;` means
-filename-only. General terms belong to the filename group (so `Rechnung` does
+filename-only. Within a criterion, `++` joins AND parts (all must occur) and
+`--` starts a NOT part that may itself be `++`-joined —
+`;Kontoauszug++5445047949` matches only documents containing both strings,
+`;Kontoauszug--Rechnung` excludes documents that also contain `Rechnung`.
+General terms belong to the filename group (so `Rechnung` does
 not hit `Rechnungsadresse` in document text), specific tokens like customer
 numbers belong to the content group.
 
 ### Behavior per file
 
 1. `*_pdf2md.json` files and `.md` files that have a convertible source beside them are sidecars: they are never sorted on their own and travel with their source document.
-2. Score PDFs (SMuFL music fonts or Unicode private-use-area glyphs in the text layer, detected via `pdf2md._has_music_notation`) are renamed to `<stem>_sheet-music.pdf` before matching — filename crits such as `sheet-music` route them. They get text-mode markup (`mode=text`: text layer only, no vision call, no notation content) so JEV tagging and content crits work on them. Files already named `*_sheet-music` keep their name; a numeric suffix (`_sheet-music-1`, …) resolves collisions. With `[DOCPREP] transcode_sheetmusic=true` (default `false`) and Audiveris available, the score is additionally converted via OMR to `<stem>.mxl` beside the source (timeout `[DOCPREP] audiveris_timeout`, default 600 s); the `.mxl` and the Audiveris project file `<stem>.omr` (kept for manual review/correction in the Audiveris GUI) travel with the PDF like other sidecars. `audiveris` may be the install directory (its bundled `runtime\bin\java.exe` is called with `-cp app\* Audiveris` — the exe launcher can detach before OMR finishes), a direct executable, or empty (`PATH` lookup, then `C:\Program Files\Audiveris`). The PDF is copied to an ASCII temp name first because Audiveris argument parsing fails on non-ASCII paths. OMR failure or a missing executable only logs — the rename still happens.
+2. Score PDFs (notation chars — SMuFL music fonts, word-boundary match on the font name, or Unicode private-use-area glyphs — must reach `pdf2md.MUSIC_CHAR_MIN` and `MUSIC_CHAR_RATIO` of all text-layer chars, detected via `pdf2md._has_music_notation`; the ratio keeps icon/symbol fonts in ordinary documents from being flagged) are renamed to `<stem>_sheet-music.pdf` before matching — filename crits such as `sheet-music` route them. They get text-mode markup (`mode=text`: text layer only, no vision call, no notation content) so JEV tagging and content crits work on them. Files already named `*_sheet-music` keep their name; a numeric suffix (`_sheet-music-1`, …) resolves collisions. With `[DOCPREP] transcode_sheetmusic=true` (default `false`) and Audiveris available, the score is additionally converted via OMR to `<stem>.mxl` beside the source (timeout `[DOCPREP] audiveris_timeout`, default 600 s); the `.mxl` and the Audiveris project file `<stem>.omr` (kept for manual review/correction in the Audiveris GUI) travel with the PDF like other sidecars. `audiveris` may be the install directory (its bundled `runtime\bin\java.exe` is called with `-cp app\* Audiveris` — the exe launcher can detach before OMR finishes), a direct executable, or empty (`PATH` lookup, then `C:\Program Files\Audiveris`). The PDF is copied to an ASCII temp name first because Audiveris argument parsing fails on non-ASCII paths. OMR failure or a missing executable only logs — the rename still happens.
 3. Image files (`.jpg`, `.jpeg`, `.png`, `.tif`, `.tiff`, `.webp`, `.bmp`) are classified art vs. document when `[DOCPREP] classify_images=true` (default off): grayscale bimodal histogram first, then tesseract OCR (`tesseract=` path, else `PATH` then default installs incl. the PDF24 bundle), then — only when OCR finds no text — a vision-model check (`image_model=`, else the markup model; disable via `classify_images_vlm=false`). Document images are renamed to `<stem>_doc-image<suffix>` and get a `.md` with the OCR/VLM text, so filename crits (`doc-image`), JEV tagging and content crits all work; art images keep their name and get no markup. With `classify_images=false` images are treated like any other file without markup support.
 3. Converter-supported files whose `.md` is missing are converted beside the source (conversion failures are logged and leave the file sortable by filename only).
 5. With `[JEV]` configured, the markup of every converter-supported file is classified via the OpenRouter Decisions API before matching, so every document gets tags. The answers are written as frontmatter fields (one per question, e.g. `category`, `document_type`, `classification`, plus `*_confidence`; `tags` is a YAML list of all choices in Obsidian style) into the `.md`; files that already carry a `category` field are skipped, so re-runs cost nothing. Because the frontmatter is part of the markup, bowl content criteria can match `category: 02_...` or tag strings directly. A markup whose source has no registered converter (e.g. a standalone `.md`) is not classified.

@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import openpyxl
 import pytest
@@ -393,6 +394,37 @@ def test_pdf2md_music_char_detection():
     assert pdf2md._is_music_char({"fontname": "ABCDEF+Maestro", "text": "x"})
     assert pdf2md._is_music_char({"fontname": "Helvetica", "text": "\ue050"})
     assert not pdf2md._is_music_char({"fontname": "Helvetica", "text": "a"})
+    # Token substrings inside non-music font names must not match
+    assert not pdf2md._is_music_char({"fontname": "EngraversGothic", "text": "a"})
+    assert not pdf2md._is_music_char({"fontname": "Engravers Gothic", "text": "a"})
+
+
+def test_pdf2md_has_music_notation_min_count():
+    pua_icon = {"fontname": "Helvetica", "text": "\ue050"}
+    music_char = {"fontname": "Bravura", "text": "x"}
+    text_char = {"fontname": "Arial", "text": "a"}
+    page = lambda chars: SimpleNamespace(chars=list(chars))
+
+    # One stray private-use glyph in a text document is not a score
+    pdf = SimpleNamespace(pages=[page([pua_icon] + [text_char] * 200)])
+    assert pdf2md._has_music_notation(pdf) is False
+
+    pdf = SimpleNamespace(
+        pages=[page([music_char] * (pdf2md.MUSIC_CHAR_MIN - 1))]
+    )
+    assert pdf2md._has_music_notation(pdf) is False
+
+    # Enough music chars but diluted by body text: icon font, not a score
+    pdf = SimpleNamespace(
+        pages=[page(
+            [pua_icon] * pdf2md.MUSIC_CHAR_MIN
+            + [text_char] * int(pdf2md.MUSIC_CHAR_MIN / pdf2md.MUSIC_CHAR_RATIO)
+        )]
+    )
+    assert pdf2md._has_music_notation(pdf) is False
+
+    pdf = SimpleNamespace(pages=[page([music_char] * pdf2md.MUSIC_CHAR_MIN)])
+    assert pdf2md._has_music_notation(pdf) is True
 
 
 def test_pdf2md_no_music_notation_in_text_pdf(pdf_copy):

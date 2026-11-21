@@ -41,6 +41,14 @@ MUSIC_FONT_TOKENS = (
     "lilypond", "finale", "sibelius", "dorico", "capella", "engraver",
     "ashmusic", "norfolk", "cadence",
 )
+# Word-boundary match: "ABCDEF+Bravura" hits, "EngraversGothic" does not
+_MUSIC_FONT_PATTERN = re.compile(
+    r"\b(?:" + "|".join(MUSIC_FONT_TOKENS) + r")\b"
+)
+# Minimum notation chars and their share of all chars to flag a PDF as a
+# score; ignores icon/symbol fonts (PUA glyphs) in ordinary documents
+MUSIC_CHAR_MIN = 10
+MUSIC_CHAR_RATIO = 0.2
 LANGUAGES: Dict[str, Dict[str, str]] = {
     "en": {
         "illegible": "[illegible]",
@@ -125,23 +133,27 @@ def _strip_fence(text: str) -> str:
 def _is_music_char(char: Dict[str, Any]) -> bool:
     """Return True if a pdfplumber char looks like music notation."""
     font = (char.get("fontname") or "").lower()
-    if any(token in font for token in MUSIC_FONT_TOKENS):
+    if _MUSIC_FONT_PATTERN.search(font):
         return True
     text = char.get("text") or ""
     return any(ord(symbol) in SMUFL_RANGE for symbol in text)
 
 
 def _has_music_notation(pdf) -> bool:
-    """Return True if any page uses SMuFL music fonts or private use area glyphs.
+    """Return True if notation chars dominate the text layer.
 
-    Detects PDFs produced by notation software; scanned sheet music images
+    Counts SMuFL music font chars and private use area glyphs; the count
+    must reach ``MUSIC_CHAR_MIN`` and ``MUSIC_CHAR_RATIO`` of all chars —
+    scores are mostly notation, while icon/symbol fonts in ordinary
+    documents stay well below the ratio. Scanned sheet music images
     without a text layer cannot be detected this way.
     """
-    return any(
-        _is_music_char(char)
-        for page in pdf.pages
-        for char in page.chars
-    )
+    music = total = 0
+    for page in pdf.pages:
+        for char in page.chars:
+            total += 1
+            music += _is_music_char(char)
+    return music >= MUSIC_CHAR_MIN and music / total >= MUSIC_CHAR_RATIO
 
 
 def _text_layer(page) -> str:
