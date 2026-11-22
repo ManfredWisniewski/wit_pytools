@@ -25,16 +25,18 @@ def _convert_to_decimal_degrees(degrees_data, ref):
         
         # Check if we have IFDRational objects
         if hasattr(degrees_data[0], 'numerator'):
-            if (degrees_data[0].denominator == 0 or degrees_data[1].denominator == 0 or degrees_data[2].denominator == 0):
-                print("Error converting GPS data: denominator is zero in IFDRational object")
+            # Check for zero denominators or zero coordinates
+            if (degrees_data[0].denominator == 0 or degrees_data[1].denominator == 0 or degrees_data[2].denominator == 0 or
+                (degrees_data[0].numerator == 0 and degrees_data[1].numerator == 0 and degrees_data[2].numerator == 0)):
                 return None
             degrees = float(degrees_data[0].numerator) / float(degrees_data[0].denominator)
             minutes = float(degrees_data[1].numerator) / float(degrees_data[1].denominator)
             seconds = float(degrees_data[2].numerator) / float(degrees_data[2].denominator)
         else:
             # Handle as regular tuples/lists
-            if (degrees_data[0][1] == 0 or degrees_data[1][1] == 0 or degrees_data[2][1] == 0):
-                print("Error converting GPS data: denominator is zero in tuple/list")
+            # Check for zero denominators or zero coordinates
+            if (degrees_data[0][1] == 0 or degrees_data[1][1] == 0 or degrees_data[2][1] == 0 or
+                (degrees_data[0][0] == 0 and degrees_data[1][0] == 0 and degrees_data[2][0] == 0)):
                 return None
             degrees = float(degrees_data[0][0]) / float(degrees_data[0][1])
             minutes = float(degrees_data[1][0]) / float(degrees_data[1][1])
@@ -53,14 +55,24 @@ def _convert_to_decimal_degrees(degrees_data, ref):
         return None
 
 def is_valid_gps(s):
+    from eliot import log_message
+    log_message(f"is_valid_gps checking: '{s}'")
     parts = s.split(',')
+    log_message(f"Split parts: {parts}")
     if len(parts) == 2:
         try:
-            float(parts[0].strip())
-            float(parts[1].strip())
+            lat = float(parts[0].strip())
+            lon = float(parts[1].strip())
+            log_message(f"Parsed coordinates: lat={lat}, lon={lon}")
+            # Check if both coordinates are zero (or very close to zero)
+            if abs(lat) < 0.000001 and abs(lon) < 0.000001:
+                log_message(f"Coordinates are (0,0), treating as invalid GPS data")
+                return False
             return True
-        except ValueError:
+        except ValueError as e:
+            log_message(f"ValueError parsing coordinates: {e}")
             return False
+    log_message(f"Wrong number of parts: {len(parts)}")
     return False
 
 def gps_distance(coord1, coord2):

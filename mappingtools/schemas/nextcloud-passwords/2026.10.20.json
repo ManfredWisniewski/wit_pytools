@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Nextcloud Passwords 2026.10.20 export",
+  "description": "Format version 3. customFields may contain null elements (breaks the app's CSV export, passwords issue #752). folder and tags reference folders/tags by UUID, not by name.",
+  "type": "object",
+  "properties": {
+    "version": {"type": "integer"},
+    "encrypted": {"type": "boolean"},
+    "passwords": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "revision": {"type": "string", "format": "uuid"},
+          "label": {"type": "string"},
+          "username": {"type": "string"},
+          "password": {"type": "string"},
+          "notes": {"type": "string"},
+          "url": {"type": "string"},
+          "customFields": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                {"type": "null"},
+                {
+                  "type": "object",
+                  "properties": {
+                    "label": {"type": "string"},
+                    "type": {"enum": ["text", "email", "url", "secret"]},
+                    "value": {"type": "string"}
+                  }
+                }
+              ]
+            }
+          },
+          "folder": {"type": "string", "format": "uuid"},
+          "edited": {"type": "integer", "description": "unix timestamp"},
+          "favorite": {"type": "boolean"},
+          "tags": {"type": "array", "items": {"type": "string", "format": "uuid"}}
+        }
+      }
+    }
+  }
+}

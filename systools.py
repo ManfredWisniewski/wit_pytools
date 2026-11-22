@@ -1,4 +1,5 @@
 import os, shutil
+from wit_pytools.sanitizers import cleanfilestring
 from stat import filemode
 
 # Helper function for dry run printing
@@ -34,8 +35,17 @@ def checkfile(sourcedir, file):
         return True
 
 # delete empty subdirectories
-def rmemptydir(rootdir, dryrun = (False)):
-    walk = list(os.walk(rootdir))
+def rmemptydir(rootdir, dryrun = (False), ignore_dirs = None):
+    tokens = [token.casefold() for token in (ignore_dirs or []) if token]
+    walk = []
+    for path, dirs, files in os.walk(rootdir):
+        if tokens:
+            # do not descend into ignored directories
+            dirs[:] = [
+                d for d in dirs
+                if not any(token in d.casefold() for token in tokens)
+            ]
+        walk.append((path, dirs, files))
     for path, _, _ in walk[::-1]:
         if not (path == rootdir ):
             if len(os.listdir(path)) == 0:
@@ -53,10 +63,19 @@ def rmemptydir(rootdir, dryrun = (False)):
 
 def delfile(subdir, file, dryrun=False):
     #TODO: (low) known problems handling 0 byte files on smb network shares
+    filepath = os.path.join(subdir, file)
     if dryrun:
         print(' -  del: ' + file)
     else:
-        os.remove((os.path.join(subdir, file)))
+        try:
+            os.remove(filepath)
+            log_message(f"Deleted file: {filepath}", level="INFO")
+        except FileNotFoundError:
+            log_message(f"ERROR: File not found for deletion: {filepath}", level="ERROR")
+        except PermissionError:
+            log_message(f"ERROR: Permission denied deleting: {filepath}", level="ERROR")
+        except Exception as e:
+            log_message(f"ERROR: Failed to delete {filepath}: {str(e)}", level="ERROR")
 
 def movefile(subdir, file, destdir, nfile, filemode='win', overwrite=False, dryrun=False):
     #TODO: add rights handeling before attempt (gets stuck sometimes when copy but no write access
@@ -74,6 +93,9 @@ def movefile(subdir, file, destdir, nfile, filemode='win', overwrite=False, dryr
         subdir, file, destdir, nfile = cleaned_args
         
         source_path = os.path.join(subdir, file)
+        # Sanitize filename for Nextcloud if needed
+        if filemode == 'nc':
+            nfile = cleanfilestring(nfile)
         target_path = os.path.join(destdir, nfile)
         log_message(f"movefile: os={filemode}, overwrite={overwrite}, source_path={source_path}, target_path={target_path}", level="INFO")
 
@@ -104,8 +126,29 @@ def movefile(subdir, file, destdir, nfile, filemode='win', overwrite=False, dryr
                     log_message(f"movefile win: Successfully moved file to {target_path}", level="INFO")
                 elif filemode == 'nc':
                     from wit_pytools import nctools
-                    nctools.ncmovefile(nctools.getncpath(source_path), nctools.getncpath(target_path))
-                    log_message(f"movefile nc: Successfully moved file to {target_path}", level="INFO")
+                    src_nc = nctools.getncpath(source_path)
+                    tgt_nc = nctools.getncpath(target_path)
+                    try:
+                        nctools.ncmovefile(src_nc, tgt_nc)
+                        log_message(f"movefile nc: Successfully moved file to {target_path}", level="INFO")
+                    except Exception as e:
+                        # If move fails (e.g., target exists), try enumerated filenames like base#2.ext
+                        base, ext = os.path.splitext(target_path)
+                        i = 2
+                        while True:
+                            new_target = f"{base}#{i}{ext}"
+                            new_tgt_nc = nctools.getncpath(new_target)
+                            log_message(f"movefile nc: retrying with enumerated target: {new_target}", level="INFO")
+                            try:
+                                nctools.ncmovefile(src_nc, new_tgt_nc)
+                                log_message(f"movefile nc: Successfully moved file to {new_target}", level="INFO")
+                                break
+                            except Exception as e2:
+                                i += 1
+                                # Avoid infinite loops; cap attempts
+                                if i > 99:
+                                    log_message(f"movefile nc: ERROR: giving up after 98 attempts. Last error: {str(e2)}", level="ERROR")
+                                    raise
                 else:
                     log_message(f"movefile: Unknown filemode '{filemode}'", level="ERROR")
         except FileNotFoundError:

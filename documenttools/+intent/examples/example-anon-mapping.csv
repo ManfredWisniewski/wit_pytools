@@ -1,0 +1,2 @@
+status,replacement_value,original_value,value_type,vip,source_documents,locations,occurrences
+new,Person-A123,Max Mustermann,name,,20210203_my-file.md,line 2,1

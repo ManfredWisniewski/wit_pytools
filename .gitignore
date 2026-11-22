@@ -1,3 +1,10 @@
+# AI related
+/.agents/
+**/+intent/**/__*/
+
+# webtools browser profile (contains session cookies)
+.webtools/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -129,6 +136,7 @@ celerybeat.pid
 
 # Environments
 .env
+runners/set_ENV.bat
 .venv
 env/
 venv/
@@ -224,3 +232,6 @@ Thumbs.db
 # E-Mail Files
 *.msg
 *.eml
+
+# Windows files
+*.lnk

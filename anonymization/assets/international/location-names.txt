@@ -1,0 +1,10 @@
+# Known place names excluded from anonymization proposals.
+# Multi-word entries match as consecutive tokens.
+Den Haag
+Dubai
+Estados Unidos
+Kuala Lumpur
+Las Vegas
+Mexico City
+New Mexico
+New York

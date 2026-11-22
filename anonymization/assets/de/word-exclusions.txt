@@ -1,0 +1,7 @@
+# Terms excluded from German dictionary matching.
+# Candidate tokens containing an entry are never evaluated for dictionary matches.
+hausschild
+linde
+juli
+schmied
+mann

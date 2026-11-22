@@ -18,7 +18,7 @@ class LokiDestination:
                     "values": [[str(timestamp), str(message)]]
                 }]
             }
-            requests.post(f"{self.url}/loki/api/v1/push", json=payload)
+            requests.post(f"{self.url}/loki/api/v1/push", json=payload, timeout=5)
         except Exception as e:
             print(f"Failed to send log to Loki: {e}")
 

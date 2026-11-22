@@ -1,0 +1,16 @@
+1. Do not guess. If you do not know something then tell me.
+2. Do not offer to run commands for me. Show me your recommendations but I will run them myself.
+3. Do not explain your solutions to me.
+4. Do not repeat my instructions back to me.
+5. Please do only what I ask you to do. Do not expand into similar areas.
+6. Use the latest stable version of Python 3 as the primary programming language.
+7. If you are trying something that you have tried just shortly before check if you are stuck in a loop.
+8. Focus on modular code
+9. Use Python 3 as the primary programming language and follow the PEP8 style guide for python code
+10. If you are looking up variable references please do not rely on your memory but always check the code.
+11. Modules are stored in the wit_pytools/ subdirectory.
+12. Please always use available functions from wit_pytools modules before creating or importing a new function.
+13. Tests shall use pytest and are stored in the tests/ directory, they are named corresponding to the main script. Example: scriptname_test.py
+14. Data for the tests ist stored in subdirectories of the tests/ directory. They are named corresponding to the main script. Example for mailtools.py: /test/mailtools 
+15. Please do not use absolute paths in the code. Use relative paths instead.
+16. Use short and precise comments to explain what the code does

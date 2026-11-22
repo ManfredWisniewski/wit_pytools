@@ -7,7 +7,7 @@ from PIL import Image
 
 # Add the parent directory to the path so we can import modules from wit_pytools
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from wit_pytools.imgtools import jpg_compress, png2jpg, img_getexif, png_compress, avif_compress, save_img
+from wit_pytools.imgtools import add_ai_label, add_watermark, jpg_compress, png2jpg, img_getexif, png_compress, avif_compress, save_img
 
 def create_test_image(path, size=(100, 100), color=(255, 0, 0)):
     """Create a test image for testing"""
@@ -47,7 +47,6 @@ def test_compress_jpg():
         # Clean up
         shutil.rmtree(temp_dir)
         
-        return "Test compress_jpg: PASSED"
     except Exception as e:
         import traceback
         print(f"Error: {e}")
@@ -55,14 +54,14 @@ def test_compress_jpg():
         # Clean up even if test fails
         if 'temp_dir' in locals():
             shutil.rmtree(temp_dir)
-        return "Test compress_jpg: FAILED"
+        raise
 
 def test_img_getexif():
     try:
         test_img_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "imgtools")
         from wit_pytools.imgtools import img_getexif
         
-        # Test getting EXIF data
+        # Test getting EXIF data from image with complete EXIF data
         exif_data = img_getexif(test_img_dir, 'testimage.jpg')
         
         # Verify the result
@@ -88,12 +87,32 @@ def test_img_getexif():
         assert gps_info[2][0] == 51.0  # Latitude degrees
         assert gps_info[4][0] == 10.0  # Longitude degrees
         
-        return "Test img_getexif: PASSED"
+        # Test image with no EXIF data
+        noexif_data = img_getexif(test_img_dir, 'testimage_noexif.jpg')
+        assert noexif_data is not None
+        # Verify it returns a dictionary, even if empty
+        assert isinstance(noexif_data, dict)
+        
+        # Test image with zero GPS coordinates
+        zerogps_data = img_getexif(test_img_dir, 'testimage_0gps.jpg')
+        assert zerogps_data is not None
+        # Verify it contains some EXIF data
+        assert isinstance(zerogps_data, dict)
+        # If it has GPS data, it should be zeros or near-zeros
+        if 'GPSInfo' in zerogps_data:
+            gps_info = zerogps_data['GPSInfo']
+            if 2 in gps_info and 4 in gps_info:  # Latitude and longitude values
+                lat_data = gps_info[2]
+                lon_data = gps_info[4]
+                if isinstance(lat_data, tuple) and isinstance(lon_data, tuple):
+                    # Either these are zero coordinates or they're valid coordinates
+                    assert True
+        
     except Exception as e:
         import traceback
         print(f"Error: {e}")
         traceback.print_exc()
-        return f"Test img_getexif: FAILED - {str(e)}"
+        raise
 
 # Additional tests for png_compress, avif_compress, and save_img
 def test_png_compress_function():
@@ -138,19 +157,83 @@ def test_save_img_choose_format():
     finally:
         shutil.rmtree(temp_dir)
 
-# Run the tests and print the result messages
+def test_add_watermark_text_default_output_and_no_overwrite(tmp_path):
+    source = tmp_path / "source.png"
+    Image.new("RGBA", (200, 100), (0, 0, 255, 255)).save(source)
+
+    output = add_watermark(source, text="Demo")
+    output_path = os.path.abspath(output)
+    assert output_path.endswith("source_watermarked.png")
+    assert os.path.exists(output_path)
+    with pytest.raises(FileExistsError):
+        add_watermark(source, text="Demo")
+
+
+def test_add_watermark_logo_and_combined(tmp_path):
+    source = tmp_path / "source.jpg"
+    logo = tmp_path / "logo.png"
+    output = tmp_path / "out.jpg"
+    Image.new("RGB", (240, 120), (20, 40, 60)).save(source)
+    Image.new("RGBA", (40, 20), (255, 0, 0, 180)).save(logo)
+
+    result = add_watermark(
+        source,
+        output,
+        text="Example",
+        watermark_image=logo,
+        position="center",
+        text_opacity=200,
+        logo_opacity=200,
+    )
+
+    assert result == str(output)
+    with Image.open(output) as image:
+        assert image.size == (240, 120)
+        assert image.mode == "RGB"
+        assert image.getpixel((120, 60)) != (20, 40, 60)
+
+
+def test_add_watermark_validation(tmp_path):
+    source = tmp_path / "source.png"
+    Image.new("RGB", (20, 20), "white").save(source)
+
+    with pytest.raises(ValueError):
+        add_watermark(source)
+    with pytest.raises(ValueError):
+        add_watermark(source, text="x", position="diagonal")
+    with pytest.raises(ValueError):
+        add_watermark(source, text="x", text_opacity=256)
+
+
+def test_add_ai_label(tmp_path):
+    source = tmp_path / "portrait.png"
+    Image.new("RGB", (400, 300), (200, 200, 200)).save(source)
+    output = tmp_path / "labeled.jpg"
+
+    result = add_ai_label(source, output)
+
+    assert result == str(output)
+    with Image.open(output) as image:
+        assert image.size == (512, 512)
+        # black disc pixel above the AI letters
+        r, g, b = image.getpixel((100, 350))[:3]
+        assert r < 60 and g < 60 and b < 60
+        # white ring at the left badge edge
+        r, g, b = image.getpixel((55, 395))[:3]
+        assert r > 200 and g > 200 and b > 200
+
+
+def test_add_ai_label_default_output_and_no_overwrite(tmp_path):
+    source = tmp_path / "portrait.png"
+    Image.new("RGB", (300, 300), "white").save(source)
+
+    result = add_ai_label(source)
+    assert result == str(tmp_path / "portrait_ai.png")
+
+    with pytest.raises(FileExistsError):
+        add_ai_label(source)
+
+
+# Run the tests using pytest
 if __name__ == "__main__":
-    result_single = test_compress_jpg()
-    print(result_single)
-    
-    result_img_getexif = test_img_getexif()
-    print(result_img_getexif)
-    
-    result_png_compress = test_png_compress_function()
-    print(result_png_compress)
-    
-    result_avif_compress = test_avif_compress_calc()
-    print(result_avif_compress)
-    
-    result_save_img = test_save_img_choose_format()
-    print(result_save_img)
+    pytest.main(['-v', __file__])

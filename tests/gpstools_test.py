@@ -37,10 +37,10 @@ def test_gps_distance():
         distance = gps_distance(same_point, same_point)
         assert distance == 0.0
         
-        return "Test gps_distance: PASSED"
+        print("Test gps_distance: PASSED")
     except Exception as e:
         print(f"Error: {e}")
-        return f"Test gps_distance: FAILED - {str(e)}"
+        assert False, f"Test gps_distance: FAILED - {str(e)}"
 
 def test_img_getgps():
     """Test extracting GPS coordinates from an image"""
@@ -69,10 +69,10 @@ def test_img_getgps():
         coords = img_getgps(test_img_dir, "nonexistent.jpg")
         assert coords is None
         
-        return "Test img_getgps: PASSED"
+        print("Test img_getgps: PASSED")
     except Exception as e:
         print(f"Error: {e}")
-        return f"Test img_getgps: FAILED - {str(e)}"
+        assert False, f"Test img_getgps: FAILED - {str(e)}"
 
 def test_distance_to_magdeburg():
     """Test calculating distance from test image to Magdeburg"""
@@ -102,18 +102,11 @@ def test_distance_to_magdeburg():
         # So the distance to Magdeburg should be reasonable (less than 500 km)
         assert distance < 60.0
         
-        return "Test distance_to_magdeburg: PASSED"
+        print("Test distance_to_magdeburg: PASSED")
     except Exception as e:
         print(f"Error: {e}")
-        return f"Test distance_to_magdeburg: FAILED - {str(e)}"
+        assert False, f"Test distance_to_magdeburg: FAILED - {str(e)}"
 
-# Run the tests and print the result messages
+# Run the tests using pytest
 if __name__ == "__main__":
-    result_distance = test_gps_distance()
-    print(result_distance)
-    
-    result_from_img = test_img_getgps()
-    print(result_from_img)
-    
-    result_magdeburg = test_distance_to_magdeburg()
-    print(result_magdeburg)
+    pytest.main(['-v', __file__])

@@ -1,0 +1,59 @@
+{
+ "schema_version": "1.0.0",
+ "table": "rohr_summen",
+ "view": "gf",
+ "title": "Rohr-gf",
+ "columns": [
+  {
+   "title": "Raum",
+   "visible": true,
+   "readonly": true,
+   "width": 240
+  },
+  {
+   "title": "Liste",
+   "visible": true,
+   "readonly": true,
+   "width": 200
+  },
+  {
+   "title": "Summenart",
+   "visible": true,
+   "readonly": true,
+   "width": 160
+  },
+  {
+   "title": "Bezug",
+   "visible": true,
+   "readonly": true,
+   "width": 240
+  },
+  {
+   "title": "Wert",
+   "visible": true,
+   "readonly": true,
+   "width": 100
+  },
+  {
+   "title": "Einheit",
+   "visible": true,
+   "readonly": true,
+   "width": 90
+  },
+  {
+   "title": "Verbaut",
+   "visible": true,
+   "readonly": true,
+   "width": 100
+  },
+  {
+   "title": "original",
+   "visible": false,
+   "readonly": true
+  }
+ ],
+ "metaColumns": [
+  -3,
+  -5
+ ]
+}
