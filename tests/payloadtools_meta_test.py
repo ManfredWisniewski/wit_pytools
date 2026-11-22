@@ -75,6 +75,23 @@ def test_slide_options_absent():
     assert "slideOptions" not in meta
 
 
+def test_noindex_flag_from_front_matter():
+    text = "---\ntitle: T\nnoindex: true\n---\nBody.\n"
+    meta = extract_meta(text, REPO)
+    assert meta["noindex"] is True
+
+
+def test_noindex_absent_or_false_not_set():
+    assert "noindex" not in extract_meta("---\ntitle: T\n---\nBody.\n", REPO)
+    text = "---\ntitle: T\nnoindex: false\n---\nBody.\n"
+    assert "noindex" not in extract_meta(text, REPO)
+
+
+def test_noindex_nested_meta_key():
+    text = "---\ntitle: T\nmeta:\n  noindex: true\n---\nBody.\n"
+    assert extract_meta(text, REPO)["noindex"] is True
+
+
 def test_briefing_fallback():
     path = REPO / "kategorie_products" / "prod_webtext_locked.md"
     meta = extract_meta(

@@ -96,6 +96,9 @@ def build_payload(entry, markdown, meta_values, config, *,
         "meta": {
             "title": meta_values.get("title") or "",
             "description": meta_values.get("description") or "",
+            # front matter `noindex: true`; always sent so removing the
+            # flag clears a previously pushed noindex
+            "noindex": bool(meta_values.get("noindex")),
         },
     }
     if collection == POSTS_COLLECTION:
@@ -137,6 +140,9 @@ def _unchanged(existing, payload):
         ):
             return False
     existing_meta = existing.get("meta") or {}
+    if bool(existing_meta.get("noindex")) != bool(
+            payload["meta"].get("noindex")):
+        return False
     return all(
         (existing_meta.get(key) or "") == payload["meta"][key]
         for key in _COMPARED_META_FIELDS
