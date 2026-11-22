@@ -1,0 +1,196 @@
+# payloadtools
+
+`payloadtools` synchronizes markdown webtexts, media files, site structure documents, and site theme CSS from a content repository to a Payload CMS 3.x instance via its REST API. The content repository is the single source of truth; the Payload database is a derived read model.
+
+All synced content is written as **drafts**. A human reviews and publishes in the Payload admin panel. The tool never publishes and never modifies source files. The only deletion is in the mirrored `media/` directory: remote media docs are deleted when their source file is removed (see below).
+
+## Setup
+
+Dependencies (already in `requirements.txt`): `requests`, `PyYAML`, `python-dotenv` (optional, for `.env` files), `eliot`.
+
+Environment variables:
+
+| Variable           | Required | Purpose                                                              |
+| ------------------ | -------- | -------------------------------------------------------------------- |
+| `PAYLOAD_BASE_URL` | yes      | Payload instance base URL, e.g. `https://payload.witconsult.de`       |
+| `PAYLOAD_API_KEY`  | yes      | API key of the dedicated `content-bot` user. Never stored in files.   |
+| `ARRCONTENT_REPO`  | no       | Path to the content repository; `--repo` overrides it (default `.`).  |
+
+The `content-bot` API key must not be allowed to publish or delete. A 401/403 response aborts the run.
+
+## Configuration
+
+`.arrcontent.yml` at the content repository root controls eligibility, routing, meta extraction, and transforms:
+
+```yaml
+collection: pages
+collections:
+  "blog/**/*.md": posts
+media_collection: media
+include_glob: "**/*_webtext*.md"
+status_regex: "_webtext(?P<sep>[-_])(?P<status>[a-z-]+)$"
+publishable_statuses: [locked, locked-online, online-locked]
+slug_prefixes: [SEOP_]
+route:
+  strip_dir_prefixes: [kategorie_, produkt_, _kategorie_, _produkt_]
+  strip_dir_suffixes: [_produkt]
+  strip_leading_underscore: true
+  overrides:
+    home_webtext_locked.md: /
+meta:
+  briefing_glob: "SEO_*"
+transforms:
+  - pattern: '\[Button:\s*(.+?)\]'
+    replacement: '<button>\1</button>'
+```
+
+Filename rules:
+
+- `*_webtext*.md` files are publishable webtexts. The part after `_webtext` is the status; only statuses in `publishable_statuses` are synced. Files with no status suffix (`foo_webtext.md`) are publishable.
+- `SEO_*` / `SEOP_*` files are companion briefings (meta fields), not content.
+- `slug_prefixes` are stripped from the filename slug.
+- Routes are derived from cleaned directory names plus the slug; `overrides` map an exact repo-relative path to a route and win over derivation.
+- `collections` maps glob patterns to Payload collections (first match wins; everything else goes to `collection`). Files matching `"blog/**/*.md"` become `posts` documents instead of `pages`.
+
+## Blog posts
+
+Files routed to `posts` carry the same base fields as pages plus blog keys from their own front matter (no `SEO_*` briefing fallback):
+
+```yaml
+---
+title: My post
+description: Meta description.
+author: alisa            # default: the <agent> dir under blog/
+date: 2026-10-01         # -> publishedAt
+categories: [seo]        # list or comma string
+tags: [intern, eeat]
+excerpt: Teaser text.
+cover: media/cover.png   # sha256-deduped like inline images; media:<id> works too
+---
+```
+
+Post routes derive like pages (`blog/alisa/x_webtext_locked.md` → `/blog/alisa/x`). The frontend serves `/blog` (index), `/blog/<agent>` (author view), `/blog/<agent>/<slug>` (post), `/blog/kategorie/<slug>` and `/blog/tag/<slug>` archives. Agent display data lives in `+structure/agents.yml` (`agents` structure doc: `slug`, `name`, `role`, `bio`, `avatar` as media sourcePath); optional `+structure/taxonomies.yml` supplies archive labels/descriptions.
+
+## CLI
+
+```bat
+python -m wit_pytools.payloadtools sync  [--repo DIR] [--file PATH] [--dry-run] [-v]
+python -m wit_pytools.payloadtools media [--repo DIR] [--dry-run]
+python -m wit_pytools.payloadtools theme --css-light FILE [--css-dark FILE] [--logo FILE] [--font FAMILY=FILE[:WEIGHT]]... [--font-var VAR=FAMILY]...
+python -m wit_pytools.payloadtools site  [--repo DIR] [--dry-run]
+python -m wit_pytools.payloadtools check [--repo DIR]
+```
+
+`--dry-run` (and `check`) perform all reads and transformations but no writes. Exit codes: `0` nothing failed, `1` at least one file failed, `2` configuration/auth error.
+
+Per-file result lines:
+
+```text
+created    kategorie_products/prod_webtext_locked.md
+unchanged  home_webtext_locked.md
+skipped    notes_webtext_entwurf.md  (status=entwurf)
+failed     kategorie_products/broken_webtext_locked.md  (missing image img/missing.png)
+```
+
+## What sync does per file
+
+1. Scan `include_glob`; parse status from filename; non-publishable files are `skipped`.
+2. Derive route and slug.
+3. Extract `meta.title`/`meta.description`/`template` (front matter or `key: value` lines, then `SEO_*` briefing; title falls back to the first `#`/`##` heading). `template` names a frontend render variant — empty means default. Posts (`collections` glob match) also read `author`, `date`, `categories`, `tags`, `excerpt`, `cover` from front matter, and `template` is not sent.
+4. Rewrite `![alt](relpath)` to `![media:<docId>]()` — refs resolve page-relative first, then repo-root relative (a shared `media/` directory works from any page depth; a leading `/` anchors at the repo root). The image is sha256-hashed, looked up via `sourceHash`, and uploaded only if absent. The alt text is preserved on the Media document.
+5. Rewrite internal `…file.md` links to their derived `/route` via an index of the whole scan set.
+6. Apply configured `transforms` regex rules.
+7. Upsert: `GET` by `sourcePath`; `PATCH` if changed, `POST` if new, always with `draft=true`. Identical content reports `unchanged`.
+8. Emit the per-file result line.
+
+The `media` command runs steps 1 and 4 only (upload/dedup, no page writes).
+
+Both `sync` and `media` also mirror the repo-root `media/` directory into
+the media collection: every web-asset file in it (images, fonts, PDF,
+video) is uploaded (sha256-deduped), and remote docs whose `sourcePath`
+points into `media/` are **deleted** when the local file no longer exists
+or is not an uploadable type — unless an identical file exists under
+another path. Non-asset files (`.txt`, `.md`, …) report `skipped`. Nested
+`media/` directories (e.g. `mdm/media/`) stay reference-driven: they
+upload only when a page links them and are never deleted by the mirror.
+`--file` skips the mirror pass.
+
+`theme --font FAMILY=FILE[:WEIGHT]` uploads font files to `media`
+(sha256-deduped like images) and prepends a generated `@font-face` rule per
+file to `cssLight`. `FILE` may be a single file, a directory, or a glob —
+all files of the family are uploaded. `WEIGHT` is a single value (`400`)
+or a variable range (`100 900`); when omitted, weight and style are
+inferred from the filename (`*-700`, `*-700italic`, `*-italic`,
+`*-regular`, `*variable` → `100 900`).
+`--font-var VAR=FAMILY` prepends a `:root` block setting
+`--VAR: 'FAMILY'` — use it to repoint the typeface tokens in the compiled
+CSS (e.g. `--font-var "typography-typeface-change-font-here-body=Inter"`).
+
+## Structure documents
+
+`sync` and `check` also process `+structure/*.yml` / `+structure/*.yaml`
+under the site directory (`media` skips them). Each file maps to one
+document in the `structures` collection: the filename stem becomes `name`,
+the parsed YAML lands verbatim in `data`, and upserts key on `name` (unique
+per collection — a moved file updates the existing doc's `sourcePath`, a
+`name` owned by another repo fails) — same draft-only rules as pages.
+Example `+structure/navigation.yml`:
+
+```yaml
+items:
+  - {label: Start, path: /}
+  - {label: MDM, path: /mdm}
+```
+
+The frontend reads `structures` doc `navigation` and renders
+`data.items[*].label/path` as the header menu. Future documents (`footer`,
+`header`, …) work by filename convention without schema changes. `--file`
+accepts structure paths too (`--file +structure/navigation.yml`).
+
+## Site configuration
+
+`site.yml` at the content repo root is the source of truth for site-wide
+settings pushed onto the `theme` global by the `site` command:
+
+```yaml
+site_name: WIT Consult       # -> theme.meta.siteName (merged, not replaced)
+logo: path/to/logo.svg       # uploaded to media, -> theme.logo
+logo_alt: WIT Consult        # -> alt on the logo media doc (defaults to stem)
+favicon: path/to/favicon.svg # uploaded to media, -> theme.favicon
+favicon_alt: Icon            # -> alt on the favicon media doc
+tracking:
+  google: G-XXXXXXXXXX       # -> theme.tracking.google (merged)
+consent:
+  privacy_path: /datenschutz # -> theme.consent.privacyPath (merged)
+```
+
+Paths resolve relative to `site.yml`. Files go through the same
+sha256-dedup as page images — a repeated `site` push reuses the existing
+media doc and only patches `alt` when it differs. Unknown keys are ignored.
+The frontend renders `logo` in the header (falling back to `siteName` text)
+and `favicon` as `<link rel="icon">`. `tracking.google` accepts a
+gtag.js id (`G-…`, `GT-…`, `AW-…`, `DC-…`). When a valid id is set, the
+frontend shows a cookie-consent banner (`vanilla-cookieconsent`) and
+loads `gtag.js` only after the visitor opts in to `analytics` —
+withdrawing consent reloads the page. `consent.privacy_path` supplies
+the banner's privacy link (default `/datenschutz`). With no gated
+service configured: no banner, no cookie, no third-party script.
+
+## Errors and safety
+
+- Per-file failures (missing image, API error, transform error) are collected and reported; one bad file does not abort the run.
+- Idempotent `GET`s are retried with backoff; 401/403 aborts immediately (bad key).
+- Re-runs are no-ops: unchanged markdown yields `unchanged`, media dedups via `sourceHash`, upserts key on `sourcePath`.
+- The API key is never logged; the source repo is never written.
+
+## Tests
+
+```bat
+python -m pytest tests\payloadtools_scan_test.py tests\payloadtools_meta_test.py tests\payloadtools_media_test.py tests\payloadtools_links_test.py tests\payloadtools_sync_test.py tests\payloadtools_cli_test.py
+```
+
+Tests use a `FakeClient` (`tests/payloadtools_fakes.py`) and a fixture content repo (`tests/payloadtools/witrepo/`); no network access or API key is needed.
+
+## Not covered (yet)
+
+Publishing, deleting, or schema changes via API; client-side Lexical JSON generation; two-way sync (admin edits on synced fields are overwritten); webhook/n8n integration. The marker transform spec (`[Button:…]`, `[Link:…]`) and the exact `SEO_*` briefing field mapping are still pending — the plumbing is config-driven and ready.

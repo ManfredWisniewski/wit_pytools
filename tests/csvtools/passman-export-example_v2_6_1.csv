@@ -1,0 +1,2 @@
+label,description,created,changed,tags,email,icon,username,password,url,renew_interval,expire_time,delete_time,files,custom_fields,otp,compromised,hidden
+label,notes,1787130663,1787130663,"[mitarbeiter,tag2]",email@email.com,null,name,password,https://my.url,,0,0,[],"[{""label"":""custom label"",""value"":""custom value text"",""secret"":false,""field_type"":""text""},{""label"":""custom 2 label"",""value"":""customsecret"",""secret"":true,""field_type"":""password""}]",{},false,0

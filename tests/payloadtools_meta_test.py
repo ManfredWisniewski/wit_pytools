@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+from wit_pytools.payloadtools.meta import extract_meta, strip_front_matter
+
+REPO = Path(__file__).parent / "payloadtools" / "witrepo"
+
+
+def test_front_matter_meta():
+    path = REPO / "produkt_widget" / "detail_webtext_locked-online.md"
+    meta = extract_meta(path.read_text(encoding="utf-8"), path.parent)
+    assert meta == {
+        "title": "Widget Detail",
+        "description": "All about the widget.",
+        "template": "",
+    }
+
+
+def test_key_value_lines_meta():
+    text = "Some intro.\n\ntitle: KV Title\ndescription: KV desc.\n"
+    meta = extract_meta(text, REPO)
+    assert meta["title"] == "KV Title"
+    assert meta["description"] == "KV desc."
+
+
+def test_template_from_front_matter():
+    text = "---\ntemplate: landing\ntitle: T\n---\nBody.\n"
+    meta = extract_meta(text, REPO)
+    assert meta["template"] == "landing"
+
+
+def test_template_from_key_value_line():
+    meta = extract_meta("Intro.\n\ntemplate: landing\n", REPO)
+    assert meta["template"] == "landing"
+
+
+def test_template_absent_defaults_empty():
+    meta = extract_meta("Just text.\n", REPO)
+    assert meta["template"] == ""
+
+
+def test_slide_type_maps_to_template():
+    """HedgeDoc `type: slide` selects the slide template."""
+    text = "---\ntype: slide\ntitle: T\n---\nBody.\n"
+    meta = extract_meta(text, REPO)
+    assert meta["template"] == "slide"
+
+
+def test_explicit_template_beats_slide_type():
+    text = "---\ntype: slide\ntemplate: landing\n---\nBody.\n"
+    meta = extract_meta(text, REPO)
+    assert meta["template"] == "landing"
+
+
+def test_other_types_do_not_map():
+    meta = extract_meta("---\ntype: article\n---\nBody.\n", REPO)
+    assert meta["template"] == ""
+
+
+def test_slide_options_extracted():
+    text = ("---\ntype: slide\nslideOptions:\n  theme: serif\n"
+            "  transition: fade\n---\nBody.\n")
+    meta = extract_meta(text, REPO)
+    assert meta["slideOptions"] == {"theme": "serif", "transition": "fade"}
+
+
+def test_slide_options_absent():
+    meta = extract_meta("---\ntitle: T\n---\nBody.\n", REPO)
+    assert "slideOptions" not in meta
+
+
+def test_briefing_fallback():
+    path = REPO / "kategorie_products" / "prod_webtext_locked.md"
+    meta = extract_meta(
+        path.read_text(encoding="utf-8"), path.parent,
+        briefing_glob="SEO_*",
+    )
+    assert meta["title"] == "Prod SEO Title"
+    assert meta["description"] == "Prod SEO description here."
+
+
+def test_heading_fallback():
+    path = REPO / "plain_webtext.md"
+    meta = extract_meta(
+        path.read_text(encoding="utf-8"), path.parent,
+        briefing_glob="SEO_*",
+    )
+    assert meta["title"] == "Plain Page"
+    assert meta["description"] == ""
+
+
+def test_meta_fields_not_in_content():
+    text = "# Heading\n\nSome text without meta lines.\n"
+    meta = extract_meta(text, REPO)
+    assert meta["title"] == "Heading"
+    assert meta["description"] == ""
+
+
+def test_post_front_matter():
+    path = REPO / "blog" / "alisa" / "first-post_webtext_locked.md"
+    meta = extract_meta(path.read_text(encoding="utf-8"), path.parent)
+    assert meta["title"] == "First Post"
+    assert meta["author"] == "alisa"
+    assert meta["date"] == "2026-10-01"
+    assert meta["categories"] == ["seo", "content"]
+    assert meta["tags"] == ["intern", "eeat"]
+    assert meta["excerpt"] == "First post teaser."
+    assert meta["cover"] == "media/shared.png"
+
+
+def test_post_comma_string_categories():
+    path = REPO / "blog" / "carson" / "second-post_webtext_locked.md"
+    meta = extract_meta(path.read_text(encoding="utf-8"), path.parent)
+    assert meta["categories"] == ["marketing"]
+    assert "tags" not in meta
+    assert "author" not in meta
+
+
+def test_post_keys_absent_on_pages():
+    text = "---\ntitle: T\n---\nBody.\n"
+    meta = extract_meta(text, REPO)
+    assert "author" not in meta
+    assert "categories" not in meta
+
+
+def test_strip_front_matter():
+    text = "---\ntemplate: landing\nmeta_title: T\n---\n\n# Heading\n"
+    assert strip_front_matter(text) == "# Heading\n"
+
+
+def test_strip_front_matter_absent():
+    text = "# Heading\n\n---\nnot front matter at line 3\n"
+    assert strip_front_matter(text) == text

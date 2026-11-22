@@ -1,0 +1,159 @@
+{
+ "schema_version": "1.0.0",
+ "table": "bauelemente",
+ "view": "abrechnung",
+ "title": "Bauelemente-abrechnung",
+ "columns": [
+  {
+   "title": "Anz",
+   "visible": true,
+   "readonly": true,
+   "width": 70
+  },
+  {
+   "title": "Bezeichnung",
+   "visible": true,
+   "readonly": true,
+   "width": 300
+  },
+  {
+   "title": "Pos.Nr.",
+   "visible": true,
+   "readonly": true,
+   "width": 110
+  },
+  {
+   "title": "Nennweite",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "a",
+   "visible": false,
+   "readonly": true,
+   "width": 70
+  },
+  {
+   "title": "b",
+   "visible": false,
+   "readonly": true,
+   "width": 70
+  },
+  {
+   "title": "l",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "c",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "d",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "d1",
+   "visible": false,
+   "readonly": true,
+   "width": 80
+  },
+  {
+   "title": "d2",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "h",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "h1",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "h2",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "h3",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "k1",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "k3",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "t",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "x",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "y",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "alpha",
+   "visible": false,
+   "readonly": true
+  },
+  {
+   "title": "Vol(m³/h)",
+   "visible": false,
+   "readonly": true,
+   "width": 100
+  },
+  {
+   "title": "dP(Pa)",
+   "visible": false,
+   "readonly": true,
+   "width": 90
+  },
+  {
+   "title": "Klappenart",
+   "visible": true,
+   "readonly": true
+  },
+  {
+   "title": "LV-Nummer",
+   "visible": true,
+   "readonly": true,
+   "width": 110
+  },
+  {
+   "title": "Raum",
+   "visible": true,
+   "readonly": true,
+   "width": 240
+  },
+  {
+   "title": "Verbaut",
+   "visible": true,
+   "readonly": true,
+   "width": 100
+  },
+  {
+   "title": "original",
+   "visible": false,
+   "readonly": true
+  }
+ ]
+}

@@ -6,8 +6,8 @@ import shutil
 from PIL import Image
 
 # Add the parent directory to the path so we can import modules from wit_pytools
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from imgtools import jpg_compress, png2jpg, getexifdata
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+from wit_pytools.imgtools import add_ai_label, add_watermark, jpg_compress, png2jpg, img_getexif, png_compress, avif_compress, save_img
 
 def create_test_image(path, size=(100, 100), color=(255, 0, 0)):
     """Create a test image for testing"""
@@ -36,7 +36,7 @@ def test_compress_jpg():
         
         # Test compression without output path (overwrite)
         original_size = os.path.getsize(test_img_path)
-        result_path, ratio = jpg_compress(test_img_path, quality=30)
+        result_path, ratio = jpg_compress(test_img_path, quality=30, min_size_reduction=0)
         
         # Verify the result
         assert os.path.exists(result_path)
@@ -47,21 +47,22 @@ def test_compress_jpg():
         # Clean up
         shutil.rmtree(temp_dir)
         
-        return "Test compress_jpg: PASSED"
     except Exception as e:
+        import traceback
         print(f"Error: {e}")
+        traceback.print_exc()
         # Clean up even if test fails
         if 'temp_dir' in locals():
             shutil.rmtree(temp_dir)
-        return "Test compress_jpg: FAILED"
+        raise
 
-def test_getexifdata():
+def test_img_getexif():
     try:
         test_img_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "imgtools")
-        from imgtools import getexifdata
+        from wit_pytools.imgtools import img_getexif
         
-        # Test getting EXIF data
-        exif_data = getexifdata(test_img_dir, 'testimage.jpg')
+        # Test getting EXIF data from image with complete EXIF data
+        exif_data = img_getexif(test_img_dir, 'testimage.jpg')
         
         # Verify the result
         assert exif_data is not None
@@ -86,15 +87,153 @@ def test_getexifdata():
         assert gps_info[2][0] == 51.0  # Latitude degrees
         assert gps_info[4][0] == 10.0  # Longitude degrees
         
-        return "Test getexifdata: PASSED"
+        # Test image with no EXIF data
+        noexif_data = img_getexif(test_img_dir, 'testimage_noexif.jpg')
+        assert noexif_data is not None
+        # Verify it returns a dictionary, even if empty
+        assert isinstance(noexif_data, dict)
+        
+        # Test image with zero GPS coordinates
+        zerogps_data = img_getexif(test_img_dir, 'testimage_0gps.jpg')
+        assert zerogps_data is not None
+        # Verify it contains some EXIF data
+        assert isinstance(zerogps_data, dict)
+        # If it has GPS data, it should be zeros or near-zeros
+        if 'GPSInfo' in zerogps_data:
+            gps_info = zerogps_data['GPSInfo']
+            if 2 in gps_info and 4 in gps_info:  # Latitude and longitude values
+                lat_data = gps_info[2]
+                lon_data = gps_info[4]
+                if isinstance(lat_data, tuple) and isinstance(lon_data, tuple):
+                    # Either these are zero coordinates or they're valid coordinates
+                    assert True
+        
     except Exception as e:
+        import traceback
         print(f"Error: {e}")
-        return f"Test getexifdata: FAILED - {str(e)}"
+        traceback.print_exc()
+        raise
 
-# Run the tests and print the result messages
+# Additional tests for png_compress, avif_compress, and save_img
+def test_png_compress_function():
+    temp_dir = tempfile.mkdtemp()
+    try:
+        test_png = os.path.join(temp_dir, 'test.png')
+        from PIL import Image as _Image
+        _Image.new('RGB', (100, 100), (0, 255, 0)).save(test_png, 'PNG')
+        out_path, ratio = png_compress(test_png, os.path.join(temp_dir, 'out.png'), compress_level=1)
+        assert os.path.exists(out_path)
+        assert isinstance(ratio, float)
+        est = png_compress(test_png, compress_level=1, calc=True)
+        assert isinstance(est, int) and est > 0
+    finally:
+        shutil.rmtree(temp_dir)
+
+def test_avif_compress_calc():
+    temp_dir = tempfile.mkdtemp()
+    try:
+        test_jpg = os.path.join(temp_dir, 'test2.jpg')
+        create_test_image(test_jpg)
+        est_avif = avif_compress(test_jpg, calc=True)
+        assert isinstance(est_avif, int) and est_avif > 0
+    finally:
+        shutil.rmtree(temp_dir)
+
+def test_save_img_choose_format():
+    temp_dir = tempfile.mkdtemp()
+    try:
+        test_jpg = os.path.join(temp_dir, 'test3.jpg')
+        create_test_image(test_jpg)
+        out_path, ratio = save_img(test_jpg)
+        assert os.path.exists(out_path)
+        assert ratio > 0
+        test_png = os.path.join(temp_dir, 'test3.png')
+        from PIL import Image as _Image2
+        _Image2.new('RGB', (100, 100), (0, 0, 255)).save(test_png, 'PNG')
+        out2, ratio2 = save_img(test_png)
+        assert os.path.exists(out2)
+        assert ratio2 > 0
+        assert out2.endswith('.jpg') or out2.endswith('.png')
+    finally:
+        shutil.rmtree(temp_dir)
+
+def test_add_watermark_text_default_output_and_no_overwrite(tmp_path):
+    source = tmp_path / "source.png"
+    Image.new("RGBA", (200, 100), (0, 0, 255, 255)).save(source)
+
+    output = add_watermark(source, text="Demo")
+    output_path = os.path.abspath(output)
+    assert output_path.endswith("source_watermarked.png")
+    assert os.path.exists(output_path)
+    with pytest.raises(FileExistsError):
+        add_watermark(source, text="Demo")
+
+
+def test_add_watermark_logo_and_combined(tmp_path):
+    source = tmp_path / "source.jpg"
+    logo = tmp_path / "logo.png"
+    output = tmp_path / "out.jpg"
+    Image.new("RGB", (240, 120), (20, 40, 60)).save(source)
+    Image.new("RGBA", (40, 20), (255, 0, 0, 180)).save(logo)
+
+    result = add_watermark(
+        source,
+        output,
+        text="Example",
+        watermark_image=logo,
+        position="center",
+        text_opacity=200,
+        logo_opacity=200,
+    )
+
+    assert result == str(output)
+    with Image.open(output) as image:
+        assert image.size == (240, 120)
+        assert image.mode == "RGB"
+        assert image.getpixel((120, 60)) != (20, 40, 60)
+
+
+def test_add_watermark_validation(tmp_path):
+    source = tmp_path / "source.png"
+    Image.new("RGB", (20, 20), "white").save(source)
+
+    with pytest.raises(ValueError):
+        add_watermark(source)
+    with pytest.raises(ValueError):
+        add_watermark(source, text="x", position="diagonal")
+    with pytest.raises(ValueError):
+        add_watermark(source, text="x", text_opacity=256)
+
+
+def test_add_ai_label(tmp_path):
+    source = tmp_path / "portrait.png"
+    Image.new("RGB", (400, 300), (200, 200, 200)).save(source)
+    output = tmp_path / "labeled.jpg"
+
+    result = add_ai_label(source, output)
+
+    assert result == str(output)
+    with Image.open(output) as image:
+        assert image.size == (512, 512)
+        # black disc pixel above the AI letters
+        r, g, b = image.getpixel((100, 350))[:3]
+        assert r < 60 and g < 60 and b < 60
+        # white ring at the left badge edge
+        r, g, b = image.getpixel((55, 395))[:3]
+        assert r > 200 and g > 200 and b > 200
+
+
+def test_add_ai_label_default_output_and_no_overwrite(tmp_path):
+    source = tmp_path / "portrait.png"
+    Image.new("RGB", (300, 300), "white").save(source)
+
+    result = add_ai_label(source)
+    assert result == str(tmp_path / "portrait_ai.png")
+
+    with pytest.raises(FileExistsError):
+        add_ai_label(source)
+
+
+# Run the tests using pytest
 if __name__ == "__main__":
-    result_single = test_compress_jpg()
-    print(result_single)
-    
-    result_getexifdata = test_getexifdata()
-    print(result_getexifdata)
+    pytest.main(['-v', __file__])

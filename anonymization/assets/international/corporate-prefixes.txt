@@ -1,0 +1,2 @@
+# First-word markers identifying a candidate as a company name.
+Bank

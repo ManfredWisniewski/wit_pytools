@@ -1,0 +1,4 @@
+# Last-word suffixes identifying a candidate as a company name.
+Bank
+Group
+Inc

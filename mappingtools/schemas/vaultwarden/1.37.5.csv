@@ -1,0 +1,17 @@
+Software: Vaultwarden, Version: 1.37.5
+Delimiter: ,
+Quotechar: "
+Encoding: utf-8
+
+column,type
+collections,string
+type,string
+name,string
+notes,string
+fields,string
+reprompt,integer
+archivedDate,datetime
+login_uri,string
+login_username,string
+login_password,string
+login_totp,string
