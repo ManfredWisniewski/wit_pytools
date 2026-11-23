@@ -322,10 +322,16 @@ def _run_site(args, client=None):
             if consent.get("privacy_path") is not None:
                 merged["privacyPath"] = str(consent["privacy_path"])
             payload["consent"] = merged
-        if data.get("site_name"):
+        if data.get("site_name") or data.get("lang"):
             existing = client.get("globals/theme") or {}
             meta = dict(existing.get("meta") or {})
-            meta["siteName"] = str(data["site_name"])
+            if data.get("site_name"):
+                meta["siteName"] = str(data["site_name"])
+            # ISO code of the unprefixed default content tree —
+            # translations live under /<lang>/…; drives <html lang> and
+            # hreflang output in the frontend
+            if data.get("lang"):
+                meta["lang"] = str(data["lang"])
             payload["meta"] = meta
         if not payload:
             raise PayloadConfigError("site.yml contains no pushable keys")

@@ -15,6 +15,7 @@ KEY_VALUE_RE = re.compile(
 _TITLE_KEYS = ("title", "meta_title", "meta-title")
 _DESC_KEYS = ("description", "meta_description", "meta-description")
 _TEMPLATE_KEYS = ("template",)
+_NOINDEX_KEYS = ("noindex", "meta_noindex", "meta-noindex")
 
 # front matter `type` values that select the reveal.js slide template;
 # other values stay unmapped (explicit `template:` wins either way)
@@ -52,6 +53,26 @@ def _pick(mapping, keys):
             if value:
                 return str(value).strip()
     return ""
+
+
+def _truthy(value):
+    """Front matter truthiness: YAML bools/numbers or yes/no-ish strings."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "yes", "on", "1")
+    return False
+
+
+def _pick_flag(mapping, keys):
+    """True when any key (top-level or nested under `meta`) is truthy."""
+    values = [mapping.get(key) for key in keys]
+    nested = mapping.get("meta")
+    if isinstance(nested, dict):
+        values += [nested.get(key) for key in keys]
+    return any(_truthy(value) for value in values)
 
 
 def _pick_list(mapping, keys):
@@ -137,5 +158,7 @@ def extract_meta(text, file_dir, briefing_glob=""):
     options = data.get("slideOptions")
     if isinstance(options, dict) and options:
         meta["slideOptions"] = options
+    if _pick_flag(data, _NOINDEX_KEYS):
+        meta["noindex"] = True
     meta.update(_post_meta(data))
     return meta
