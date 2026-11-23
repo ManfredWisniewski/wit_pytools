@@ -153,6 +153,45 @@ def test_build_payload_includes_template():
     assert "_status" not in payload
 
 
+def test_build_payload_noindex_flag():
+    """Front-matter noindex lands on meta; absent flag sends false."""
+    config = load_config(REPO)
+    entries = {e.relpath: e for e in scan_repo(config)}
+    entry = entries["plain_webtext.md"]
+    payload = build_payload(
+        entry, "text",
+        {"title": "", "description": "", "noindex": True},
+        config,
+    )
+    assert payload["meta"]["noindex"] is True
+    payload = build_payload(
+        entry, "text", {"title": "", "description": ""}, config
+    )
+    assert payload["meta"]["noindex"] is False
+
+
+def test_noindex_change_marks_doc_updated():
+    """A remote meta.noindex that differs from the push updates the doc."""
+    config = load_config(REPO)
+    probe = FakeClient()
+    sync_repo(config, probe)
+    home_payload = next(
+        p for _, p in probe.created
+        if p["sourcePath"] == "home_webtext_locked.md"
+    )
+    existing = dict(home_payload)
+    existing["id"] = "doc-1"
+    existing["meta"] = dict(home_payload["meta"], noindex=True)
+    client = FakeClient(
+        docs={("pages", "home_webtext_locked.md"): existing}
+    )
+    results = sync_repo(
+        config, client, only_file="home_webtext_locked.md"
+    )
+    assert _statuses(results) == {"home_webtext_locked.md": "updated"}
+    assert client.updated[0][2]["meta"]["noindex"] is False
+
+
 def test_build_payload_slide_fields_on_posts():
     """Posts carry template + slideOptions like pages do."""
     config = load_config(REPO)
