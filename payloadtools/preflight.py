@@ -12,12 +12,35 @@ FENCE_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})")
 # inline code spans: `x` or ``x`y`` — matched backtick pairs
 INLINE_CODE_RE = re.compile(r"(`+)(.+?)\1")
 
-# html tags, comments and named entities (autolinks <scheme:..> excluded)
-HTML_RE = re.compile(
-    r"<!--"
-    r"|</?[a-zA-Z][a-zA-Z0-9-]*(?:\s[^<>]*)?/?>"
-    r"|&[a-zA-Z][a-zA-Z0-9]+;"
+# standard html element names — custom elements like <witSpace/>
+# (payload block modules) are not html and never flag
+HTML_TAGS = frozenset(
+    "a abbr address area article aside audio b base bdi bdo blockquote "
+    "body br button canvas caption cite code col colgroup data datalist "
+    "dd del details dfn dialog div dl dt em embed fieldset figcaption "
+    "figure footer form h1 h2 h3 h4 h5 h6 head header hgroup hr html i "
+    "iframe img input ins kbd label legend li link main map mark math "
+    "menu meta meter nav noscript object ol optgroup option output p "
+    "picture pre progress q rp rt ruby s samp script search section "
+    "select slot small source span strong style sub summary sup svg "
+    "table tbody td template textarea tfoot th thead time title tr "
+    "track u ul var video wbr".split()
 )
+
+# tag candidates, comments and named entities (autolinks excluded)
+TAG_RE = re.compile(r"</?([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^<>]*)?/?>")
+COMMENT_RE = re.compile(r"<!--")
+ENTITY_RE = re.compile(r"&[a-zA-Z][a-zA-Z0-9]+;")
+
+
+def line_has_html(line):
+    """True when the line contains a real html tag, comment or entity."""
+    if COMMENT_RE.search(line) or ENTITY_RE.search(line):
+        return True
+    return any(
+        match.group(1).lower() in HTML_TAGS
+        for match in TAG_RE.finditer(line)
+    )
 
 
 def find_html_outside_code(text):
@@ -35,7 +58,7 @@ def find_html_outside_code(text):
             continue
         if fence is not None:
             continue
-        if HTML_RE.search(INLINE_CODE_RE.sub("", line)):
+        if line_has_html(INLINE_CODE_RE.sub("", line)):
             findings.append((lineno, line.strip()))
     return findings
 

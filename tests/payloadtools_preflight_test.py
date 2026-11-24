@@ -46,6 +46,11 @@ def test_find_html_ignores_autolink_and_math():
     assert find_html_outside_code("<https://x.de> and a < b") == []
 
 
+def test_find_html_ignores_custom_elements():
+    text = '<witSpace size="800" maxTilt="38" />\n<my-widget a="1"></my-widget>'
+    assert find_html_outside_code(text) == []
+
+
 def test_check_publishable_skips_drafts(tmp_path):
     repo = _repo(tmp_path, {
         ".arrcontent.yml": "collection: pages\n",
