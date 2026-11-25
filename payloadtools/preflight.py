@@ -3,7 +3,7 @@
 import re
 
 from .config import PayloadConfigError
-from .meta import strip_front_matter
+from .meta import extract_meta, strip_front_matter
 from .scan import scan_repo
 
 # fenced code blocks: ``` or ~~~ marker with up to 3 leading spaces
@@ -75,6 +75,8 @@ def check_publishable_html(config):
             raise PayloadConfigError(
                 f"Cannot read {entry.relpath}: {error}"
             ) from error
+        if extract_meta(text, entry.path.parent).get("template") == "slide":
+            continue  # slide decks (reveal.js) legitimately embed html
         stripped = strip_front_matter(text)
         offset = text.count("\n") - stripped.count("\n")
         findings += [

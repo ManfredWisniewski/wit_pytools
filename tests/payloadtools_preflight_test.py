@@ -61,6 +61,17 @@ def test_check_publishable_skips_drafts(tmp_path):
     assert findings == [("page_webtext.md", 1, "hi <div>x</div>")]
 
 
+def test_check_publishable_skips_slides(tmp_path):
+    repo = _repo(tmp_path, {
+        ".arrcontent.yml": "",
+        "deck_webtext.md": "---\ntype: slide\n---\n<style>x</style>\n",
+        "tpl_webtext.md": "---\ntemplate: slide\n---\n<div>y</div>\n",
+        "page_webtext.md": "hi <div>x</div>\n",
+    })
+    findings = check_publishable_html(load_config(repo))
+    assert findings == [("page_webtext.md", 1, "hi <div>x</div>")]
+
+
 def test_check_publishable_front_matter_offset(tmp_path):
     repo = _repo(tmp_path, {
         ".arrcontent.yml": "",
