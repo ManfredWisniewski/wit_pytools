@@ -1,4 +1,4 @@
-"""Command-line interface: payloadtools sync|media|theme|check."""
+"""Command-line interface: payloadtools sync|media|theme|site|check|preflight."""
 
 import argparse
 import glob
@@ -13,6 +13,7 @@ from wit_pytools.logger import log_setup
 
 from .client import PayloadAuthError, PayloadClient
 from .config import PayloadConfigError, load_config, load_credentials
+from .preflight import check_publishable_html
 from .sync import sync_repo
 
 
@@ -59,6 +60,12 @@ def _build_parser():
     check_p = sub.add_parser("check", help="dry validation, no writes")
     check_p.add_argument("--repo")
     check_p.add_argument("-v", "--verbose", action="store_true")
+
+    preflight_p = sub.add_parser(
+        "preflight", help="local checks on publishable content"
+    )
+    preflight_p.add_argument("--repo")
+    preflight_p.add_argument("-v", "--verbose", action="store_true")
     return parser
 
 
@@ -345,6 +352,23 @@ def _run_site(args, client=None):
     return 0
 
 
+def _run_preflight(config):
+    """Local checks on publishable content -> 1 on findings, else 0."""
+    findings = check_publishable_html(config)
+    for relpath, lineno, line in findings:
+        print(f"{relpath}:{lineno}: html outside code block: {line}")
+    if findings:
+        print(
+            f"preflight: {len(findings)} html occurrence(s) outside "
+            "code blocks",
+            file=sys.stderr,
+        )
+        return 1
+    print("preflight: ok")
+    log_message("payloadtools preflight ok", level="INFO")
+    return 0
+
+
 def main(argv=None, *, client=None):
     args = _build_parser().parse_args(argv)
     log_setup()
@@ -354,6 +378,8 @@ def main(argv=None, *, client=None):
         if args.command == "site":
             return _run_site(args, client=client)
         config = load_config(args.repo)
+        if args.command == "preflight":
+            return _run_preflight(config)
         injected = client is not None
         if client is None:
             base_url, api_key = load_credentials()
