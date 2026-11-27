@@ -130,40 +130,29 @@ def yaml_escape(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ") + '"'
 
 
-def mail_to_markdown(raw: bytes, output_path, *, frontmatter: dict | None = None,
-                     attachments_dir=None, attachments_prefix: str = "",
-                     strip_quotes: bool = False,
-                     settings: dict | None = None) -> tuple[Path, list[str]]:
-    """Render one RFC822 message to a markdown file.
+def mail_to_markdown_text(raw: bytes, *, frontmatter: dict | None = None,
+                          attachments: list[str] | None = None,
+                          strip_quotes: bool = False, title: str = "") -> str:
+    """Render one RFC822 message to markdown text — no file writes.
 
     - ``frontmatter`` given → YAML front matter + raw body (archive format);
       keys map 1:1 to front matter fields, ``attachments`` list appended
-      when attachments were written.
+      when attachments were produced.
     - ``frontmatter=None`` → simple format: ``# subject`` + ``- From/To/Date``
-      bullets + quote-stripped body (legacy ``eml_to_markdown`` format).
-    - ``attachments_dir`` → attachments decoded to that dir, named
-      ``<prefix><filename>``; returned paths are relative to ``output_path``'s
-      parents when possible.
-    Returns ``(output_path, attachment_paths)``.
+      bullets + quote-stripped body (legacy ``eml_to_markdown`` format);
+      ``title`` is the heading fallback when the subject is empty.
+    - ``attachments`` → names listed in the front matter/bullet line.
     """
-    del settings  # legacy signature compat
-    output_path = Path(output_path)
     msg = email.message_from_bytes(raw, policy=email.policy.default)
     subject = decode_header_value(msg.get("Subject"))
     body = message_text(msg)
     if strip_quotes or frontmatter is None:
         body = strip_quoted_text(body)
-
-    written = []
-    if attachments_dir is not None:
-        written = [
-            str(Path(attachments_dir) / name)
-            for name in write_attachments(msg, attachments_dir, attachments_prefix)
-        ]
+    written = attachments or []
 
     if frontmatter is None:
         lines = [
-            f"# {subject or output_path.stem}",
+            f"# {subject or title}",
             "",
             f"- From: {decode_header_value(msg.get('From'))}",
             f"- To: {decode_header_value(msg.get('To'))}",
@@ -198,9 +187,40 @@ def mail_to_markdown(raw: bytes, output_path, *, frontmatter: dict | None = None
                 lines.append(f"{key}: {yaml_escape(value)}")
         lines.append("---")
         lines += ["", body]
+    return "\n".join(lines).strip("\n") + "\n"
 
+
+def mail_to_markdown(raw: bytes, output_path, *, frontmatter: dict | None = None,
+                     attachments_dir=None, attachments_prefix: str = "",
+                     strip_quotes: bool = False,
+                     settings: dict | None = None) -> tuple[Path, list[str]]:
+    """Render one RFC822 message to a markdown file.
+
+    - ``frontmatter`` given → YAML front matter + raw body (archive format);
+      keys map 1:1 to front matter fields, ``attachments`` list appended
+      when attachments were written.
+    - ``frontmatter=None`` → simple format: ``# subject`` + ``- From/To/Date``
+      bullets + quote-stripped body (legacy ``eml_to_markdown`` format).
+    - ``attachments_dir`` → attachments decoded to that dir, named
+      ``<prefix><filename>``; returned paths are relative to ``output_path``'s
+      parents when possible.
+    Returns ``(output_path, attachment_paths)``.
+    """
+    del settings  # legacy signature compat
+    output_path = Path(output_path)
+    written = []
+    if attachments_dir is not None:
+        msg = email.message_from_bytes(raw, policy=email.policy.default)
+        written = [
+            str(Path(attachments_dir) / name)
+            for name in write_attachments(msg, attachments_dir, attachments_prefix)
+        ]
+    text = mail_to_markdown_text(raw, frontmatter=frontmatter,
+                                 attachments=written,
+                                 strip_quotes=strip_quotes,
+                                 title=output_path.stem)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("\n".join(lines).strip("\n") + "\n", encoding="utf-8")
+    output_path.write_text(text, encoding="utf-8")
     return output_path, written
 
 

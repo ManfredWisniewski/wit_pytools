@@ -234,7 +234,7 @@ from mailtools import (
     staging_folder,
     utf7_decode,
 )
-from mailtools.archive import archive_account, delete_sent, purge_staging
+from mailtools.archive import archive_account, delete_sent, message_objects, purge_staging
 from mailtools import archive as _archive
 import mailtools
 
@@ -317,6 +317,7 @@ class _FakeImap:
         self.untagged_responses = {"UIDVALIDITY": [b"1"]}
         self.stored = []
         self.expunged = False
+        self.uid_expunged = None
 
     def select(self, box, readonly=False):
         self._selected = box.strip('"')
@@ -334,6 +335,10 @@ class _FakeImap:
         if cmd == "store":
             self.stored.append(args)
             return ("OK", [])
+        if cmd == "expunge":
+            self.uid_expunged = args[0]
+            self.expunged = True
+            return ("OK", [])
         return ("NO", [])
 
     def expunge(self):
@@ -341,13 +346,51 @@ class _FakeImap:
         return ("OK", [])
 
 
-def test_archive_account_drains_sent(tmp_path):
+class _FakeSink:
+    """Object-store stand-in: records put() calls, can fail on demand."""
+
+    def __init__(self, fail=False):
+        self.objects = {}
+        self.fail = fail
+
+    def put(self, key, data, content_type=None, metadata=None):
+        if self.fail:
+            raise RuntimeError("AccessDenied")
+        self.objects[key] = (data, content_type, metadata)
+
+
+def test_message_objects_layout():
+    objs = message_objects("e-x-de", "INBOX.Sent", "INBOX.", 5, _MAIL)
+    assert len(objs) == 1
+    obj = objs[0]
+    assert obj["key"].startswith(
+        "mail-archive/2026-10-11/e-x-de/Sent/2026-10-11_test-mail_m1-x-")
+    assert obj["key"].endswith(".md")
+    assert obj["content_type"].startswith("text/markdown")
+    assert obj["metadata"] == {
+        "source": "mail-archive", "account": "e-x-de", "folder": "INBOX.Sent"}
+    assert b'folder: "INBOX.Sent"' in obj["data"]
+    assert b"Hello body" in obj["data"]
+
+
+def test_archive_account_drains_sent():
     acct = {"account": "e@x.de", "host": "h", "slug": "e-x-de", "prefix": "INBOX."}
     fake = _FakeImap({("INBOX.Sent", 5): _MAIL, ("INBOX.A", 9): _MAIL})
-    captured = archive_account(acct, tmp_path, "pw", imap_client=fake)
-    assert captured == [5]
-    docs = list((tmp_path / "+INBOX" / "emails" / "e-x-de" / "Sent").glob("*.md"))
-    assert len(docs) == 1 and "Hello body" in docs[0].read_text(encoding="utf-8")
+    sink = _FakeSink()
+    captured, failed = archive_account(acct, sink, "pw", imap_client=fake)
+    assert captured == [5] and failed == []
+    key = next(iter(sink.objects))
+    assert key.startswith(
+        "mail-archive/2026-10-11/e-x-de/Sent/2026-10-11_test-mail_m1-x-")
+    assert b"Hello body" in sink.objects[key][0]
+
+
+def test_archive_account_put_failure_keeps_uid():
+    acct = {"account": "e@x.de", "host": "h", "slug": "e-x-de", "prefix": "INBOX."}
+    fake = _FakeImap({("INBOX.Sent", 5): _MAIL})
+    captured, failed = archive_account(
+        acct, _FakeSink(fail=True), "pw", imap_client=fake)
+    assert captured == [] and failed == [5]
 
 
 def test_delete_and_purge(tmp_path):
@@ -355,6 +398,7 @@ def test_delete_and_purge(tmp_path):
     fake = _FakeImap()
     assert delete_sent(acct, [5, 6], "pw", imap_client=fake) == 2
     assert b"5,6" == fake.stored[0][0] and fake.expunged
+    assert fake.uid_expunged == b"5,6"
 
     fake2 = _FakeImap()
     assert purge_staging(acct, 30, "pw", imap_client=fake2) == 2
