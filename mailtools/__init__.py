@@ -6,7 +6,7 @@ Package layout (spec: +wit/specs/wit_pytools/mailtools):
 - ``imap``      — read-oriented IMAP helpers (EXAMINE/BODY.PEEK)
 - ``sieve``     — Sieve compile + ManageSieve client + folder ensuring
 - ``render``    — merged RFC822→Markdown renderer (stdlib)
-- ``archive``   — Sent drain, delete-after-commit, purge, init_dirs
+- ``archive``   — Sent drain to staging objects, delete-after-PUT, purge, init_dirs
 - ``legacy``    — .eml/.msg parsing; needs ``eml_parser``/``extract-msg``
 
 The ``legacy`` names are re-exported lazily so ``import mailtools`` and all
@@ -22,10 +22,10 @@ from .accounts import (
 )
 from .archive import (
     archive_account,
-    archive_message,
     delete_sent,
     folder_relpath,
     init_dirs,
+    message_objects,
     purge_staging,
     rule_folders,
 )

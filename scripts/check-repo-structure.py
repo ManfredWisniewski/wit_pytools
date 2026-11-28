@@ -14,11 +14,12 @@ def isdir(root, p): return os.path.isdir(os.path.join(root, p))
 def project_type(root):
     f = os.path.join(root, '.wit-project-type')
     if os.path.isfile(f):
-        return open(f, errors='ignore').read().strip() or None
+        return open(f, encoding='utf-8', errors='ignore').read().strip() or None
     return None
 
 def run(root, *args, check=False):
-    return subprocess.run(args, cwd=root, text=True, capture_output=True)
+    return subprocess.run(args, cwd=root, text=True, encoding='utf-8',
+                          errors='replace', capture_output=True)
 
 def main():
     ap = argparse.ArgumentParser()
@@ -33,7 +34,7 @@ def main():
     inv_path = os.path.join(root, inv)
     if not os.path.isfile(inv_path):
         print(f'inventory not found: {inv}', file=sys.stderr); return 2
-    data = json.load(open(inv_path))
+    data = json.load(open(inv_path, encoding='utf-8'))
     repos = data.get('repositories', data if isinstance(data, list) else [])
     name = a.name or os.path.basename(root).lower()
     # entries with "project_type" are additive fragments, never the base profile
@@ -54,11 +55,11 @@ def main():
         if group and not any(exists(root, p) for p in group): errors.append('missing any of: ' + ', '.join(group))
     if entry.get('wit_submodule', True):
         gm = os.path.join(root, '.gitmodules')
-        if not isfile(root, '.gitmodules') or '+wit' not in open(gm, errors='ignore').read():
+        if not isfile(root, '.gitmodules') or '+wit' not in open(gm, encoding='utf-8', errors='ignore').read():
             errors.append('missing +wit submodule in .gitmodules')
     if entry.get('agents_md_nul_rule', True):
         f = os.path.join(root, 'AGENTS.md')
-        if not os.path.isfile(f) or '/dev/null' not in open(f, errors='ignore').read():
+        if not os.path.isfile(f) or '/dev/null' not in open(f, encoding='utf-8', errors='ignore').read():
             errors.append('AGENTS.md missing Git Bash /dev/null rule')
     if a.remote or entry.get('check_remote_branches'):
         for b in ('main', 'work', 'wip'):
