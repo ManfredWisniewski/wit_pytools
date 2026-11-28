@@ -39,7 +39,7 @@ $schedules = [ordered]@{
 if (-not $Token) {
     $envFile = Join-Path (git rev-parse --show-superproject-working-tree --show-toplevel | Select-Object -First 1) '.env'
     if (Test-Path $envFile) {
-        $line = Get-Content $envFile | Where-Object { $_ -match '^\s*GITLAB_TOKEN\s*=' } | Select-Object -First 1
+        $line = Get-Content -LiteralPath $envFile -Encoding UTF8 | Where-Object { $_ -match '^\s*GITLAB_TOKEN\s*=' } | Select-Object -First 1
         if ($line) { $Token = ($line -split '=', 2)[1].Trim().Trim('"', "'") }
     }
 }
