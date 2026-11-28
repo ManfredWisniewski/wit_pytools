@@ -1,11 +1,12 @@
-# Tests and acceptance criteria — `<project>`
+# Tests and acceptance criteria - `wit_pytools`
 
-*Format per `+wit/development/bestpractices/tests.md`. Criteria are numbered `A01`, `A02`, ... and never renumbered.*
+*Format per `+wit/development/bestpractices/tests.md`. Criteria are numbered
+`A01`, `A02`, ... and never renumbered.*
 
 ## Commands
 
 ```text
-test:   <test command, or "manual">
+test:   python -m pytest
 lint:   npx markdownlint-cli2 "**/*.md"
 ```
 
@@ -13,14 +14,16 @@ lint:   npx markdownlint-cli2 "**/*.md"
 
 ### A01 Repository structure
 
-- `README.md`, `AGENTS.md`, `+team/+tasks/README.md`, `+team/+tasks/backlog.md`, `+intent/{intent,tests}.md`, `knowledge/{README,decisions}.md`, `.gitignore` and `.markdownlint-cli2.jsonc` exist at the root.
-- The branches and submodules required by `+wit/common/conventions/repo-setup.md` exist.
+- `python scripts/check-repo-structure.py . --remote --skills-check` exits
+  successfully.
+- The `+wit` submodule pin is present on its upstream and tracks `main`.
 
-### A02 `<feature>`
+### A02 Test suite
 
-- `<checkable criterion — by a test or a manual step>`.
-- `<negative case for security-relevant paths>`.
+- `python -m pytest` discovers and passes the repository's test suites under
+  `tests/`.
 
 ## Not tested
 
-- `<what is deliberately not covered yet, and why>`.
+- Live behavior of external APIs and services is not a root-level acceptance
+  criterion; consult each tool's documentation and tests for its coverage.

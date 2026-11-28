@@ -1,63 +1,34 @@
-# Intent: `<project>`
+# Intent: `wit_pytools`
 
 ## Purpose
 
-`<project>` provides `<short description>`.
+`wit_pytools` is a collection of reusable Python modules and command-line tools
+for WIT workflows. The code covers data and file handling, document conversion
+and anonymization, media, communication, web and marketing automation, and
+content synchronization.
 
-State:
-
-- where the work or implementation currently lives;
-- who uses it (people, repositories, workflows);
-- why it exists and which problem it solves.
-
-Before the first grilling session, check `+team/+tasks/` for open tasks and use the first one as its goal. If initial research exists, integrate everything relevant here and in `knowledge/decisions.md` during that session, then remove the research file.
+Implementations live in root-level modules and package directories. Package
+documentation and package-specific intent files describe their own contracts.
+The root `tests/` directory contains the repository's pytest suites and
+fixtures.
 
 ## Concepts
 
-Define the domain terms used in this project:
-
-- **`<term>`**: `<meaning>`.
-- **`<term>`**: `<meaning>`.
+- **Tool module**: a top-level Python module or package that exposes reusable
+  functions, a command-line interface, or both.
+- **Consumer**: a Python script, runner, or project that imports or invokes a
+  tool from this repository.
+- **Package-specific contract**: the configuration, behavior, and limits
+  documented with an individual tool; there is no single configuration format
+  for the entire repository.
 
 ## Scope
 
-- In scope: `<what this project covers>`.
-- Out of scope: `<what it deliberately does not cover, and where that lives instead>`.
-
-## Software projects (optional — delete this section otherwise)
-
-### Configuration
-
-Describe the configuration format, sections, keys, defaults and precedence. State which files are modified and which remain unchanged.
-
-- `<key>` — `<meaning and default>`.
-
-### Processing order
-
-1. `<validation or input discovery>`.
-2. `<classification or matching>`.
-3. `<transformation or handling>`.
-4. `<output, cleanup or indexing>`.
-
-Document the priority when multiple handlers or rules can match.
-
-### Main workflows
-
-Per workflow: input and output, matching criteria, side effects, failure behaviour, retry or idempotency behaviour.
-
-### Public functions
-
-- `<function_name>(...)` — `<purpose, important parameters, return value, raised errors, whether source files are modified>`.
-
-### Data and file formats
-
-Headers, required fields, status values, markers and compatibility rules of CSV, JSON, INI, Markdown or other formats used.
-
-### Safety and preservation
-
-- `<what is preserved>`.
-- `<what may be modified or deleted, and how output collisions are handled>`.
-- `<failure safety rule>`.
+- In scope: reusable Python tools, their command-line runners, repository
+  scripts, tests, and test fixtures.
+- Out of scope: shared WIT conventions and agent skills, which are maintained
+  in the `+wit` submodule; live project data and environment-specific
+  credentials.
 
 ## Tests and verification
 
@@ -65,9 +36,6 @@ Acceptance criteria and test commands: `tests.md`.
 
 ## Non-goals and limitations
 
-- `<unsupported format or behaviour>`.
-- `<known limitation or deferred integration>`.
-
-## Open items
-
-Open tasks: `+team/+tasks/<persona>.md`. Unresolved design decisions: `knowledge/decisions.md`, section "Backlog".
+- This repository is not one deployable application or service.
+- A uniform configuration format or public API across all tools is not
+  specified; each tool's documentation is authoritative for that tool.
