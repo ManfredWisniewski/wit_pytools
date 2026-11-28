@@ -19,10 +19,12 @@ goals:
 | `imap.py` | `connect`, `examine`, `search_uids`, `fetch_raw`, `list_folders`, `parse_list_names`, `utf7_decode`, `staging_folder`, `sent_folder`, `imap_before_date`, `hierarchy_sep` | stdlib |
 | `sieve.py` | `compile_sieve`, `ManageSieve`, `ensure_folders` | stdlib |
 | `render.py` | `mail_to_markdown` (merged renderer), `eml_to_markdown`, `strip_quoted_text`, `slugify`, header/date/attachment helpers | stdlib |
-| `archive.py` | `archive_account` (Sent drain), `delete_sent`, `purge_staging`, `init_dirs`, `rule_folders`, `folder_relpath` | stdlib |
+| `archive.py` | `archive_account` (Sent drain → object PUTs via injected sink), `message_objects`, `delete_sent`, `purge_staging`, `init_dirs`, `rule_folders`, `folder_relpath` | stdlib |
 | `legacy.py` | `parse_eml`, `eml_headers`, `eml_thread_members`, `eml_thread_to_markdown`, `parse_msg` | `eml_parser`, `extract-msg` |
 
 `legacy` names are re-exported lazily via `__init__.__getattr__` — importing
 `mailtools` never pulls the optional third-party packages, so host-side
 tools (which must be stdlib-only, iac-n8n D09) work unmodified.
-Git helpers live outside the package in top-level `wit_pytools/gittools.py`.
+Git helpers live outside the package in top-level `wit_pytools/gittools.py`;
+the SigV4 S3 client injected as `archive_account`'s sink lives in top-level
+`wit_pytools/s3.py` (spec `+wit/specs/iac-n8n/staging-inbox-s3`).
